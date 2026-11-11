@@ -1,0 +1,25 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+html, body { margin: 0; height: 100%; background: #07060a; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
+#wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+#wrap.fake-fs { position: fixed; inset: 0; z-index: 20; }
+canvas#c { display: block; width: 100%; height: 100%; object-fit: contain; background: #0a0810; touch-action: none; }
+#touch { position: absolute; inset: 0; pointer-events: none; }
+#touch .joy, #touch .btn {
+  pointer-events: auto; position: absolute; border-radius: 999px;
+  background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.25);
+}
+#touch .joy { left: 28px; bottom: 28px; width: 140px; height: 140px; }
+#touch .joy .knob {
+  position: absolute; width: 64px; height: 64px; border-radius: 999px;
+  background: rgba(255,45,155,0.7); left: 38px; top: 38px;
+}
+#touch .cluster { position: absolute; right: 20px; bottom: 24px; width: 200px; height: 200px; }
+#touch .btn { width: 64px; height: 64px; color: #fff; font: 700 11px/64px Inter, sans-serif; text-align: center; letter-spacing: 0.04em; }
+#touch .btn.enter { right: 88px; bottom: 88px; background: rgba(242,193,78,0.35); }
+#touch .btn.brake { right: 20px; bottom: 88px; }
+#touch .btn.fire { right: 88px; bottom: 20px; background: rgba(255,45,155,0.35); }
+#touch .btn.pause { top: 16px; right: 16px; width: 48px; height: 48px; line-height: 48px; }
+#touch .btn.fs { top: 16px; right: 72px; width: 48px; height: 48px; line-height: 48px; }
+#touch.hidden { display: none; }
+.hidden { display: none !important; }
