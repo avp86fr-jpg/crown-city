@@ -30,11 +30,11 @@ test('weapon spread responds to movement and sustained fire; shotgun damage fall
  flat();const w=WEAPONS[1],still=shotSpread(G,w,G.player);G.player.speed=175;assert.ok(shotSpread(G,w,G.player)>still);G.action.bloom=1;const burst=shotSpread(G,w,G.player);tickAction(G,.6,{moveFoot(){}});assert.ok(shotSpread(G,w,G.player)<burst);
  const b={damage:19,range:340,falloff:100,travel:60};assert.equal(projectileDamage(b),19);b.travel=330;assert.ok(projectileDamage(b)<8);assert.ok(projectileDamage(b)>0);
 });
-test('car BRAKE overrides forward throttle, stops before selecting reverse, and avoids handbrake drift',()=>{
+test('car BRAKE overrides forward throttle, holds the stop and keeps the brake lights on without drifting',()=>{
  flat();G.wet=0;const v=T.makeVeh('riot',500,1500,0,{vy:-150});G.player=v;G.vehicles=[v];
  let reversed=false;for(let i=0;i<36;i++){T.tickDrive(G,v,{y:1,brake:true},1/60,true);if(v.fwd<0)reversed=true;}
  assert.equal(reversed,false);assert.ok(Math.hypot(v.vx,v.vy)<10);assert.equal(v.drifting,false);
- for(let i=0;i<35;i++)T.tickDrive(G,v,{y:1,brake:true},1/60,true);assert.ok(v.fwd<0);assert.ok(v.braking===false);
+ for(let i=0;i<35;i++)T.tickDrive(G,v,{y:1,brake:true},1/60,true);assert.ok(Math.abs(v.fwd)<.01);assert.equal(v.braking,true);
 });
 test('ordinary boat exit requires docking speed; stopped passengers reach the real pier',()=>{
  flat();G.surfaceAt=realSurface;G.solidAt=realSolid;const v=T.makeVeh('wake',6930,1250,Math.PI,{vy:80});G.player=v;G.vehicles=[v];T.exitVeh(G);assert.equal(G.player,v);v.vy=0;T.exitVeh(G);assert.equal(G.player.type,'foot');assert.ok(T.footClear(G,G.player.x,G.player.y,7));assert.ok(Math.hypot(G.player.x-v.x,G.player.y-v.y)<125);

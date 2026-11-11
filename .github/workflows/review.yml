@@ -19,5 +19,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: git diff --exit-code -- index.html dist
       - run: npm run check
       - run: npm test

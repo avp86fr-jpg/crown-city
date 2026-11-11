@@ -1,3 +1,4 @@
+import {bodySize} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
 const TAU = Math.PI * 2;
@@ -112,7 +113,8 @@ export function lightGreen(G, n, e) {
 const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };
 
 export function createTraffic(G) {
-  const graph = G.graph;
+  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map();
+  const HK=(x,y)=>Math.floor(x/160)+Math.floor(y/160)*10000;
   const T = {
     target: 34,
     spawnCar(near, minD, maxD, kind) {
@@ -141,7 +143,7 @@ export function createTraffic(G) {
       const P = G.player;
       // population
       let n = 0;
-      for (const v of G.vehicles) if (v.traffic && v.tr) n++;
+      for (const v of G.vehicles) if (v.traffic && v.tr && !v.dead) n++;
       if (G.ticks % 15 === 0) {
         { const {halfW,halfH}=streetViewport(G); const minD=Math.min(halfW,halfH)+80; for (let k = 0; k < 3 && n + k < T.target; k++) T.spawnCar(P, minD, minD + 900); }
         G.vehicles = G.vehicles.filter((v) => {
@@ -151,37 +153,35 @@ export function createTraffic(G) {
         });
       }
       // spatial hash for following
-      const hash = new Map();
-      const HK = (x, y) => ((x / 160) | 0) + ((y / 160) | 0) * 1000;
-      for (const v of G.vehicles) { if(v.def?.boat||v.def?.aircraft&&v.altitude>10)continue;const k = HK(v.x, v.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(v); }
-      if (P.type === "foot") { const k = HK(P.x, P.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(P); }
-      for (const p of G.peds) if (!p.dead && p.onRoad) { const k = HK(p.x, p.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(p); }
-      const ahead = (v, hx, hy, range) => {
-        let best = range;
-        const cx = (v.x / 160) | 0, cy = (v.y / 160) | 0;
-        for (let ix = cx - 1; ix <= cx + 1; ix++) for (let iy = cy - 1; iy <= cy + 1; iy++) {
-          const l = hash.get(ix + iy * 1000); if (!l) continue;
-          for (const o of l) {
-            if (o === v) continue;
-            const dx = o.x - v.x, dy = o.y - v.y;
-            const f = dx * hx + dy * hy;
-            if (f <= 0 || f > best) continue;
-            const lat = Math.abs(-dx * hy + dy * hx);
-            if (lat < (o.type === "veh" || o.def ? 30 : 18)) best = f;
+      for(const bucket of hash.values()){bucket.length=0;buckets.push(bucket);}hash.clear();
+      for(const [id,v] of junctions)if(v.dead||!v.traffic||!v.tr?.turn||!G.vehicles.includes(v))junctions.delete(id);
+      const add=v=>{const k=HK(v.x,v.y);let bucket=hash.get(k);if(!bucket){bucket=buckets.pop()||[];hash.set(k,bucket);}bucket.push(v);};
+      for(const v of G.vehicles)if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10))add(v);
+      if(P.type==='foot')add(P);
+      for(const p of G.peds)if(!p.dead&&(p.onRoad||p.crossing))add(p);
+      const ahead=(v,hx,hy,range)=>{
+        let best=range;const own=bodySize(v);
+        const cells=Math.ceil(range/160),cx=Math.floor(v.x/160),cy=Math.floor(v.y/160);
+        for(let ix=cx-cells;ix<=cx+cells;ix++)for(let iy=cy-cells;iy<=cy+cells;iy++){
+          for(const o of hash.get(ix+iy*10000)||[]){
+            if(o===v)continue;const dx=o.x-v.x,dy=o.y-v.y,forward=dx*hx+dy*hy;
+            if(forward<=0||forward>range+110)continue;
+            const veh=!!o.def,body=veh?bodySize(o):{w:8,l:8},sn=Math.sin(o.rot||0),co=Math.cos(o.rot||0);
+            const length=veh?Math.abs(hx*sn-hy*co)*body.l+Math.abs(hx*co+hy*sn)*body.w:8;
+            const width=veh?Math.abs(hx*sn-hy*co)*body.w+Math.abs(hx*co+hy*sn)*body.l:8;
+            if(Math.abs(-dx*hy+dy*hx)<own.w*.8+width*.8+3)best=Math.min(best,Math.max(0,forward-own.l-length-12));
           }
-        }
-        return best;
+        }return best;
       };
       for (const v of G.vehicles) {
         const tr = v.tr;
-        if (!v.traffic || !tr || v === P) continue;
+        if (!v.traffic || !tr || v === P || v.dead) continue;
         if (Math.abs(v.x - P.x) > 2600 || Math.abs(v.y - P.y) > 2600) continue;
         const hx = Math.sin(v.rot), hy = -Math.cos(v.rot);
         let want = v.cruise;
-        const gap = ahead(v, hx, hy, 170);
-        if (gap < 170) want = Math.min(want, Math.max(0, (gap - 62) * 1.6));
-        if (gap < 64) want = 0;
-        v.blockedT = gap < 70 ? (v.blockedT || 0) + dt : 0;
+        const gap=ahead(v,hx,hy,300);
+        if(gap<300)want=Math.min(want,Math.sqrt(2*110*gap),gap/0.85);
+        v.blockedT=gap<12?(v.blockedT||0)+dt:0;
         if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
         if (v.blockedT < 0.5) v.honked = false;
         want = G.cityAI?.trafficSpeed(v, want) ?? want;
@@ -190,11 +190,19 @@ export function createTraffic(G) {
           const end = tr.fwd ? e.B : e.A;
           const stopAt = e.len - trimAt(end, e);
           const toStop = stopAt - tr.s;
-          if (end.sig && !lightGreen(G, end, e) && toStop > 4 && toStop < 150) want = Math.min(want, Math.max(0, (toStop - 10) * 1.4));
+          const hold=stopAt-bodySize(v).l-10;
+          const owner=junctions.get(end.id),blocked=(end.sig&&!lightGreen(G,end,e))||(owner&&owner!==v);
+          // Once across the stop line, clear the junction. Otherwise the red
+          // light is a hard movement bound, not an asymptotic speed target.
+          const stopping=blocked&&tr.s<=hold+2,room=Math.max(0,hold-tr.s);
+          if(stopping)want=Math.min(want,Math.sqrt(2*115*room),room*1.8);
           if (end.edges.length > 1 && toStop < 90) want = Math.min(want, Math.max(45, v.cruise * 0.55));
-          tr.spd = lerp(tr.spd, want, (want < tr.spd ? 4 : 1.2) * dt);
-          tr.s += tr.spd * dt;
+          tr.spd=Math.max(0,tr.spd+clamp(want-tr.spd,-145*dt,38*dt));
+          let travel=Math.min(tr.spd*dt,gap);
+          if(stopping){travel=Math.min(travel,room);if(room<.5)tr.spd=0;}
+          tr.s+=travel;
           if (tr.s >= stopAt) {
+            if(end.edges.length>2)junctions.set(end.id,v);
             // pick next edge
             const opts = end.edges.filter((o) => o !== e);
             let ne = opts.length ? opts[(Math.random() * opts.length) | 0] : e;
@@ -226,8 +234,9 @@ export function createTraffic(G) {
         }
         if (tr.turn) {
           const t = tr.turn;
-          tr.spd = lerp(tr.spd, Math.min(want, 70), 3 * dt);
-          t.u += tr.spd * dt / t.L;
+          tr.spd=Math.max(0,tr.spd+clamp(Math.min(want,62)-tr.spd,-145*dt,32*dt));
+          const speed=Math.hypot(2*(1-t.u)*(t.p1.x-t.p0.x)+2*t.u*(t.p2.x-t.p1.x),2*(1-t.u)*(t.p1.y-t.p0.y)+2*t.u*(t.p2.y-t.p1.y));
+          t.u+=Math.min(tr.spd*dt,gap)/Math.max(12,speed);
           const u = Math.min(1, t.u), iu = 1 - u;
           const x = iu * iu * t.p0.x + 2 * iu * u * t.p1.x + u * u * t.p2.x;
           const y = iu * iu * t.p0.y + 2 * iu * u * t.p1.y + u * u * t.p2.y;
@@ -290,7 +299,10 @@ export function createPeds(G) {
       if (p.crossing) {
         if (ok(ahead) && surf(p.x, p.y) !== "road") p.crossing = false;
       } else if (!ok(ahead)) {
-        if (ahead === "road" && Math.random() < 0.35 && G.crossOk && G.crossOk(p)) { p.crossing = true; }
+        if(ahead==='road'&&G.crossOk){
+          if(!G.crossOk(p)){p.speed=0;p.onRoad=false;p.cityActivity='waiting';return;}
+          p.crossing=true;p.cityActivity=null;
+        }
         else {
           const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !(dx === -p.hx && dy === -p.hy) && ok(surf(p.x + dx * look, p.y + dy * look)));
           const d = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [-p.hx, -p.hy];
@@ -305,7 +317,7 @@ export function createPeds(G) {
       if(!pass(nx,ny)||!pass(nx-6,ny)||!pass(nx+6,ny)||!pass(nx,ny-6)||!pass(nx,ny+6)){p.hx=-p.hx;p.hy=-p.hy;p.speed=0;p.crossing=false;return;}
       p.x=nx;p.y=ny;
       p.speed = sp; p.dist += sp * dt;
-      p.onRoad = p.crossing;
+      p.onRoad = surf(p.x,p.y)==='road';
     },
   };
   return P;
@@ -333,25 +345,25 @@ export function createNav(G) {
     }
     N_raw = raw;
   }
-  const dist = new Uint16Array(NW * NH);
+  const dist = new Uint16Array(NW * NH),footDist=new Uint16Array(NW*NH);
   const q = new Int32Array(NW * NH);
   const N = {
-    C, NW, NH, pass, dist, t: 0, lastX:-1,lastY:-1, get raw() { return N_raw; },
+    C, NW, NH, pass, dist, footDist, t: 0, lastX:-1,lastY:-1, get raw() { return N_raw; },
     update(tx, ty, force) {
       N.t -= 1;
       if (N.t > 0 && !force) return;
       N.t = 24;
       const cx=Math.floor(tx/C),cy=Math.floor(ty/C);
       if(!force&&N.lastX===cx&&N.lastY===cy)return;
-      N.lastX=cx;N.lastY=cy;N.flood(dist, tx, ty, 170);
+      N.lastX=cx;N.lastY=cy;N.flood(dist,tx,ty,170);N.flood(footDist,tx,ty,90,N_raw);
     },
-    flood(D, tx, ty, maxD) {
+    flood(D, tx, ty, maxD,grid=pass) {
       D.fill(65535);
       let cx = clamp((tx / C) | 0, 0, NW - 1), cy = clamp((ty / C) | 0, 0, NH - 1);
-      if (!pass[cy * NW + cx]) {
+      if (!grid[cy * NW + cx]) {
         outer: for (let r = 1; r < 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= NW || y >= NH) continue;
-          if (pass[y * NW + x]) { cx = x; cy = y; break outer; }
+          if (grid[y * NW + x]) { cx = x; cy = y; break outer; }
         }
       }
       let h = 0, t = 0;
@@ -360,10 +372,10 @@ export function createNav(G) {
         const i = q[h++]; const d = D[i];
         if (d > maxD) continue;
         const x = i % NW, y = (i / NW) | 0;
-        if (x > 0) { const j = i - 1; if (pass[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
-        if (x < NW - 1) { const j = i + 1; if (pass[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
-        if (y > 0) { const j = i - NW; if (pass[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
-        if (y < NH - 1) { const j = i + NW; if (pass[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
+        if (x > 0) { const j = i - 1; if (grid[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
+        if (x < NW - 1) { const j = i + 1; if (grid[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
+        if (y > 0) { const j = i - NW; if (grid[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
+        if (y < NH - 1) { const j = i + NW; if (grid[j] && D[j] === 65535) { D[j] = d + 1; q[t++] = j; } }
       }
     },
     // GPS: route polyline from (x,y) to the target of field R
@@ -385,31 +397,32 @@ export function createNav(G) {
       return pts;
     },
     // returns a steering point a few cells downhill from (x,y)
-    next(x, y, steps = 3) {
+    next(x,y,steps=3,foot=false) {
+      const field=foot?footDist:dist,grid=foot?N_raw:pass;
       let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp((y / C) | 0, 0, NH - 1);
-      if (dist[cy * NW + cx] === 65535) {
+      if (field[cy * NW + cx] === 65535) {
         // off the car grid (curb, eroded edge): head for the best nearby reachable cell
         let bd = 65535, bx = -1, by = -1;
         for (let r = 1; r <= 4 && bx < 0; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
-          const d = dist[ny * NW + nx]; if (d < bd) { bd = d; bx = nx; by = ny; }
+          const d = field[ny * NW + nx]; if (d < bd) { bd = d; bx = nx; by = ny; }
         }
         if (bx < 0) return null;
         return { x: bx * C + C / 2, y: by * C + C / 2, d: bd };
       }
       for (let s = 0; s < steps; s++) {
-        let best = dist[cy * NW + cx], bx = cx, by = cy;
+        let best = field[cy * NW + cx], bx = cx, by = cy;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
           const nx = cx + dx, ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
-          if (dx && dy && (!pass[cy * NW + nx] || !pass[ny * NW + cx])) continue;
-          const d = dist[ny * NW + nx];
+          if (dx && dy && (!grid[cy * NW + nx] || !grid[ny * NW + cx])) continue;
+          const d = field[ny * NW + nx];
           if (d < best) { best = d; bx = nx; by = ny; }
         }
         if (bx === cx && by === cy) break;
         cx = bx; cy = by;
       }
-      return { x: cx * C + C / 2, y: cy * C + C / 2, d: dist[cy * NW + cx] };
+      return { x: cx * C + C / 2, y: cy * C + C / 2, d: field[cy * NW + cx] };
     },
     clearLine(x0, y0, x1, y1) {
       const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 24);

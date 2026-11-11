@@ -2,13 +2,13 @@
 export function directStory(VN,MISSIONS){
  const scripts={
  intro_news:"Crown City, 11:47 p.m. A Palace convoy has left the harbour without a manifest. Three blocks away, another apartment tower lost its power. Officially, the two events are unrelated.",
- intro_news2:"This is Vera Vale. Tomorrow the council votes to sell Southside to Gold Mage. Tonight, someone is moving the original debt ledger. And an old name just came home.",
+ intro_news2:"This is Vera Vale. Tomorrow the council votes to sell Southside to Gold Mage. Tonight, his convoy is carrying the access key to the original debt archive. And an old name just came home.",
  intro_garage:"You picked a hell of a night to come back. They padlocked my shop this morning. 'Outstanding debt.' I paid that debt three times.",
  intro_garage2:"I used to drive for the Palace. I know where they hide the receipts. That van is our way into the vault, Hunter. Then everybody gets to read them.",
- intro_garage3:"Riot's outside. Stay close to the seed van, take the sealed plate, then lose Metro before you come home. That plate unlocks the archive. Don't let them take it back.",
- intro_garage4:"One more thing. A buyer offered real leverage for a copy. We can protect the only clean ledger, or sell a decoy and finance this properly. Your call. It will have a price.",
- m1_win_safe:"Still sealed. Good. If we do this clean, the people on that ledger get their lives back. Fire called. She knows the Palace service roads. Says she'll only talk to a driver who can keep up.",
- m1_win_flip:"The copy sold. We have chips, but your buyer wasn't alone. Metro knows the ledger is loose. Fire can still get us inside. First, she wants to see if you deserve the keys.",
+ intro_garage3:"Riot's outside. Disable the convoy van, take its sealed archive key, then lose Metro before you come home. That key opens the archive. Don't let them take it back.",
+ intro_garage4:"One more thing. A buyer offered chips for that key. We can keep it quiet, or sell a decoy to fund the crew. Either way, the real key comes home with us. Your call. It will have a price.",
+ m1_win_safe:"Key's still sealed. Good. Now we need a way inside. Fire called. She knows the Palace service roads. Says she'll only talk to a driver who can keep up.",
+ m1_win_flip:"The decoy sold. We have chips, but your buyer wasn't alone. Metro knows who hit the convoy. Fire can still get us inside. First, she wants to see if you deserve the keys.",
  m2_intro:"I ran Palace deliveries for six years. Then they put my brother's name on that ledger. You want my service route? Two laps. Every gate. Show me you can bring a crew home in one piece.",
  m2_intro2:"Keep the route warm. I'm not here for your car, Fire. I'm here because somebody has to put a dent in that building.",
  m2_win:"All right. I trust your hands. The service route is yours. Neural can blind the cameras, but she needs a Metro scrambler. Ask her about the fee before she asks about your kidneys.",
@@ -32,7 +32,7 @@ export function directStory(VN,MISSIONS){
  m6_end3:"Then take the radio with you. Crown City will still need a driver tomorrow.",
  };
  for(const [id,text] of Object.entries(scripts))if(VN[id])VN[id].text=text;
- VN.intro_garage4.choices[0].label='Protect the ledger. Keep the crew clean.';
+ VN.intro_garage4.choices[0].label='Keep the key quiet. Protect the crew.';
  VN.intro_garage4.choices[1].label='Sell a decoy. Fund the job. Take the heat.';
  VN.m3_intro2.choices[0].label='Pay 600 now. No debt between us.';
  VN.m3_intro2.choices[1].label='Take 600 from my vault cut.';

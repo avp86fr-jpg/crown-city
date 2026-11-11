@@ -11,6 +11,7 @@ export const SPECIES=Object.freeze([
  {id:'pigeon',size:18,speed:13,run:80,bird:true,color:'#7c9296'},
 ]);
 const allowed=(G,x,y)=>!['build','water','canal'].includes(G.surfaceAt(x,y));
+const clearBody=(G,x,y)=>allowed(G,x,y)&&allowed(G,x-7,y)&&allowed(G,x+7,y)&&allowed(G,x,y-7)&&allowed(G,x,y+7);
 export function initWildlife(G){
  let seed=98371;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};const animals=[];
  function add(kind,x,y,n=1){for(let i=0;i<n;i++){let px=x+(rnd()-.5)*180,py=y+(rnd()-.5)*150;if(!allowed(G,px,py)){const at=G.findSafeAction(px,py);px=at.x;py=at.y;}if(!allowed(G,px,py))continue;animals.push({id:animals.length,kind,x:px,y:py,hx:px,hy:py,angle:rnd()*TAU,target:rnd()*TAU,walk:0,flee:0,t:1+rnd()*4,phase:rnd()*10,lift:0});}}
@@ -20,27 +21,31 @@ export function initWildlife(G){
  for(let y=1100;y<6300;y+=700){add(4,6815,y,3);add(4,7120,y+150,2);}
  // Small flocks near the playable opening streets, placed through the same collision map.
  add(5,1510,2930,4);add(2,1460,2800,2);add(3,2420,2200,2);add(4,2400,840,4);
- G.wildlife={animals,active:[],bins:new Map(),elapsed:0,shot:G.shotsFired||0,stats:{active:0,total:animals.length}};
+ G.wildlife={animals,active:[],bins:new Map(),elapsed:.36,shot:G.shotsFired||0,stats:{active:0,total:animals.length}};
  for(const a of animals){const k=Math.floor(a.hx/512)+':'+Math.floor(a.hy/512),list=G.wildlife.bins.get(k)||[];list.push(a);G.wildlife.bins.set(k,list);}
  if(!G.wildlifeAtlas&&!G.wildlifeLoading){G.wildlifeLoading=true;loadImage('assets/premium/wildlife.webp').then(im=>G.wildlifeAtlas=im).catch(()=>{}).finally(()=>G.wildlifeLoading=false);}
 }
 export function tickWildlife(G,dt){
  const W=G.wildlife;if(!W)return;const P=G.player;W.elapsed+=dt;
- if(W.elapsed>.35||!W.active.length){W.elapsed=0;const nearby=[];for(let y=Math.floor((P.y-1000)/512);y<=Math.floor((P.y+1000)/512);y++)for(let x=Math.floor((P.x-1000)/512);x<=Math.floor((P.x+1000)/512);x++)for(const a of W.bins.get(x+':'+y)||[])if(Math.abs(a.x-P.x)<850&&Math.abs(a.y-P.y)<750)nearby.push(a);nearby.sort((a,b)=>(a.x-P.x)**2+(a.y-P.y)**2-((b.x-P.x)**2+(b.y-P.y)**2));W.active=nearby.slice(0,G.settings.quality==='low'?18:36);}
+ if(W.elapsed>.35){W.elapsed=0;const nearby=[];for(let y=Math.floor((P.y-1000)/512);y<=Math.floor((P.y+1000)/512);y++)for(let x=Math.floor((P.x-1000)/512);x<=Math.floor((P.x+1000)/512);x++)for(const a of W.bins.get(x+':'+y)||[])if(Math.abs(a.x-P.x)<850&&Math.abs(a.y-P.y)<750)nearby.push(a);nearby.sort((a,b)=>(a.x-P.x)**2+(a.y-P.y)**2-((b.x-P.x)**2+(b.y-P.y)**2));W.active=nearby.slice(0,G.settings.quality==='low'?18:36);}
  const shot=(G.shotsFired||0)!==W.shot;W.shot=G.shotsFired||0;const moving=P.type==='veh'&&Math.hypot(P.vx||0,P.vy||0)>25;
  for(const a of W.active){const s=SPECIES[a.kind],dist=Math.hypot(a.x-P.x,a.y-P.y),home=Math.hypot(a.x-a.hx,a.y-a.hy);a.t-=dt;a.flee=Math.max(0,a.flee-dt);
-  const traffic=(G.nearVehicles||[]).find(v=>v!==P&&!v.dead&&!v.def?.boat&&!(v.altitude>10)&&Math.abs(v.x-a.x)<90&&Math.abs(v.y-a.y)<90&&(v.vx*v.vx+v.vy*v.vy)>900);
+  let traffic=null,closest=Infinity;
+  const threat=v=>{if(v===P||v.dead||v.def?.boat||v.altitude>10)return;const vx=v.vx||0,vy=v.vy||0,speed2=vx*vx+vy*vy;if(speed2<900)return;
+    const dx=a.x-v.x,dy=a.y-v.y,t=(dx*vx+dy*vy)/speed2;
+    if(t<0||t>1.25)return;const miss=Math.hypot(dx-vx*t,dy-vy*t);if(miss<52&&t<closest){traffic=v;closest=t;}};
+  if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(a.x,a.y,230,threat);else for(const v of G.nearVehicles||[])threat(v);
   if(traffic||dist<(shot?370:moving?115:s.bird?48:55)&&!(P.def?.aircraft&&P.altitude>70)){
    if(a.flee<=0&&dist<180)G.audio.wildlife?.(s.id,Math.min(.23,20/Math.max(60,dist)),(a.x-P.x)/220);
    a.flee=2.5;a.target=Math.atan2(a.y-(traffic||P).y,a.x-(traffic||P).x);a.walk=1;
-  }else if(a.t<=0){a.t=1.5+(a.id%7)*.6;a.walk=(Math.sin(G.ticks*.002+a.id)>-.25)?1:0;a.target=home>130?Math.atan2(a.hy-a.y,a.hx-a.x):a.angle+Math.sin(G.ticks*.005+a.id)*1.5;}
-  if(home>240){a.target=Math.atan2(a.hy-a.y,a.hx-a.x);a.flee=0;a.walk=1;}
+  }else if(a.t<=0){a.t=1.5+(a.id%7)*.6;const nocturnal=a.kind===1||a.kind===3,night=G.time>19||G.time<6;a.walk=(Math.sin(G.ticks*.002+a.id)>(nocturnal&&!night?.4:-.25))?1:0;a.target=home>130?Math.atan2(a.hy-a.y,a.hx-a.x):a.angle+Math.sin(G.ticks*.005+a.id)*1.5;}
+  if(home>240){a.target=Math.atan2(a.hy-a.y,a.hx-a.x);if(!s.bird)a.flee=0;a.walk=1;}
   let turn=Math.atan2(Math.sin(a.target-a.angle),Math.cos(a.target-a.angle));a.angle+=turn*Math.min(1,dt*5);
   const speed=(a.flee?s.run:s.speed)*a.walk,nx=a.x+Math.cos(a.angle)*speed*dt,ny=a.y+Math.sin(a.angle)*speed*dt;
-  if(a.flee&&s.bird||allowed(G,nx+Math.cos(a.angle)*10,ny+Math.sin(a.angle)*10)){a.x=nx;a.y=ny;a.phase+=speed*dt*.12;}else{a.target+=Math.PI*.72;a.t=.45;a.walk=0;}
-  a.lift+=(s.bird&&a.flee?20-a.lift:-a.lift)*Math.min(1,dt*3);
+  if(s.bird&&(a.flee||a.lift>2)||clearBody(G,nx+Math.cos(a.angle)*10,ny+Math.sin(a.angle)*10)){a.x=nx;a.y=ny;a.phase+=speed*dt*.12;}else{a.target+=Math.PI*.72;a.t=.45;a.walk=0;}
+  const land=clearBody(G,a.x,a.y);a.lift+=(s.bird&&(a.flee||!land)?20-a.lift:-a.lift)*Math.min(1,dt*3);
   // Landing over a wall/water is deferred; return to the habitat instead of embedding in it.
-  if(s.bird&&!a.flee&&!allowed(G,a.x,a.y)){a.x=a.hx;a.y=a.hy;a.lift=0;}
+  if(s.bird&&!a.flee&&!land){a.target=Math.atan2(a.hy-a.y,a.hx-a.x);a.walk=1;}
  }
  W.stats.active=W.active.length;
 }

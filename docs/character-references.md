@@ -64,3 +64,7 @@ The new portraits were downloaded from the collectible image URLs embedded in th
 `assets/premium/world-materials.webp` contains eight original generated materials: woodland floor, desert sand, slate, plaza brick, asphalt, concrete paving, trail gravel and water. The source PNG was mechanically resized to 1536×768 and exported to WebP. Runtime patterns control scale and blend water/lawn color inside cached terrain chunks.
 
 `assets/premium/street-furniture.webp` is a transparent original generated 3×2 atlas of a café, produce cart, bus shelter, flower-planter bench, loading supplies and newsstand, mechanically resized to 1152×768. These replace the previous primitive fixture paintings; day/night mobile core tiles were rebaked from the actual renderer. No NFT character or portrait was regenerated for this pass.
+
+## Return to Crown scene art
+
+Eight generated environment paintings in `assets/vn/*-cinema.webp` replace the original flat scene backgrounds: garage, private Palace floor, marina, skyline broadcast, hacker loft, rooftop, desert road and casino boulevard. They contain no regenerated NFT characters. The dialogue renderer places the original portrait images in separate square frames with their full source composition visible. Gold Mage continues to use the exact supplied JPEG.

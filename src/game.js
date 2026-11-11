@@ -1,3 +1,6 @@
+import {drawDialogue,openingScene} from './dialogue.js';
+import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
+import {slideFoot} from './foot_motion.js';
 import {characterFrame,characterLayout} from './sprite_frames.js';
 import {firstSolid,shotSpread,projectileDamage} from './combat.js';
 import {initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
@@ -83,7 +86,7 @@ const FOOT_OK = new Set(["road", "walk", "sand", "grass", "track", "pier", "lot"
 export async function boot() {
   const canvas = document.getElementById("c");
   const wrap = document.getElementById("wrap");
-  const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+  const ctx = canvas.getContext("2d", { alpha: false });
   const audio = createAudio();
   const input = createInput();
 
@@ -183,22 +186,13 @@ export async function boot() {
   G.pedsys = createPeds(G);
   applyQuality(G);
   G.nav = createNav(G);
-  G.crossOk = (p) => {
-    for (const n of G.graph.nodes) {
-      if (Math.abs(n.x - p.x) < n.hw + 90 && Math.abs(n.y - p.y) < n.hh + 90) {
-        const goingNS = Math.abs(p.hy) > Math.abs(p.hx);
-        const phase = ((G.ticks / 60) % 16);
-        // cross with the parallel green
-        return goingNS ? phase < 6 : (phase >= 8 && phase < 14);
-      }
-    }
-    return false;
-  };
+  G.crossOk=p=>safeCrossing(G,p);
   G.minimap = buildMinimap(G, minimapCore);
   audio.setSfx && audio.setSfx(settings.sfx);
   audio.setMus && audio.setMus(settings.mus);
   if (settings.master != null && audio.setMaster) audio.setMaster(settings.master);
 
+  watchCanvas(G,canvas);
   setupTouch(G);
   bindKeys(G);
   hookFullscreen(G);
@@ -638,19 +632,34 @@ function hookFullscreen(G) {
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 
+function watchCanvas(G,canvas){
+  if(canvas._ccWatched||!canvas.addEventListener)return;canvas._ccWatched=true;
+  canvas.addEventListener('contextlost',e=>{e.preventDefault();G.releaseControls?.();G.frozenWorld=null;G.renderRecovery=(G.renderRecovery||0)+1;});
+  canvas.addEventListener('contextrestored',()=>{
+    G.frozenWorld=null;G._waterPat=null;
+    for(const entry of G.mobileOuter?.values()||[]){entry.retired=true;entry.bitmap?.close();if(entry.canvas)entry.canvas.width=1;}
+    G.mobileOuter?.clear();G.ground.cache.clear();G.light=createLighting();fit(G);
+  });
+}
+
+function mobileCityRaster(G){return navigator.maxTouchPoints>0&&G.settings?.quality==='low'&&!['title','vn','end','train'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');}
+
 function fit(G) {
   const c = G.canvas;
   const w = window.innerWidth || G.wrap.clientWidth;
   const h = window.innerHeight || G.wrap.clientHeight;
   const q = G.settings ? G.settings.quality : "high";
   const maxDpr = q === "low" ? 1 : q === "med" ? 1.35 : 2;
-  const dpr = Math.min(2,window.devicePixelRatio||1);
+  let dpr = Math.min(2,window.devicePixelRatio||1);
   G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1));
-  G.worldWidth=Math.round(w*G.worldDpr);G.worldHeight=Math.round(h*G.worldDpr);
+  const direct=mobileCityRaster(G);
+  if(direct){G.worldDpr=Math.max(.75,G.worldDpr);dpr=G.worldDpr;}
+  G.worldWidth=Math.round(w*G.worldDpr);G.worldHeight=Math.round(h*G.worldDpr);G.directRaster=direct;
   const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
   if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
-  G.dpr = dpr; G.cssW = w; G.cssH = h;
-  G.layered=!!(navigator.maxTouchPoints>0&&q==='low'&&G.wrap.insertBefore);
+  G.dpr = dpr; G.cssW = w; G.cssH = h;G.frozenWorld=null;
+  // One visible canvas avoids Android compositor/HUD-only failures.
+  G.layered=false;
   // UI unit: CSS px scaled gently with the short side, so text stays readable on phones
   G.ui = dpr * clamp(Math.min(w, h) / 420, 0.82, 1.25);
   const sEl = document.getElementById("safe");
@@ -881,7 +890,7 @@ function menuKeys(G) {
 
 function startNew(G) {
   clearRecoveryState(G);
-  G.mode='story';
+  G.mode='story';G.storyEpoch=(G.storyEpoch||0)+1;
   G.action = actionState();
   G.director = directorState();
   G.freeRoam=false;
@@ -892,7 +901,7 @@ function startNew(G) {
   G.unlocked = ["riot", "fare", "hog", "wake", "gulf"];
   G.chips = 400;
   G.wanted = 0;
-  G.time = 19.4;
+  G.time = 23+47/60;
   G.weather = "clear";G.weatherIndex=0;
   G.health = 100;
   G.ended = false;
@@ -951,11 +960,11 @@ function openVN(G, page) {
   G.vn.pending = true;
   const scene = G.vn;
   G.scene = "vn";
-  ensureStoryAssets(G, node).then(() => { if (G.vn === scene) scene.pending = false; });
+  ensureStoryAssets(G, node).then(() => { if (G.vn === scene) {scene.pending=false;const next=VN[node.next];if(next)ensureStoryAssets(G,next);}});
 }
 function ensureStoryAssets(G, node) {
   if (!G.storyLoads) G.storyLoads = new Map();
-  const keys = [['vn_' + node.bg, 'assets/vn/' + node.bg + '.jpg']];
+  const keys = [['vn_' + node.bg, 'assets/vn/' + node.bg + '-cinema.webp']];
   for (const id of [node.left, node.right]) if (CHAR[id]) {
     keys.push(['port_' + id, CHAR[id].portrait]);
 
@@ -976,6 +985,10 @@ function tickVN(G, dt) {
   const n = G.vn.node;
   const text = n.text || "";
   const total = text.length;
+  if(openingScene(G)&&G.vn.char<total){
+    if(G.input.confirmP||G.input.skipP||G.input.enterP||G.input.vnTap){G.vn.t=7.5;G.vn.wipe=0;}
+    return;
+  }
   if (G.vn.char < total) {
     const before = G.vn.char | 0;
     G.vn.char = Math.min(total, G.vn.char + dt * 52);
@@ -1371,26 +1384,16 @@ function resolveFootVehicles(G,p,oldX=p.x,oldY=p.y){
   }
   p._bodyPass=current?version:-1;p._bodyX=p.x;p._bodyY=p.y;
 }
-function moveFootMap(G, p, dx, dy) {
-  const r = 7;
-  if (!footClear(G, p.x, p.y, r)) {
-    // stuck inside something: walk out toward the nearest open spot
-    p.stuckT = (p.stuckT || 0) + 1 / 60;
-    if (p.stuckT > 0.2) { const s = findSafe(G, p.x, p.y, 10); const d = Math.hypot(s.x - p.x, s.y - p.y) || 1; const step = Math.min(d, 260 / 60); p.x += (s.x - p.x) / d * step; p.y += (s.y - p.y) / d * step; }
-    if (!footClear(G, p.x + dx, p.y + dy, 2)) return;
-    p.x += dx; p.y += dy; return;
+function moveFootMap(G,p,dx,dy){
+  const clear=G._footClear||(G._footClear=(x,y,r)=>footClear(G,x,y,r));
+  if(!clear(p.x,p.y,7)){
+    // An old save or an impact can start embedded. Recover once to a fully safe
+    // circle, rather than repeatedly nudging through the wall every frame.
+    if(p._safeFoot&&Math.hypot(p._safeFoot.x-p.x,p._safeFoot.y-p.y)<96&&clear(p._safeFoot.x,p._safeFoot.y,7))Object.assign(p,p._safeFoot);
+    else {const at=findSafe(G,p.x,p.y,10,true);if(clear(at.x,at.y,7)){p.x=at.x;p.y=at.y;}else return;}
   }
-  p.stuckT = 0;
-  if (footClear(G, p.x + dx, p.y + dy, r)) { p.x += dx; p.y += dy; return; }
-  // slide along the wall
-  if (Math.abs(dx) > 0.01 && footClear(G, p.x + dx, p.y, r)) { p.x += dx; return; }
-  if (Math.abs(dy) > 0.01 && footClear(G, p.x, p.y + dy, r)) { p.y += dy; return; }
-  const L = Math.hypot(dx, dy);
-  for (const turn of [0.6, -0.6, 1.1, -1.1]) {
-    const a = Math.atan2(dy, dx) + turn;
-    const nx = Math.cos(a) * L * 0.8, ny = Math.sin(a) * L * 0.8;
-    if (footClear(G, p.x + nx, p.y + ny, r)) { p.x += nx; p.y += ny; return; }
-  }
+  slideFoot(p,dx,dy,clear);
+  const safe=p._safeFoot||(p._safeFoot={x:0,y:0});safe.x=p.x;safe.y=p.y;p.stuckT=0;
 }
 
 function tickDrive(G, v, input, dt, isPlayer) {
@@ -1416,7 +1419,8 @@ function tickDrive(G, v, input, dt, isPlayer) {
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
   const throttle = input.brake?0:Math.max(0,input.y||0);
-  const reverse = Math.max(0,-(input.y||0),input.brake?1:0);
+  const reverse=input.brake?0:Math.max(0,-(input.y||0));
+  if(input.brake){fwd=Math.sign(fwd)*Math.max(0,Math.abs(fwd)-def.brake*condition.brake*dt);lat*=Math.exp(-4*dt);}
   const hand = !!input.hand;
   v.reverseDelay=reverse&&fwd>4?.22:Math.max(0,(v.reverseDelay||0)-dt);
   const isNyx = def.sprite === "nyx" && isPlayer;
@@ -1461,7 +1465,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   fwd = clamp(fwd, -def.max * 0.42, top);
   v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : def.boat ? 0.3 : 0.16) + (def.boat && !onLand ? Math.sin(G.ticks * 0.07 + v.x * 0.01) * 0.05 : 0), (def.bike ? 10 : 8) * dt);
   v.turnSign = steerIn;
-  v.braking = reverse > 0 && fwd > 5 || hand;
+  v.braking = !!input.brake || reverse > 0 && fwd > 5 || hand;
   v.visualAccel = lerp(v.visualAccel || 0, clamp((fwd - (v.fwd || 0)) / Math.max(.01, dt) / 250, -1, 1), Math.min(1, dt * 9));
   v.visualTravel = (v.visualTravel || 0) + speed * dt;
   v.fwd = fwd;
@@ -1901,7 +1905,8 @@ function tickWanted(G, dt) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
     for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; }
     G.cops = []; G.policeTarget = null; G.heliChase=false;G.evading=false;G.seenT=0;
-    G.peds = G.peds.filter((p) => !p.copPed || Math.hypot(p.x - G.player.x, p.y - G.player.y) < 300 && false);
+    // Officers stand down and return to their cruiser in tickCops; they do not
+    // vanish in front of the player when the last star clears.
     return;
   }
   const P = G.player;
@@ -1941,13 +1946,15 @@ function tickCops(G, dt) {
     const dist = Math.hypot(P.x - c.x, P.y - c.y);
     let tx = (G.policeTarget || P).x, ty = (G.policeTarget || P).y;
     const pv = P.type === "veh" ? { x: P.vx, y: P.vy } : { x: 0, y: 0 };
-    const los = !airborne(P) && dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
+    const los = !airborne(P) && !P.def?.boat && dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
     if (los) { tx = P.x + pv.x * Math.min(0.8, dist / 400); ty = P.y + pv.y * Math.min(0.8, dist / 400); }
-    else { const n = G.nav.next(c.x, c.y, 4); if (n) { tx = n.x; ty = n.y; } }
+    else {const n=G.nav.next(c.x,c.y,4);tx=n?.x??c.x;ty=n?.y??c.y;}
+    const targetDistance=Math.hypot(tx-c.x,ty-c.y);
     const ang = Math.atan2(tx - c.x, -(ty - c.y));
     const diff = angNorm(ang - c.rot);
     const fwd = c.vx * Math.sin(c.rot) - c.vy * Math.cos(c.rot);
-    let y = dist > 600 && !los ? 1 : 0.78 + Math.min(0.22, G.wanted * 0.05);
+    let y = targetDistance<45&&!los ? 0 : .65+Math.min(.2,G.wanted*.04);
+    if(Math.abs(diff)>.7&&fwd>75)y=0;
     if (Math.abs(diff) > 1.4 && fwd > 120) y = -0.6;
     // stuck recovery
     c.stuckT = Math.abs(fwd) < 18 ? (c.stuckT || 0) + dt : 0;
@@ -1956,8 +1963,15 @@ function tickCops(G, dt) {
     if (c.reverseT > 0) { c.reverseT -= dt; y = -0.8; x = -x; }
     // on-foot suspect: stop nearby and get out
     const footTarget = P.type === "foot";
-    if (footTarget && dist < 190) { y = fwd > 20 ? -1 : 0; }
-    tickDrive(G, c, { x, y, hand: Math.abs(diff) > 1.2 && fwd > 140 && los, brake: false, fire: false, enterP: false }, dt, false);
+    if (footTarget && los && dist < 150) { y = fwd > 20 ? -1 : 0; }
+    // Predict static obstacles before impact; choose a clear steering side.
+    if(!c._avoidAt||G.ticks>=c._avoidAt){
+      c._avoidAt=G.ticks+8;c._avoidTurn=0;c._avoidBrake=false;
+      const look=65+Math.abs(fwd)*.55,clear=(a)=>!carHit(G,c,c.x+Math.sin(a)*look,c.y-Math.cos(a)*look)&&!['water','canal'].includes(G.surfaceAt(c.x+Math.sin(a)*look,c.y-Math.cos(a)*look));
+      if(!clear(c.rot)){c._avoidBrake=true;for(const side of [Math.sign(diff)||1,-(Math.sign(diff)||1)])if(clear(c.rot+side*.7)){c._avoidTurn=side;break;}}
+    }
+    if(c._avoidTurn)x=c._avoidTurn;if(c._avoidBrake&&fwd>60)y=0;
+    tickDrive(G, c, { x, y, hand: Math.abs(diff) > 1.2 && fwd > 140 && los, brake: (targetDistance<45&&!los)||c._avoidBrake&&fwd>90, fire: false, enterP: false }, dt, false);
     c.siren = true;
     // no progress for 5 s while out of sight: quietly recycle the unit (a fresh one is dispatched nearer)
     c.progT = (c.progT || 0) + dt;
@@ -1965,7 +1979,7 @@ function tickCops(G, dt) {
       if (!los && dist > 700 && dist > (c.progD || 1e9) - 120) { const i = G.vehicles.indexOf(c); if (i >= 0) G.vehicles.splice(i, 1); }
       c.progT = 0; c.progD = dist;
     }
-    if (footTarget && dist < 230 && Math.abs(fwd) < 30 && !c.crewOut && G.wanted >= 1) {
+    if (footTarget && los && dist < 230 && Math.abs(fwd) < 30 && !c.crewOut && !G.peds.some(p=>p.car===c&&!p.dead) && G.wanted >= 1) {
       c.crewOut = true;
       for (let i = 0; i < (G.wanted >= 3 ? 2 : 1); i++) {
         const r = rightVec(c.rot);
@@ -1973,9 +1987,11 @@ function tickCops(G, dt) {
         G.peds.push({ x: s.x, y: s.y, rot: ang, vx: 0, vy: 0, sprite: "cop", speed: 0, walk: 130, dist: 0, flee: 0, r: 8, hp: 50, dead: false, copPed: true, car: c, grabT: 0 });
       }
     }
-    if (!footTarget) c.crewOut = false;
+    if(c.crewOut&&!G.peds.some(p=>p.car===c&&!p.dead))c.crewOut=false;
     // ram + shoot from the car at 3+
-    if (G.wanted >= 3 && los && dist < 320 && Math.random() < 0.025) {
+    c.shotWait=Math.max(0,(c.shotWait??1.1)-dt);
+    if (G.wanted >= 3 && los && dist < 320 && c.shotWait<=0) {
+      c.shotWait=1.1+Math.random()*.5;
       const a = Math.atan2(P.x - c.x, -(P.y - c.y)) + (Math.random() - 0.5) * 0.22;
       const h = headingVec(a);
       G.bullets.push({ x: c.x + h.x * 24, y: c.y + h.y * 24, vx: h.x * 520, vy: h.y * 520, life: 0.8, friend: false });
@@ -1988,19 +2004,23 @@ function tickCops(G, dt) {
     if (!p.copPed || p.dead) continue;
     const dx = P.x - p.x, dy = P.y - p.y, d = Math.hypot(dx, dy);
     if (P.type === "veh" || G.wanted === 0) {
+      // Recycle stranded officers only out of sight, never in the foreground.
+      if(Math.abs(p.x-G.cam.x)>1800||Math.abs(p.y-G.cam.y)>1500){p.dead=true;p.removed=true;continue;}
       // back to the car
       if (p.car && !p.car.dead) { const cd = Math.hypot(p.car.x - p.x, p.car.y - p.y); if (cd < 30) { p.dead = true; p.removed = true; p.car.crewOut = false; continue; } p.rot = Math.atan2(p.car.x - p.x, -(p.car.y - p.y)); }
-      else { p.dead = true; p.removed = true; continue; }
-    } else { const target = G.nav.clearLine(p.x, p.y, P.x, P.y) ? P : G.policeTarget || P; p.rot = Math.atan2(target.x - p.x, -(target.y - p.y)); }
+      else { p.speed=0;p.grabT=0;continue; }
+    } else { const target=G.nav.clearLine(p.x,p.y,P.x,P.y)?P:G.nav.next(p.x,p.y,2,true)||G.policeTarget||p;p.rot=Math.atan2(target.x-p.x,-(target.y-p.y)); }
     const sp = G.wanted >= 3 && d < 260 ? 40 : 120;
     const h = headingVec(p.rot);
-    moveFoot(G, p, h.x * sp * dt, h.y * sp * dt);
-    p.speed = sp; p.dist += sp * dt;
-    if (P.type === "foot" && d < 26 && G.wanted <= 2) {
+    const px=p.x,py=p.y;moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
+    const moved=Math.hypot(p.x-px,p.y-py);p.speed=moved/Math.max(.001,dt);p.dist+=moved;
+    if (P.type === "foot" && d < 26 && G.wanted > 0 && G.wanted <= 2 && G.nav.clearLine(p.x,p.y,P.x,P.y)) {
       p.grabT += dt;
       if (p.grabT > 0.7) {busted(G);return;}
     } else p.grabT = Math.max(0, p.grabT - dt);
-    if (P.type === "foot" && G.wanted >= 3 && d < 300 && G.nav.clearLine(p.x, p.y, P.x, P.y) && Math.random() < 0.02) {
+    p.shotWait=Math.max(0,(p.shotWait??.9)-dt);
+    if (P.type === "foot" && G.wanted >= 3 && d < 300 && G.nav.clearLine(p.x, p.y, P.x, P.y) && p.shotWait<=0) {
+      p.shotWait=.9+Math.random()*.65;
       const a = Math.atan2(dx, -dy) + (Math.random() - 0.5) * 0.25, hv = headingVec(a);
       G.bullets.push({ x: p.x + hv.x * 14, y: p.y + hv.y * 14, vx: hv.x * 480, vy: hv.y * 480, life: 0.8, friend: false });
       G.flashes.push({ x: p.x + hv.x * 14, y: p.y + hv.y * 14, r: 90, col: "rgba(255,210,140,0.8)", life: 0.06, max: 0.06 });
@@ -2029,13 +2049,7 @@ function tickVehicles(G, dt) {
     if (v.role === "boat" && v.def && v.def.boat) {
       if(Math.abs(v.x-G.cam.x)>1500||Math.abs(v.y-G.cam.y)>1200){if(v.burning)tickVehDamage(G,v,dt);v.vx=v.vy=0;continue;}
       if (v.loose) { tickDrive(G, v, { x: 0, y: 0 }, dt, false); continue; }
-      v.cruise = (v.cruise || 0) + dt * 0.12;
-      const hm = v.home || { x: 1920, y: 520 };
-      const tx = hm.x + Math.cos(v.cruise) * 260, ty = Math.min(hm.y, 560) + Math.sin(v.cruise * 0.7) * 80 - 60;
-      const ang = Math.atan2(tx - v.x, -(ty - v.y));
-      const turn=clamp(angNorm(ang-v.rot)*2,-1,1);
-      tickDrive(G,v,{x:turn,y:Math.abs(angNorm(ang-v.rot))>1?.15:.35},dt,false);
-      if(Math.hypot(v.vx,v.vy)<5)v.cruise+=dt*2;
+      tickDrive(G,v,boatPilot(G,v,dt),dt,false);
       continue;
     }
     if (v.role === "ambulance" && v.target) {
@@ -2188,12 +2202,14 @@ function tickPeds(G, dt) {
     if (p.flee > 0) {
       p.flee -= dt;
       const tx = p.threatX ?? pl.x, ty = p.threatY ?? pl.y;
-      const want = Math.atan2(p.x - tx, -(p.y - ty));
+      if(!p._fleeNext||G.ticks>=p._fleeNext){p._fleeHeading=escapeHeading(G,p,{x:tx,y:ty});p._fleeNext=G.ticks+10;}
+      const want=p._fleeHeading;
       p.rot = p.rot + angNorm(want - p.rot) * Math.min(1, 6 * dt);
       const h = headingVec(p.rot);
       const sp = (p.walk || 30) * 3.4;
-      moveFoot(G, p, h.x * sp * dt, h.y * sp * dt);
-      p.speed = sp; p.dist += sp * dt;
+      const ox=p.x,oy=p.y;moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
+      const moved=Math.hypot(p.x-ox,p.y-oy);p.speed=moved/Math.max(.001,dt);p.dist+=moved;
+      if(moved<.1)p._fleeNext=0;
       if (p.flee <= 0) { p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1; }
       continue;
     }
@@ -2393,13 +2409,11 @@ function tickTitleDummy() {}
 /* -------------------- Render -------------------- */
 function render(G) {
   G.renderCount=(G.renderCount||0)+1;
+  if(G.directRaster!==mobileCityRaster(G))fit(G);
   const { ctx, canvas } = G;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-  const cityScene=!['title','vn','end','train'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');
-  if(G.worldCanvas?.style)G.worldCanvas.style.display=G.layered&&cityScene?'block':'none';
-  if(G.layered&&cityScene)ctx.clearRect(0,0,canvas.width,canvas.height);
-  else{ctx.fillStyle="#07060a";ctx.fillRect(0,0,canvas.width,canvas.height);}
+  ctx.fillStyle="#07060a";ctx.fillRect(0,0,canvas.width,canvas.height);
   G.buttons = [];
   if(G._presentScene!==G.scene){G._presentScene=G.scene;syncControlStyle(G);}
   G._nav = [];
@@ -2411,8 +2425,7 @@ function render(G) {
   else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save,tickWeather});
   else {
     const frozen = ['pause', 'map', 'settings','crew','garage','dossier','transit'].includes(G.scene);
-    if(frozen&&G.layered&&G.worldCanvas){/* Retain the compositor layer while menus are open. */}
-    else if (frozen && G.frozenWorld && G.frozenWorld.width === canvas.width && G.frozenWorld.height === canvas.height) {
+    if (frozen && G.frozenWorld && G.frozenWorld.width === canvas.width && G.frozenWorld.height === canvas.height) {
       ctx.drawImage(G.frozenWorld, 0, 0);
     } else {
       drawWorld(G);
@@ -2719,15 +2732,13 @@ function drawBuildingHeight(G, cam) {
 
 function drawWorld(G) {
   const canvas=G.canvas,ctx=G.ctx;
-  if(!G.worldWidth || !G.layered&&G.worldWidth===canvas.width && G.worldHeight===canvas.height)return renderWorldLayer(G);
+  if(!G.worldWidth || G.worldWidth===canvas.width && G.worldHeight===canvas.height)return renderWorldLayer(G);
   const off=G.worldCanvas||(G.worldCanvas=document.createElement('canvas'));
-  if(G.layered&&!off.parentNode){off.id='world-layer';off.className='world-layer';off.setAttribute('aria-hidden','true');G.wrap.insertBefore(off,canvas);}
-  if(G.layered)off.style.display='block';
+  watchCanvas(G,off);
   if(off.width!==G.worldWidth||off.height!==G.worldHeight){off.width=G.worldWidth;off.height=G.worldHeight;}
   G.canvas=off;G.ctx=off.getContext('2d',{alpha:false});
   G.ctx.setTransform(1,0,0,1,0,0);G.ctx.globalAlpha=1;G.ctx.globalCompositeOperation='source-over';G.ctx.fillStyle='#0b151c';G.ctx.fillRect(0,0,off.width,off.height);
   try{renderWorldLayer(G);}finally{G.canvas=canvas;G.ctx=ctx;}
-  if(G.layered&&!G.captureComposite)return;
   ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';ctx.drawImage(off,0,0,canvas.width,canvas.height);
 }
 function renderWorldLayer(G) {
@@ -3563,11 +3574,11 @@ function drawFlightHUD(G){
   const [status,controls]=hint.split('\n');c.textAlign='center';c.fillStyle=G.player.stall?'#ffb093':'#e9d4aa';c.font=uiFont(11*d,800);c.fillText(status,W/2,y+18*d,w-16*d);
   c.fillStyle='#b8d4cf';c.font=uiFont((G.touch?9:11)*d,600);c.fillText(controls,W/2,y+37*d,w-16*d);c.restore();
 }
-function wrapLines(ctx, text, max) {
+function wrapLines(ctx, text, max,limit=3) {
   const words = String(text).split(" "); const out = []; let line = "";
   for (const w of words) { const t = line ? line + " " + w : w; if (ctx.measureText(t).width > max && line) { out.push(line); line = w; } else line = t; }
   if (line) out.push(line);
-  return out.slice(0, 3);
+  return out.slice(0,limit);
 }
 
 function drawBanner(G, W, H) {
@@ -3655,102 +3666,7 @@ function drawBrief(G) {
   drawMissionBrief(G,{button:uiButton,panel:uiPanel,start:()=>startPlayFromBrief(G),brief:jobBrief(G.missionIndex)});
 }
 
-function drawVN(G) {
-  const { ctx, canvas, assets } = G;
-  const n = G.vn.node;
-  const bg = assets.sprites["vn_" + n.bg] || assets.title;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const motion = G.settings.reducedMotion ? 0 : Math.min(1, (G.vn.t || 0) / 14);
-  const bgScale = Math.max(canvas.width / bg.width, canvas.height / bg.height) * (1.025 + motion * .035);
-  const bgW = bg.width * bgScale, bgH = bg.height * bgScale;
-  ctx.drawImage(bg, (canvas.width - bgW) / 2 + motion * 8 * G.ui, (canvas.height - bgH) / 2, bgW, bgH);
-  // pass 7: calm the busy backdrop so portraits pop (dim + vignette)
-  {
-    const g = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.4, canvas.height * 0.2, canvas.width / 2, canvas.height * 0.4, canvas.width * 0.7);
-    g.addColorStop(0, "rgba(8,4,18,0.38)");
-    g.addColorStop(1, "rgba(4,2,10,0.82)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  const u = G.ui, W = canvas.width, H = canvas.height, sf = G.safe || { l: 0, r: 0, b: 0 };
-  const choices = n.choices || [];
-  const typedOut = G.vn.char >= (n.text || "").length;
-  ctx.font = uiFont(16 * u, 500);
-  const tw = W - sf.l - sf.r - 56 * u;
-  const lines = wrapLines(ctx, n.text || "", tw);
-  const chH = 40 * u, chGap = 8 * u;
-  const chW = choices.length > 1 && W > H ? (tw - chGap) / 2 : tw;
-  const chRows = choices.length ? Math.ceil(choices.length / (chW < tw ? 2 : 1)) : 0;
-  const boxH = Math.max(H * 0.24, (46 + lines.length * 22) * u + (chRows ? chRows * (chH + chGap) + 6 * u : 18 * u));
-  const boxY = H - boxH;
-  const faceY = H * 0.04;
-  const faceH = Math.max(60, boxY - faceY - 26 * u);
-  const drawPort = (id, side) => {
-    if (!id) return;
-    let im = assets.sprites["port_" + id];
-
-    if (!im) return;
-    const h = faceH;
-    const w = Math.min(W * 0.34, h * 0.9);
-    const x = side === "left" ? W * 0.06 : W * 0.94 - w;
-    const bob = G.settings.reducedMotion ? 0 : Math.sin((G.vn.t || 0) * 1.4 + (side === "left" ? 0 : 1)) * 2 * u;
-    const breathe = G.settings.reducedMotion ? 1 : 1 + Math.sin((G.vn.t || 0) * 1.1) * 0.008;
-    ctx.save();
-    rounded(ctx, x, faceY, w, h, 16 * u);
-    ctx.clip();
-    const scale = Math.max(w / im.width, h / im.height) * breathe;
-    const dw = im.width * scale, dh = im.height * scale;
-    ctx.drawImage(im, x + (w - dw) / 2, faceY + (h - dh) * 0.08 + bob, dw, dh);
-    const speaking = n.speaker === id;
-    if (!speaking && n.speaker) { ctx.fillStyle = "rgba(6,4,14,0.4)"; ctx.fillRect(x, faceY, w, h); }
-    ctx.restore();
-    const ch = CHAR[id];
-    if (speaking && ch) { ctx.save(); rounded(ctx, x, faceY, w, h, 16 * u); ctx.strokeStyle = ch.color; ctx.globalAlpha = 0.8; ctx.lineWidth = 2.5 * u; ctx.stroke(); ctx.restore(); }
-    if (ch) {
-      ctx.font = uiFont(13 * u, 900); ctx.fillStyle = ch.color;
-      ctx.textAlign = side === "left" ? "left" : "right";
-      ctx.fillText(ch.name.toUpperCase(), side === "left" ? x + 4 * u : x + w - 4 * u, faceY + h + 17 * u);
-    }
-  };
-  if (n.left) drawPort(n.left, "left");
-  if (n.right) drawPort(n.right, "right");
-  const g = ctx.createLinearGradient(0, boxY, 0, H);
-  g.addColorStop(0, "rgba(14,10,24,0.95)"); g.addColorStop(1, "rgba(6,4,12,0.98)");
-  ctx.fillStyle = g; ctx.fillRect(0, boxY, W, boxH);
-  ctx.fillStyle = "#f2c14e"; ctx.fillRect(0, boxY, W, 3 * u);
-  const x0 = sf.l + 28 * u;
-  const sp = CHAR[n.speaker];
-  ctx.textAlign = "left"; ctx.font = uiFont(13 * u, 900); ctx.fillStyle = sp ? sp.color : "#fff";
-  ctx.fillText(sp ? sp.name.toUpperCase() : "", x0, boxY + 24 * u);
-  ctx.fillStyle = "#f2f2f6"; ctx.font = uiFont(16 * u, 500);
-  const shown = (n.text || "").slice(0, Math.max(0, G.vn.char | 0));
-  wrapText(ctx, shown, x0, boxY + 48 * u, tw, 22 * u);
-  if (choices.length && typedOut) {
-    let cy = boxY + (46 + lines.length * 22) * u;
-    choices.forEach((ch, i) => {
-      const col = chW < tw ? i % 2 : 0, row = chW < tw ? (i / 2) | 0 : i;
-      uiButton(G, x0 + col * (chW + chGap), cy + row * (chH + chGap), chW, chH, ch.label, () => {
-        if (ch.set) Object.assign(G.flags, ch.set); G.audio.ui(); openVN(G, ch.next);
-      }, { size: 13 * u, primary: false });
-    });
-    G.menuSel = G.vn.sel;
-  } else if (!choices.length) {
-    ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.25 * Math.sin(G.vn.t * 4)})`;
-    ctx.font = uiFont(11 * u, 800); ctx.textAlign = "right";
-    ctx.fillText(G.touch ? "TAP TO CONTINUE ▸" : "SPACE / E / CLICK ▸", W - sf.r - 24 * u, H - sf.b - 12 * u);
-  }
-  // scene wipe
-  if (G.vn.wipe > 0) {
-    const k = 1 - G.vn.wipe / 0.32;
-    const x = canvas.width * k;
-    ctx.fillStyle = "#0a0814";
-    ctx.fillRect(x, 0, canvas.width - x + 8, canvas.height);
-    ctx.fillStyle = "#f2c14e";
-    ctx.fillRect(x, 0, 6, canvas.height);
-    ctx.fillStyle = "rgba(255, 45, 155, 0.55)";
-    ctx.fillRect(x + 6, 0, 3, canvas.height);
-  }
-}
+function drawVN(G){drawDialogue(G,{button:uiButton,lines:wrapLines,font:uiFont,open:openVN});}
 
 function rounded(ctx, x, y, w, h, r) {
   ctx.beginPath();

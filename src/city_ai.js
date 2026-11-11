@@ -39,7 +39,7 @@ export function createStreetIndex(size = 160) {
 export function createCityAI(G) {
   const people = createStreetIndex(), cars = createStreetIndex(), places = createStreetIndex(256);
   let brains = new WeakMap(), drivers = new WeakMap();
-  const reservations = new Map(), events = [];
+  const reservations = new Map(), events = [],local=[],localCars=[],alive=new Set();
   let clock = 0, refresh = 0, serial = 0, fixtureSource = null;
   const stats = { decisions: 0, reactions: 0, conversations: 0, visits: 0, boarded: 0, indexBuilds: 0 };
   const rng = brain => {
@@ -174,6 +174,7 @@ export function createCityAI(G) {
 
   const api = {
     stats,
+    nearTraffic(x,y,radius,visit){cars.query(x,y,radius,visit);},
     reset() {
       // Reservations and conversation partners must not survive an actor reset.
       for(const p of G.peds||[]){p.cityState=null;p.cityActivity=null;p.cityBoarded=false;p.flee=0;p.dive=0;p.threatX=p.threatY=undefined;}
@@ -192,14 +193,15 @@ export function createCityAI(G) {
       refresh = G.settings?.quality === 'low' ? 0.18 : 0.12;
       for (let i = events.length - 1; i >= 0; i--) if (events[i].until <= clock) events.splice(i, 1);
       const focus = G.cam || G.player;
-      const alive = new Set((G.peds || []).filter(p => !p.dead));
+      alive.clear();for(const p of G.peds||[])if(!p.dead)alive.add(p);
       for (const [fixture, guests] of reservations) {
         for (const p of guests) if (!alive.has(p)) guests.delete(p);
         if (!guests.size) reservations.delete(fixture);
       }
-      const local = (G.peds || []).filter(p => Math.abs(p.x - focus.x) < 1550 && Math.abs(p.y - focus.y) < 1300);
+      local.length=0;for(const p of G.peds||[])if(!p.dead&&Math.abs(p.x-focus.x)<1550&&Math.abs(p.y-focus.y)<1300)local.push(p);
       people.rebuild(local);
-      cars.rebuild((G.vehicles || []).concat(G.player?.type === 'veh' && !G.vehicles?.includes(G.player) ? [G.player] : []).filter(v=>!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&Math.abs(v.x-focus.x)<1750&&Math.abs(v.y-focus.y)<1500));
+      localCars.length=0;for(const v of G.vehicles||[])if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&Math.abs(v.x-focus.x)<1750&&Math.abs(v.y-focus.y)<1500)localCars.push(v);
+      if(G.player?.type==='veh'&&!G.vehicles?.includes(G.player))localCars.push(G.player);cars.rebuild(localCars);
       if (fixtureSource !== G.street?.fixtures) { fixtureSource = G.street?.fixtures; places.rebuild(fixtureSource || []); }
       stats.indexBuilds++;
       for (const p of local) react(p);

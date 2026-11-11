@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const base = process.env.GAME_URL || 'http://127.0.0.1:8000/';
+const base = process.env.CC_URL || process.env.GAME_URL || 'http://127.0.0.1:8000/';
 const output = path.resolve('.qa/browser');
 fs.mkdirSync(output, { recursive: true });
 const failures = [];
@@ -243,16 +243,16 @@ async function dialogue(page, choices) {
       });
       assert.equal(result.resized, true); assert.equal(result.sharpUI,true); assert.equal(result.painted, true); await live.close();
     });
-    await check('battery saver lowers presentation rate while simulation and sharp phone UI continue',async()=>{
+    await check('battery saver lowers presentation rate while simulation and native touch controls continue',async()=>{
       const live=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,hasTouch:true,isMobile:true});
       live.on('pageerror',e=>failures.push(e.message));await live.goto(base);await live.waitForFunction(()=>!!window.__CC);
       const result=await live.evaluate(async()=>{
         const G=__CC.G;__CC.startNew();__CC.skipAllVN();__CC.startPlay();G.settings.batterySaver=true;G.settings.quality='low';G.settings.autoRes=false;G.resScale=.7;
-        const T=(await import('/src/game.js')).testing;T.fit(G);T.render(G);
+        const T=(await import(new URL('src/game.js',location.href).href)).testing;T.fit(G);T.render(G);
         const ui=G.canvas.width,world=G.worldWidth,tick=G.ticks,frames=G.renderCount;
         await new Promise(r=>setTimeout(r,1200));return {ui,world,frames:G.renderCount-frames,ticks:G.ticks-tick};
       });
-      assert.equal(result.ui,780);assert.ok(result.world<result.ui);assert.ok(result.frames>=10&&result.frames<=42);assert.ok(result.ticks>result.frames*1.5);
+      assert.ok(result.ui>=292&&result.ui<=390);assert.equal(result.world,result.ui);assert.ok(result.frames>=10&&result.frames<=42);assert.ok(result.ticks>result.frames*1.5);
       console.log('Battery sample:',JSON.stringify(result));await live.close();
     });
     await check('arranged music streams, changes station and yields to the pursuit track',async()=>{
@@ -272,16 +272,14 @@ async function dialogue(page, choices) {
       assert.equal(await page.evaluate(()=>localStorage.getItem('mw_crown_city_v1')),story);
       await page.evaluate(()=>{__CC.G.chips=2244;__CC.save();__CC.G.scene='title';T.render(__CC.G);});await button(page,'FREE RIDE');assert.equal(await page.evaluate(()=>__CC.G.chips),2244);
     });
-    await check('mobile world layer survives menus, quality switches and both orientations',async()=>{
+    await check('mobile canvas retains visible world pixels through menus, quality switches and rotation',async()=>{
       for(const [width,height] of [[390,844],[844,390]]){
         await phone.setViewportSize({width,height});
-        await phone.evaluate(()=>{const G=__CC.G;G.scene='play';G.settings.quality='low';T.fit(G);T.render(G);});
-        assert.equal(await phone.locator('#world-layer').isVisible(),true);
-        assert.ok(await phone.evaluate(()=>__CC.G.worldWidth<__CC.G.canvas.width));
-        await phone.evaluate(()=>{__CC.G.scene='pause';T.render(__CC.G);});assert.equal(await phone.locator('#world-layer').isVisible(),true);
-        await phone.evaluate(()=>{__CC.G.scene='title';T.render(__CC.G);});assert.equal(await phone.locator('#world-layer').isVisible(),false);
-        await phone.evaluate(()=>{const G=__CC.G;G.scene='play';G.settings.quality='high';T.fit(G);T.render(G);});assert.equal(await phone.locator('#world-layer').isVisible(),false);
-        await phone.evaluate(()=>{const G=__CC.G;G.settings.quality='low';T.fit(G);T.render(G);});assert.equal(await phone.locator('#world-layer').isVisible(),true);
+        for(const [scene,quality] of [['play','low'],['pause','low'],['title','low'],['play','high'],['play','low']]){
+          const painted=await phone.evaluate(({scene,quality})=>{const G=__CC.G;G.scene=scene;G.settings.quality=quality;T.fit(G);T.render(G);const d=G.ctx.getImageData(G.canvas.width*.25,G.canvas.height*.25,G.canvas.width*.5,G.canvas.height*.5).data;let lit=0,opaque=0;for(let i=0;i<d.length;i+=4){if(d[i+3]===255)opaque++;if(Math.max(d[i],d[i+1],d[i+2])>30)lit++;}return {opaque:opaque/(d.length/4),lit:lit/(d.length/4),layered:G.layered};},{scene,quality});
+          assert.equal(painted.layered,false);assert.equal(painted.opaque,1);assert.ok(painted.lit>.1,JSON.stringify({scene,quality,painted}));
+        }
+        assert.equal(await phone.evaluate(()=>__CC.G.worldWidth===__CC.G.canvas.width),true);
       }
     });
     await check('Web Audio starts, produces a signal and mutes through the master bus',async()=>{
