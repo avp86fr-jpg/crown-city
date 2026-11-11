@@ -2,6 +2,7 @@
  * begin(dt) before traffic.tick(), steerPed(p,dt) after existing hurt/flee handling,
  * trafficSpeed(v,want) before traffic integrates speed. No rendering dependency.
  */
+import {bodySize} from './collision.js';
 const TAU = Math.PI * 2;
 const SAFE = new Set(['walk', 'lot', 'pier', 'grass', 'sand', 'dirt']);
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -222,6 +223,11 @@ export function createCityAI(G) {
     steerPed(p, dt) {
       if (p.dead || p.copPed || p.mission || p.flee > 0 || p.dive > 0) return false;
       const b = brain(p);
+      // Displaced residents must clear the live carriageway before resuming a
+      // conversation or venue visit. The ambient walker handles the safe exit.
+      if(G.surfaceAt(p.x,p.y)==='road'){
+        if(b.mode!=='walk')release(p,b);b.next=clock+1;p.onRoad=true;return false;
+      }
       if (clock >= b.next) decide(p, b);
       if (b.mode === 'walk') return false;
       if (b.mode === 'talk' || b.mode === 'pause') {
@@ -257,13 +263,23 @@ export function createCityAI(G) {
       if (clock < d.until) return 0;
       if (clock < d.next) return Math.min(want, d.cap);
       d.next = clock + 0.12; d.cap = Infinity;
-      const hx = Math.sin(v.rot), hy = -Math.cos(v.rot);
-      people.query(v.x, v.y, 145, p => {
+      const hx=Math.sin(v.rot),hy=-Math.cos(v.rot),body=bodySize(v),speed=Math.hypot(v.vx||0,v.vy||0),look=Math.max(145,body.l+Math.min(160,speed*.75));
+      people.query(v.x,v.y,look,p=>{
         if (p.dead || p.cityBoarded) return;
-        const dx = p.x - v.x, dy = p.y - v.y, ahead = dx * hx + dy * hy;
-        if (ahead > 0 && ahead < 140 && Math.abs(dx * hy - dy * hx) < (v.r || 24) + 12) {
-          d.cap = Math.min(d.cap, Math.max(0, (ahead - 48) * 1.25));
+        const dx=p.x-v.x,dy=p.y-v.y,ahead=dx*hx+dy*hy,side=dx*hy-dy*hx,radius=clamp(p.r||8,4,12),clearance=body.w+radius;
+        if(ahead<=0||ahead>=look)return;
+        // Use the actual oriented hull corridor. A resident walking parallel
+        // on the sidewalk must not stop the road lane beside them.
+        let danger=Math.abs(side)<clearance,stopAt=ahead;
+        if(!danger&&(p.speed||0)>0){
+          const horizon=clamp((ahead-body.l)/Math.max(35,speed),0,.9),vx=Math.sin(p.rot||0)*p.speed,vy=-Math.cos(p.rot||0)*p.speed;
+          const px=p.x+vx*horizon,py=p.y+vy*horizon,nextSide=side+(vx*hy-vy*hx)*horizon;
+          const crossing=p.crossing||p.onRoad||G.surfaceAt(px,py)==='road';
+          if(crossing&&(side*nextSide<=0||Math.abs(nextSide)<clearance)){
+            danger=true;stopAt=Math.min(ahead,ahead+(vx*hx+vy*hy)*horizon);
+          }
         }
+        if(danger)d.cap=Math.min(d.cap,Math.max(0,(stopAt-body.l-radius-8)*1.4));
       });
       cars.query(v.x, v.y, 230, other => {
         if (other === v || !other.siren) return;

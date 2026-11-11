@@ -29,6 +29,7 @@ export function initExpansion(G,saved={}){
  // Residents are persistent local actors, separate from the streamed street population.
  const residents=[];for(let row=0;row<2;row++)for(let col=0;col<5;col++)residents.push([7820+col*205,3055+row*185+57,col%2?'guest':'m4']);
  residents.push([8110,2990,'valet'],[8320,2990,'worker'],[7650,3220,'prime'],[8750,3370,'guest'],[11155,5020,'worker'],[11205,5025,'m2'],[11525,4910,'m3'],[11530,4980,'worker'],[5520,9700,'cabbie'],[5630,9740,'m1'],[5800,9690,'worker'],[11045,9560,'worker'],[11060,9670,'m2'],[7290,7800,'worker'],[7340,7870,'m3'],[7580,7760,'worker'],[8240,7810,'valet'],[9380,7790,'worker'],[9780,7860,'m2']);
+ residents.push([11780,4660,'worker'],[12020,4660,'m2'],[7900,8500,'valet'],[8350,8500,'guest']);
  residents.forEach(([x,y,sprite],id)=>{
   if(G.peds.some(p=>p.frontierResident===id))return;
   const at=G.findSafeAction(x,y);G.peds.push({x:at.x,y:at.y,rot:id*.7,vx:0,vy:0,sprite,speed:0,walk:23+id%12,dist:0,flee:0,r:8,hp:30,dead:false,ambient:false,frontierResident:id,idle:1+id%4,hx:id%2?1:0,hy:id%2?0:1,gather:{x:at.x,y:at.y}});

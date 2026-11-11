@@ -3,6 +3,7 @@ import {bodySize,worldBodyHit} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const water=(G,x,y)=>['water','canal'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x,y));
+const CROSS_SAFE=new Set(['walk','lot','grass','sand','dirt','pier']);
 
 export function waterPathClear(G,v,x,y){
  const dx=x-v.x,dy=y-v.y,length=Math.hypot(dx,dy),rot=Math.atan2(dx,-dy),probe={def:v.def,kind:v.kind,rot};
@@ -53,8 +54,27 @@ export function boatPilot(G,v,dt){
 
 export function safeCrossing(G,p){
  if(p._crossAt>G.ticks)return !!p._crossAllowed;p._crossAt=G.ticks+10;p._crossAllowed=false;
- const hx=p.hx||0,hy=p.hy||0;let junction=null,best=Infinity;
- for(const n of G.graph.nodes){const dx=n.x-p.x,dy=n.y-p.y,d=dx*dx+dy*dy;if(d<best&&Math.abs(dx)<n.hw+90&&Math.abs(dy)<n.hh+90){junction=n;best=d;}}
+ const hx=p.hx||0,hy=p.hy||0;let junction=null;p._crossRouteInvalid=false;
+ // A crossing must lead to an opposite verge. At awkward road corners the
+ // previous code could send someone along a traffic lane for an entire block.
+ // Geometry is static while someone waits at the same curb; signals and
+ // moving vehicles are still checked on every decision.
+ let geometry=p._crossGeometry;
+ if(!geometry||geometry.x!==p.x||geometry.y!==p.y||geometry.hx!==hx||geometry.hy!==hy||geometry.graph!==G.graph||geometry.surface!==G.surfaceAt){
+  let invalid=false;
+  if(G.surfaceAt){
+   let road=false,exit=false;
+   for(let step=12;step<=600;step+=12){const s=G.surfaceAt(p.x+hx*step,p.y+hy*step);
+    if(s==='build'||s==='water'||s==='canal')break;
+    if(s==='road')road=true;else if(road&&CROSS_SAFE.has(s)){exit=true;break;}
+   }
+   invalid=!exit;
+  }
+  if(!invalid){let best=Infinity;for(const n of G.graph.nodes){const dx=n.x-p.x,dy=n.y-p.y,d=dx*dx+dy*dy;if(d<best&&Math.abs(dx)<n.hw+90&&Math.abs(dy)<n.hh+90){junction=n;best=d;}}}
+  geometry=p._crossGeometry={x:p.x,y:p.y,hx,hy,graph:G.graph,surface:G.surfaceAt,junction,invalid};
+ }
+ if(geometry.invalid){p._crossRouteInvalid=true;return false;}
+ junction=geometry.junction;
  if(!junction)return false;
  const crossingTime=Math.min(5,((Math.abs(hx)>0?junction.hw:junction.hh)*2+30)/Math.max(36,(p.walk||32)*1.4));
  if(junction.sig){const phase=((G.ticks/60)%16+16)%16,ns=Math.abs(hy)>Math.abs(hx);if(ns?phase>6-crossingTime:phase<8||phase>14-crossingTime)return false;}

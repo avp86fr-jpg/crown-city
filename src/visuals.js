@@ -28,8 +28,8 @@ export function drawVehicleFinish(G, v, w, h, pose) {
   const ctx = G.ctx;
   ctx.save();
   if(G.settings.quality==='low'){
-    if(v.fwd< -8){ctx.fillStyle='#d4eeeb';ctx.fillRect(-w*.25,h*.4,4,3);ctx.fillRect(w*.25-4,h*.4,4,3);}
-    if(v.braking&&!v.dead){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
+    if(v.fwd< -8&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#d4eeeb';ctx.fillRect(-w*.25,h*.4,4,3);ctx.fillRect(w*.25-4,h*.4,4,3);}
+    if(v.braking&&!v.dead&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
     ctx.restore();return;
   }
   // A moving clear-coat highlight follows the car's angle to the city lights.
@@ -66,7 +66,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
       ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x + Math.sin(angle) * w * .16,y - Math.cos(angle) * w * .16);ctx.stroke();
     }
   }
-  if (v.health < 65 && !v.dead) {
+  if (v.health < 65 && !v.dead && !v.def.boat && !v.def.bike) {
     ctx.strokeStyle = 'rgba(18,22,29,.7)'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.moveTo(-w * .12, -h * .21); ctx.lineTo(w * .13, -h * .11); ctx.lineTo(-w * .07, -h * .04); ctx.stroke();
   }

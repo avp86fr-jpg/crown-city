@@ -1,7 +1,10 @@
-import {bodySize} from './collision.js';
+import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
 const TAU = Math.PI * 2;
+const EMPTY=[],CARDINAL=[[1,0],[-1,0],[0,1],[0,-1]],FOOT_SAFE=new Set(['walk','lot','grass','dirt','sand','pier']),bodyRadii=new WeakMap();
+function bodyRadius(v){const b=bodySize(v);let r=bodyRadii.get(b);if(r===undefined){r=Math.hypot(b.w,b.l);bodyRadii.set(b,r);}return r;}
+function bodiesNear(a,b,r=bodyRadius(a)){const dx=a.x-b.x,dy=a.y-b.y,extent=r+bodyRadius(b);return dx*dx+dy*dy<=extent*extent;}
 // Population placement uses the visible world, independent of display pixel density.
 export function streetViewport(G){
  const w=G.cssW||G.canvas.width/(G.dpr||1),h=G.cssH||G.canvas.height/(G.dpr||1);
@@ -29,7 +32,7 @@ export function buildGraph(W, meta) {
     const med = r.k === "strip" ? 72 : 0;
     segs.push({ a: r.a.slice(), b: r.b.slice(), w: r.w, lanes, med, k: r.k });
   }
-  const nodes = [], nmap = new Map();
+  const nodes = [], nmap = new Map(), edgeKeys=new Set();
   const nodeAt = (x, y) => {
     const k = Math.round(x / 6) + "," + Math.round(y / 6);
     let n = nmap.get(k);
@@ -68,10 +71,38 @@ export function buildGraph(W, meta) {
       if (A === B) continue;
       const len = Math.hypot(B.x - A.x, B.y - A.y);
       if (len < 20) continue;
+      const edgeKey=A.id<B.id?A.id+":"+B.id:B.id+":"+A.id;
+      if(edgeKeys.has(edgeKey))continue;edgeKeys.add(edgeKey);
       const e = { A, B, len, dx: (B.x - A.x) / len, dy: (B.y - A.y) / len, w: s.w, lanes: s.lanes, med: s.med, k: s.k, id: 0 };
       A.edges.push(e); B.edges.push(e);
     }
   }
+  // A painted road ending just short of a wider continuation used to create
+  // 80–120 px connector edges. Their junction trims overlapped, placing a car
+  // past the next stop line before it could reserve that junction. Collapse
+  // these collinear seams; use a lane corridor that fits both road widths.
+  let merged=true;
+  while(merged){merged=false;
+    for(const n of nodes){
+      if(n.edges.length!==2)continue;const [a,b]=n.edges;
+      const A=a.A===n?a.B:a.A,B=b.A===n?b.B:b.A;
+      const ax=A.x-n.x,ay=A.y-n.y,bx=B.x-n.x,by=B.y-n.y;
+      if(ax*bx+ay*by>=0||Math.abs(ax*by-ay*bx)>a.len*b.len*.001||Math.min(a.len,b.len)>320)continue;
+      const w=Math.min(a.w,b.w),med=Math.max(a.med,b.med),lanes=Math.max(1,Math.min(a.lanes,b.lanes,Math.floor((w-med)/100)));
+      const len=Math.hypot(B.x-A.x,B.y-A.y),e={A,B,len,dx:(B.x-A.x)/len,dy:(B.y-A.y)/len,w,med,lanes,k:a.len>b.len?a.k:b.k,id:0};
+      A.edges=A.edges.filter(o=>o!==a);B.edges=B.edges.filter(o=>o!==b);n.edges=[];A.edges.push(e);B.edges.push(e);merged=true;
+    }
+  }
+  // A car cannot turn around on a tiny decorative spur or fit between two
+  // adjacent junctions. Keep the road playable, but omit those dead-end spurs
+  // from ambient routing and reserve close junctions as one continuous zone.
+  let pruned=true;while(pruned){pruned=false;for(const n of nodes){if(n.edges.length!==1)continue;const e=n.edges[0],other=e.A===n?e.B:e.A;
+    if(other.edges.length>1&&e.len<trimAt(other,e)+170){other.edges=other.edges.filter(o=>o!==e);n.edges=[];pruned=true;}
+  }}
+  const roots=new Map(nodes.map(n=>[n,n]));const root=n=>{while(roots.get(n)!==n)n=roots.get(n);return n;};
+  for(const n of nodes)for(const e of n.edges)if(e.A.edges.length>1&&e.B.edges.length>1&&e.len<trimAt(e.A,e)+trimAt(e.B,e)+150)roots.set(root(e.A),root(e.B));
+  const sizes=new Map();for(const n of nodes){const r=root(n);sizes.set(r,(sizes.get(r)||0)+1);}
+  for(const n of nodes){const r=root(n);n.zone=r.id;n.zoneSize=sizes.get(r);}
   const edges = [];
   for (const n of nodes) for (const e of n.edges) if (!edges.includes(e)) { e.id = edges.length; edges.push(e); }
   // signals
@@ -81,7 +112,7 @@ export function buildGraph(W, meta) {
     for (const n of nodes) { const d = Math.hypot(n.x - s.x, n.y - s.y); if (d < bd) { bd = d; best = n; } }
     if (best && best.edges.length >= 3) best.sig = true;
   }
-  return { nodes, edges };
+  return { nodes:nodes.filter(n=>n.edges.length), edges };
 }
 
 export function laneOff(e, lane) {
@@ -95,10 +126,13 @@ export function edgePoint(e, fwd, s, lane) {
   const off = laneOff(e, lane);
   return { x: S.x + dx * s + (-dy) * off, y: S.y + dy * s + dx * off, rot: Math.atan2(dx, -dy), dx, dy };
 }
+function laneTransition(n){
+  return n.edges.length===2&&(n.edges[0].w!==n.edges[1].w||n.edges[0].lanes!==n.edges[1].lanes||n.edges[0].med!==n.edges[1].med);
+}
 function trimAt(n, e) {
   if (n.edges.length <= 1) return 0;
   const horizontal = Math.abs(e.dx) > Math.abs(e.dy);
-  return (horizontal ? n.hw : n.hh) + 8;
+  return Math.max(horizontal?n.hw:n.hh,laneTransition(n)?128:0)+8;
 }
 export function signalPhase(ticks,ns){
   const phase=((ticks/60)%16+16)%16;
@@ -113,7 +147,45 @@ export function lightGreen(G, n, e) {
 const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };
 
 export function createTraffic(G) {
-  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map();
+  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[];
+  function route(v,end,ne){
+    const tr=v.tr,e=tr.e,nfwd=ne.A===end,nlane=Math.min(tr.lane,ne.lanes-1),ns=ne===e?0:trimAt(end,ne);
+    const p0=edgePoint(e,tr.fwd,e.len-trimAt(end,e),tr.lane),p2=edgePoint(ne,nfwd,ns,nlane);
+    const den=p0.dx*p2.dy-p0.dy*p2.dx;let p1;
+    if(Math.abs(den)<.2)p1=ne===e?{x:end.x+p0.dx*65,y:end.y+p0.dy*65}:{x:(p0.x+p2.x)/2,y:(p0.y+p2.y)/2};
+    else{const t=((p2.x-p0.x)*p2.dy-(p2.y-p0.y)*p2.dx)/den;p1={x:p0.x+p0.dx*t,y:p0.y+p0.dy*t};}
+    return {p0,p1,p2,u:0,ne,nfwd,nlane,ns,node:end};
+  }
+  function nearby(x,y,r,visit){
+    for(let ix=Math.floor((x-r)/160);ix<=Math.floor((x+r)/160);ix++)for(let iy=Math.floor((y-r)/160);iy<=Math.floor((y+r)/160);iy++)for(const o of hash.get(ix+iy*10000)||EMPTY)if(visit(o))return true;
+    return false;
+  }
+  function exitClear(v,t){
+    const b=bodySize(v),probe=t.exitProbe||(t.exitProbe={...edgePoint(t.ne,t.nfwd,t.ns+b.l+22,t.nlane),kind:v.kind,def:v.def}),radius=bodyRadius(v);
+    // Do not enter a junction unless the whole car can fit beyond it.
+    return !nearby(probe.x,probe.y,b.l+100,o=>o!==v&&(o.def?bodiesNear(probe,o,radius)&&bodyContact(probe,o):!o.dead&&circleBody(probe,o.x,o.y,9)));
+  }
+  function chooseRoute(v,end,clearOnly=false){
+    const e=v.tr.e,options=end.edges.filter(o=>o!==e&&(o.w-o.med)/(2*o.lanes)>=bodySize(v).w*2+2),hx=v.tr.fwd?e.dx:-e.dx,hy=v.tr.fwd?e.dy:-e.dy;
+    if(!options.length)options.push(e);
+    const plans=options.map(ne=>route(v,end,ne)).filter(t=>!clearOnly||exitClear(v,t));
+    if(!plans.length)return null;
+    if(v.role==='ambulance'&&v.target)return plans.reduce((best,t)=>{
+      const next=t.nfwd?t.ne.B:t.ne.A,previous=best.nfwd?best.ne.B:best.ne.A;
+      return Math.hypot(next.x-v.target.x,next.y-v.target.y)<Math.hypot(previous.x-v.target.x,previous.y-v.target.y)?t:best;
+    });
+    const straight=plans.find(t=>(t.p2.dx*hx+t.p2.dy*hy)>.9);
+    return straight&&Math.random()<.65?straight:plans[(Math.random()*plans.length)|0];
+  }
+  function turnPoint(t,u){
+    const iu=1-u,x=iu*iu*t.p0.x+2*iu*u*t.p1.x+u*u*t.p2.x,y=iu*iu*t.p0.y+2*iu*u*t.p1.y+u*u*t.p2.y;
+    const dx=2*iu*(t.p1.x-t.p0.x)+2*u*(t.p2.x-t.p1.x),dy=2*iu*(t.p1.y-t.p0.y)+2*u*(t.p2.y-t.p1.y);
+    return {x,y,rot:Math.atan2(dx,-dy),speed:Math.max(12,Math.hypot(dx,dy))};
+  }
+  function curveClear(v,t,u){
+    const p=turnPoint(t,u),probe={...p,kind:v.kind,def:v.def},radius=bodyRadius(v);
+    return !nearby(p.x,p.y,130,o=>o!==v&&(o.def?bodiesNear(probe,o,radius)&&bodyContact(probe,o):!o.dead&&circleBody(probe,o.x,o.y,8)));
+  }
   const HK=(x,y)=>Math.floor(x/160)+Math.floor(y/160)*10000;
   const T = {
     target: 34,
@@ -123,7 +195,9 @@ export function createTraffic(G) {
         const fwd = Math.random() < 0.5;
         const t0 = trimAt(fwd ? e.A : e.B, e), t1 = trimAt(fwd ? e.B : e.A, e);
         if (e.len - t0 - t1 < 60) continue;
-        const s = t0 + Math.random() * (e.len - t0 - t1);
+        // Spawn a full body outside junctions, never across the stop line.
+        const margin=170;if(e.len-t0-t1<margin*2+40)continue;
+        const s=t0+margin+Math.random()*(e.len-t0-t1-margin*2);
         const lane = (Math.random() * e.lanes) | 0;
         const p = edgePoint(e, fwd, s, lane);
         const d = Math.hypot(p.x - near.x, p.y - near.y);
@@ -132,7 +206,10 @@ export function createTraffic(G) {
         if (G.vehicles.some((v) => Math.abs(v.x - p.x) < 90 && Math.abs(v.y - p.y) < 90)) continue;
         const kinds = ["fare", "fare", "dart", "riot", "taxi", "fare", "dart", "bus", "fare", "taxi", "stitch", "hog"];
         const k = kind || kinds[(Math.random() * kinds.length) | 0];
+        if(k==="bus"&&(e.w-e.med)/(2*e.lanes)<58)continue;
         const v = G.makeVeh(k, p.x, p.y, p.rot, { parked: false, traffic: true, tr: { e, fwd, s, lane, spd: 0, turn: null }, ambient: true });
+        if(G.surfaceAt&&worldBodyHit(G,v,v.x,v.y))continue;
+        if(G.vehicles.some(other=>!other.def?.boat&&!(other.altitude>10)&&bodiesNear(v,other)&&bodyContact(v,other)))continue;
         v.cruise = (KSPEED[e.k] || 100) * (0.8 + Math.random() * 0.3) * (k === "bus" ? 0.7 : 1);
         G.vehicles.push(v);
         return v;
@@ -154,7 +231,12 @@ export function createTraffic(G) {
       }
       // spatial hash for following
       for(const bucket of hash.values()){bucket.length=0;buckets.push(bucket);}hash.clear();
-      for(const [id,v] of junctions)if(v.dead||!v.traffic||!v.tr?.turn||!G.vehicles.includes(v))junctions.delete(id);
+      for(const [id,owners] of junctions){
+        for(const v of owners)if(v.dead||!v.traffic||!v.tr||!G.vehicles.includes(v)||v.tr.releaseAt!=null&&v.tr.s>=v.tr.releaseAt){
+          if(v.tr){v.tr.reserved=null;v.tr.releaseAt=null;}owners.delete(v);
+        }
+        if(!owners.size)junctions.delete(id);
+      }
       const add=v=>{const k=HK(v.x,v.y);let bucket=hash.get(k);if(!bucket){bucket=buckets.pop()||[];hash.set(k,bucket);}bucket.push(v);};
       for(const v of G.vehicles)if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10))add(v);
       if(P.type==='foot')add(P);
@@ -163,7 +245,7 @@ export function createTraffic(G) {
         let best=range;const own=bodySize(v);
         const cells=Math.ceil(range/160),cx=Math.floor(v.x/160),cy=Math.floor(v.y/160);
         for(let ix=cx-cells;ix<=cx+cells;ix++)for(let iy=cy-cells;iy<=cy+cells;iy++){
-          for(const o of hash.get(ix+iy*10000)||[]){
+          for(const o of hash.get(ix+iy*10000)||EMPTY){
             if(o===v)continue;const dx=o.x-v.x,dy=o.y-v.y,forward=dx*hx+dy*hy;
             if(forward<=0||forward>range+110)continue;
             const veh=!!o.def,body=veh?bodySize(o):{w:8,l:8},sn=Math.sin(o.rot||0),co=Math.cos(o.rot||0);
@@ -173,13 +255,17 @@ export function createTraffic(G) {
           }
         }return best;
       };
-      for (const v of G.vehicles) {
+      // Oldest waiting approach gets first refusal when a reservation clears.
+      // Array insertion order used to starve one side of a busy junction.
+      order.length=0;for(const v of G.vehicles)if(v.traffic&&v.tr&&!v.dead)order.push(v);
+      order.sort((a,b)=>(a.tr.waitSince??Infinity)-(b.tr.waitSince??Infinity));
+      for (const v of order) {
         const tr = v.tr;
         if (!v.traffic || !tr || v === P || v.dead) continue;
         if (Math.abs(v.x - P.x) > 2600 || Math.abs(v.y - P.y) > 2600) continue;
         const hx = Math.sin(v.rot), hy = -Math.cos(v.rot);
         let want = v.cruise;
-        const gap=ahead(v,hx,hy,300);
+        const gap=tr.turn?300:ahead(v,hx,hy,300);
         if(gap<300)want=Math.min(want,Math.sqrt(2*110*gap),gap/0.85);
         v.blockedT=gap<12?(v.blockedT||0)+dt:0;
         if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
@@ -190,41 +276,38 @@ export function createTraffic(G) {
           const end = tr.fwd ? e.B : e.A;
           const stopAt = e.len - trimAt(end, e);
           const toStop = stopAt - tr.s;
-          const hold=stopAt-bodySize(v).l-10;
-          const owner=junctions.get(end.id),blocked=(end.sig&&!lightGreen(G,end,e))||(owner&&owner!==v);
-          // Once across the stop line, clear the junction. Otherwise the red
-          // light is a hard movement bound, not an asymptotic speed target.
-          const stopping=blocked&&tr.s<=hold+2,room=Math.max(0,hold-tr.s);
+          const controlled=end.edges.length!==2||laneTransition(end)||Math.abs(end.edges[0].dx*end.edges[1].dy-end.edges[0].dy*end.edges[1].dx)>.1;
+          // Leave rear-swing clearance for a turning car beside a queued lane.
+          const hold=stopAt-bodySize(v).l*(controlled?2:1)-(controlled?22:10);
+          const zone=end.zone??end.id;let owners=junctions.get(zone),room=Math.max(0,hold-tr.s);
+          if(controlled&&!owners?.has(v)&&room<100)tr.waitSince??=G.ticks;
+          if(!tr.route&&toStop<300)tr.route=chooseRoute(v,end);
+          const green=lightGreen(G,end,e);
+          if(controlled&&!owners?.has(v)&&green&&room<100&&gap>room+8){
+            let plan=tr.route;
+            if(!plan||!exitClear(v,plan))plan=chooseRoute(v,end,true);
+            const straight=t=>t&&t.p0.dx*t.p2.dx+t.p0.dy*t.p2.dy>.999&&Math.abs((t.p2.x-t.p0.x)*t.p0.dy-(t.p2.y-t.p0.y)*t.p0.dx)<1;
+            // Parallel through lanes may clear together. Turning movements keep
+            // exclusive ownership, including their rear-swing clearance.
+            const compatible=plan&&(!owners||(end.zoneSize||1)<=1&&[...owners].every(o=>{
+              const other=o.tr.turn||o.tr.route;return straight(plan)&&straight(other)&&Math.abs(plan.p0.dx*other.p0.dx+plan.p0.dy*other.p0.dy)>.999&&Math.abs((plan.p0.x-other.p0.x)*plan.p0.dy-(plan.p0.y-other.p0.y)*plan.p0.dx)>bodySize(v).w+bodySize(o).w+1;
+            }));
+            if(compatible){tr.route=plan;if(!owners){owners=new Set();junctions.set(zone,owners);}owners.add(v);tr.reserved=zone;}
+          }
+          // Reserve before crossing the stop line; competing entrants cannot
+          // overwrite a car already committed to clearing the junction.
+          const blocked=controlled?!owners?.has(v):!green;
+          const stopping=blocked&&tr.s<=hold+2;
           if(stopping)want=Math.min(want,Math.sqrt(2*115*room),room*1.8);
-          if (end.edges.length > 1 && toStop < 90) want = Math.min(want, Math.max(45, v.cruise * 0.55));
+          if(end.edges.length>1&&toStop<90)want=Math.min(want,Math.max(45,v.cruise*.55));
           tr.spd=Math.max(0,tr.spd+clamp(want-tr.spd,-145*dt,38*dt));
           let travel=Math.min(tr.spd*dt,gap);
           if(stopping){travel=Math.min(travel,room);if(room<.5)tr.spd=0;}
-          tr.s+=travel;
-          if (tr.s >= stopAt) {
-            if(end.edges.length>2)junctions.set(end.id,v);
-            // pick next edge
-            const opts = end.edges.filter((o) => o !== e);
-            let ne = opts.length ? opts[(Math.random() * opts.length) | 0] : e;
-            // prefer straight on bigger roads
-            const straight = opts.find((o) => Math.abs((o.A === end ? o.dx : -o.dx) * (tr.fwd ? e.dx : -e.dx) + (o.A === end ? o.dy : -o.dy) * (tr.fwd ? e.dy : -e.dy)) > 0.9);
-            if (straight && Math.random() < 0.55) ne = straight;
-            const nfwd = ne.A === end;
-            const nlane = Math.min(tr.lane, ne.lanes - 1);
-            const ns = trimAt(end, ne);
-            const p0 = edgePoint(e, tr.fwd, tr.s, tr.lane);
-            const p2 = edgePoint(ne, nfwd, ne === e ? 0 : ns, nlane);
-            let p1;
-            const den = p0.dx * p2.dy - p0.dy * p2.dx;
-            if (Math.abs(den) < 0.2) p1 = ne === e ? { x: end.x + p0.dx * 60, y: end.y + p0.dy * 60 } : { x: (p0.x + p2.x) / 2, y: (p0.y + p2.y) / 2 };
-            else {
-              const t = ((p2.x - p0.x) * p2.dy - (p2.y - p0.y) * p2.dx) / den;
-              p1 = { x: p0.x + p0.dx * t, y: p0.y + p0.dy * t };
-            }
-            if (ne === e) { tr.fwd = !tr.fwd; }
-            const L = Math.hypot(p1.x - p0.x, p1.y - p0.y) + Math.hypot(p2.x - p1.x, p2.y - p1.y);
-            tr.turn = { p0, p1, p2, u: 0, L: Math.max(10, L), ne, nfwd: ne === e ? tr.fwd : nfwd, nlane, ns: ne === e ? 0 : ns };
-            v.turnSign = Math.sign((p0.dx * p2.dy - p0.dy * p2.dx)) || 0;
+          tr.s+=travel;if(travel<tr.spd*dt)tr.spd=travel/dt;
+          if(tr.s>=stopAt){
+            tr.turn=tr.route||chooseRoute(v,end);tr.route=null;
+            tr.waitSince=null;
+            v.turnSign=Math.sign(tr.turn.p0.dx*tr.turn.p2.dy-tr.turn.p0.dy*tr.turn.p2.dx)||0;
           } else {
             const p = edgePoint(e, tr.fwd, tr.s, tr.lane);
             v.x = p.x; v.y = p.y;
@@ -233,18 +316,20 @@ export function createTraffic(G) {
           }
         }
         if (tr.turn) {
-          const t = tr.turn;
-          tr.spd=Math.max(0,tr.spd+clamp(Math.min(want,62)-tr.spd,-145*dt,32*dt));
-          const speed=Math.hypot(2*(1-t.u)*(t.p1.x-t.p0.x)+2*t.u*(t.p2.x-t.p1.x),2*(1-t.u)*(t.p1.y-t.p0.y)+2*t.u*(t.p2.y-t.p1.y));
-          t.u+=Math.min(tr.spd*dt,gap)/Math.max(12,speed);
-          const u = Math.min(1, t.u), iu = 1 - u;
-          const x = iu * iu * t.p0.x + 2 * iu * u * t.p1.x + u * u * t.p2.x;
-          const y = iu * iu * t.p0.y + 2 * iu * u * t.p1.y + u * u * t.p2.y;
-          const tx = 2 * iu * (t.p1.x - t.p0.x) + 2 * u * (t.p2.x - t.p1.x), ty = 2 * iu * (t.p1.y - t.p0.y) + 2 * u * (t.p2.y - t.p1.y);
-          v.x = x; v.y = y;
-          if (Math.hypot(tx, ty) > 0.01) v.rot = Math.atan2(tx, -ty);
-          if (t.u >= 1) { tr.e = t.ne; tr.fwd = t.nfwd; tr.lane = t.nlane; tr.s = t.ns; tr.turn = null; v.turnSign = 0; }
+          const t=tr.turn;
+          tr.spd=Math.max(0,tr.spd+clamp(Math.min(want,68)-tr.spd,-145*dt,32*dt));
+          const p=turnPoint(t,t.u),next=Math.min(1,t.u+tr.spd*dt/p.speed);
+          // Follow the actual curve, not a forward ray that mistakes the
+          // waiting cross-traffic for a permanent obstacle during left turns.
+          if(curveClear(v,t,next)){
+            t.u=next;const at=turnPoint(t,next);v.x=at.x;v.y=at.y;v.rot=at.rot;
+          }else tr.spd=0;
+          if(t.u>=1){
+            tr.e=t.ne;tr.fwd=t.nfwd;tr.lane=t.nlane;tr.s=t.ns;tr.turn=null;v.turnSign=0;
+            if(tr.reserved!=null){const nextNode=t.nfwd?t.ne.B:t.ne.A;tr.releaseAt=(nextNode.zone??nextNode.id)===tr.reserved?null:t.ns+bodySize(v).l+14;}
+          }
         }
+
         v.vx = Math.sin(v.rot) * tr.spd; v.vy = -Math.cos(v.rot) * tr.spd;
         v.braking = want < tr.spd - 5 || tr.spd < 3;
         v.fwd = tr.spd;
@@ -265,14 +350,18 @@ export function createPeds(G) {
         const a = Math.random() * TAU, d = minD + Math.random() * (maxD - minD);
         const x = near.x + Math.cos(a) * d, y = near.y + Math.sin(a) * d;
         if (surf(x, y) !== "walk") continue;
+        if(G.peds.some(p=>!p.dead&&(p.x-x)**2+(p.y-y)**2<38**2))continue;
         if(visibleSpawn(G,x,y))continue;
         // orient along the sidewalk
-        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => surf(x + dx * 40, y + dy * 40) === "walk");
+        const dirs = CARDINAL.filter(([dx, dy]) => surf(x + dx * 40, y + dy * 40) === "walk");
         const dd = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [1, 0];
         const n = Math.random() < 0.3 ? 2 : 1;
         for (let k = 0; k < n; k++) {
+          const px=x+k*22*-dd[1],py=y+k*22*dd[0];
+          if([[0,0],[-7,0],[7,0],[0,-7],[0,7]].some(([ox,oy])=>surf(px+ox,py+oy)!=='walk'))continue;
+          if(k&&G.peds.some(p=>!p.dead&&(p.x-px)**2+(p.y-py)**2<19**2))continue;
           G.peds.push({
-            x: x + k * 14 * -dd[1], y: y + k * 14 * dd[0], rot: Math.atan2(dd[0], -dd[1]), vx: 0, vy: 0,
+            x:px,y:py, rot: Math.atan2(dd[0], -dd[1]), vx: 0, vy: 0,
             sprite: PED_SPR[(Math.random() * PED_SPR.length) | 0], speed: 0, walk: 26 + Math.random() * 22,
             dist: Math.random() * 20, flee: 0, r: 8, hp: 30, dead: false, ambient: true, idle: 0, hx: dd[0], hy: dd[1],
           });
@@ -291,8 +380,30 @@ export function createPeds(G) {
     },
     walkAmbient(p, dt) {
       // stays on sidewalks, turns at corners, crosses at green
-      if (p.idle > 0) { p.idle -= dt; p.speed = 0; return; }
-      if (Math.random() < 0.0015) { p.idle = 1.5 + Math.random() * 3; return; }
+      const onRoad=surf(p.x,p.y)==='road';p.onRoad=onRoad;
+      if(p._turning){
+        const target=Math.atan2(p.hx,-p.hy),delta=Math.atan2(Math.sin(target-p.rot),Math.cos(target-p.rot));
+        p.rot+=delta*Math.min(1,dt*10);p.speed=0;if(Math.abs(delta)<.12)p._turning=false;return;
+      }
+      // A fleeing person can finish on the carriageway facing along it. Walk
+      // to the nearest safe verge instead of becoming a permanent lane block.
+      if(onRoad&&!p.crossing){
+        let cached=p._roadExit;
+        if(!cached||cached.x!==p.x||cached.y!==p.y||cached.surface!==G.surfaceAt){
+          let exit=null;
+          outer:for(let distance=18;distance<=600;distance+=18)for(const [hx,hy] of CARDINAL){
+            const s=surf(p.x+hx*distance,p.y+hy*distance);
+            if(!FOOT_SAFE.has(s))continue;
+            let clear=true;for(let t=12;t<distance;t+=12){const at=surf(p.x+hx*t,p.y+hy*t);if(at==='build'||at==='water'||at==='canal'){clear=false;break;}}
+            if(clear){exit={hx,hy};break outer;}
+          }
+          cached=p._roadExit={x:p.x,y:p.y,surface:G.surfaceAt,exit};
+        }
+        const exit=cached.exit;
+        if(exit){p.hx=exit.hx;p.hy=exit.hy;p.crossing=true;p.idle=0;}
+      }
+      if (!p.crossing&&!onRoad&&p.idle > 0) { p.idle -= dt; p.speed = 0; return; }
+      if (!p.crossing&&!onRoad&&Math.random() < 0.0015) { p.idle = 1.5 + Math.random() * 3; return; }
       const look = 18;
       const ahead = surf(p.x + p.hx * look, p.y + p.hy * look);
       const ok = (s) => s === "walk" || s === "grass" || s === "pier" || s === "sand" || s === "lot" || s === "dirt";
@@ -300,11 +411,14 @@ export function createPeds(G) {
         if (ok(ahead) && surf(p.x, p.y) !== "road") p.crossing = false;
       } else if (!ok(ahead)) {
         if(ahead==='road'&&G.crossOk){
-          if(!G.crossOk(p)){p.speed=0;p.onRoad=false;p.cityActivity='waiting';return;}
+          if(!G.crossOk(p)){
+            if(p._crossRouteInvalid){const dirs=CARDINAL.filter(([dx,dy])=>ok(surf(p.x+dx*look,p.y+dy*look)));if(dirs.length){const d=dirs[(Math.random()*dirs.length)|0];p.hx=d[0];p.hy=d[1];}}
+            p.speed=0;p.onRoad=false;p.cityActivity='waiting';return;
+          }
           p.crossing=true;p.cityActivity=null;
         }
         else {
-          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !(dx === -p.hx && dy === -p.hy) && ok(surf(p.x + dx * look, p.y + dy * look)));
+          const dirs = CARDINAL.filter(([dx, dy]) => !(dx === -p.hx && dy === -p.hy) && ok(surf(p.x + dx * look, p.y + dy * look)));
           const d = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [-p.hx, -p.hy];
           p.hx = d[0]; p.hy = d[1];
         }
@@ -314,7 +428,12 @@ export function createPeds(G) {
       const sp = p.crossing ? p.walk * 1.4 : p.walk;
       const nx=p.x+Math.sin(p.rot)*sp*dt,ny=p.y-Math.cos(p.rot)*sp*dt;
       const pass=(x,y)=>{const s=surf(x,y);return s!=="build"&&s!=="water"&&s!=="canal";};
-      if(!pass(nx,ny)||!pass(nx-6,ny)||!pass(nx+6,ny)||!pass(nx,ny-6)||!pass(nx,ny+6)){p.hx=-p.hx;p.hy=-p.hy;p.speed=0;p.crossing=false;return;}
+      if(!pass(nx,ny)||!pass(nx-6,ny)||!pass(nx+6,ny)||!pass(nx,ny-6)||!pass(nx,ny+6)){
+        // Finish turning in place before trying another step. Reversing the
+        // intent every blocked frame made wall-corner pedestrians oscillate
+        // forever, including people standing in front of waiting traffic.
+        p.hx=-p.hx;p.hy=-p.hy;p._turning=true;p.speed=0;p.crossing=false;return;
+      }
       p.x=nx;p.y=ny;
       p.speed = sp; p.dist += sp * dt;
       p.onRoad = surf(p.x,p.y)==='road';

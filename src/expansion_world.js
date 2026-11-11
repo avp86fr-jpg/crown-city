@@ -30,9 +30,19 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  // Outdoor casino is a walkable terrace, with tables, cabanas, a stage and an aircraft pad.
  const casino=E.casino;clear(casino,CODE.walk);W.roads=W.roads.flatMap(s=>{
   const crossing=s.v?s.c>casino.x&&s.c<casino.x+casino.w:s.c>casino.y&&s.c<casino.y+casino.h;
-  if(!crossing)return [s];const low=s.v?casino.y:casino.x,high=low+(s.v?casino.h:casino.w);
-  if(s.b<=low||s.a>=high)return [s];return [{...s,b:low},{...s,a:high}].filter(q=>q.b-q.a>20);
+  if(!crossing)return [s];
+  // The terrace is a pedestrian superblock. End streets at its perimeter
+  // junctions, not 100px cul-de-sacs pointing at tables or a helicopter pad.
+  const low=s.v?2620:7400,high=s.v?3900:9200;
+  if(s.b<=low||s.a>=high)return [s];
+  const a=Math.max(s.a,low),b=Math.min(s.b,high);
+  if(s.v)fill(s.c-s.w/2,a,s.w,b-a,CODE.walk,c=>c===CODE.road);
+  else fill(a,s.c-s.w/2,b-a,s.w,CODE.walk,c=>c===CODE.road);
+  return [{...s,b:low},{...s,a:high}].filter(q=>q.b-q.a>20);
  });
+ // Keep the surrounding junction asphalt continuous after removing the spurs.
+ for(const s of W.roads){if(s.v&&s.c>=7400&&s.c<=9200)fill(s.c-s.w/2,s.a,s.w,s.b-s.a,CODE.road,c=>c===CODE.walk||c===CODE.road);else if(!s.v&&[2620,3900].includes(s.c))fill(s.a,s.c-s.w/2,s.b-s.a,s.w,CODE.road,c=>c===CODE.walk||c===CODE.road);}
+
  fill(casino.x+100,casino.y+casino.h-90,casino.w-200,90,CODE.lot);
  for(const [x,y,w,h,kind] of [[casino.x+470,casino.y+35,500,90,'bar'],[casino.x+60,casino.y+50,130,100,'cage'],[casino.x+casino.w-200,casino.y+60,140,180,'stage']]){
   fill(x,y,w,h,CODE.build);W.buildings.push({x,y,w,h,hgt:18,roof:'tar',wall:'dark',kind:'pavilion',color:'#293d39'});E.decor.push({kind,x,y,w,h});
@@ -45,7 +55,7 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  // Extend connected roads into the eastern forest and the southern desert / mountain belt.
  for(let y=720;y<WORLD_H;y+=CELL)for(let x=10240;x<WORLD_W;x+=CELL)if(y<W.river[0]-40||y>=W.river[1]+40)fill(x,y,CELL,CELL,terrainRegion(x,y)==='forest'?CODE.grass:CODE.dirt);
  fill(0,9216,WORLD_W,WORLD_H-9216,CODE.sand);fill(8800,9216,WORLD_W-8800,WORLD_H-9216,CODE.dirt);
- const roads=[{v:false,c:1600,a:10000,b:11600,w:144},{v:true,c:10880,a:860,b:9800,w:144},{v:true,c:11600,a:1600,b:9800,w:128},{v:false,c:4800,a:10000,b:11600,w:144},{v:false,c:9000,a:10000,b:11600,w:144},{v:true,c:5600,a:9000,b:9800,w:144},{v:true,c:3840,a:9000,b:9800,w:144},{v:false,c:9800,a:3840,b:11600,w:144}];
+ const roads=[{v:false,c:1600,a:10000,b:11600,w:144},{v:true,c:10880,a:1600,b:9800,w:144},{v:true,c:11600,a:1600,b:9800,w:128},{v:false,c:4800,a:10000,b:11600,w:144},{v:false,c:9000,a:10000,b:11600,w:144},{v:true,c:5600,a:9000,b:9800,w:144},{v:true,c:3840,a:9000,b:9800,w:144},{v:false,c:9800,a:3840,b:11600,w:144}];
  for(const s of roads){s.lanes=1;s.med=0;s.k='frontier';W.roads.push(s);const r=s.v?{x:s.c-s.w/2-22,y:s.a,w:s.w+44,h:s.b-s.a}:{x:s.a,y:s.c-s.w/2-22,w:s.b-s.a,h:s.w+44};clear(r,CODE.dirt);if(s.v)fill(s.c-s.w/2,s.a,s.w,s.b-s.a,CODE.road);else fill(s.a,s.c-s.w/2,s.b-s.a,s.w,CODE.road);}
  E.riverBridges=W.roads.filter(s=>s.v&&s.a<W.river[0]&&s.b>W.river[1]).map(s=>({x:s.c-s.w/2,y:W.river[0]-16,w:s.w,h:W.river[1]-W.river[0]+32,vertical:true,clearance:36}));
  // Camp, fuel stop and mountain rescue station give the new roads destinations.

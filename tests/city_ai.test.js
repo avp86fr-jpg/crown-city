@@ -104,6 +104,35 @@ test('traffic yields to crossing pedestrians and emergency vehicles without slow
   G.player = v; assert.equal(ai.trafficSpeed(v, 100), 100);
 });
 
+test('sidewalk walkers beside the real hull corridor do not freeze traffic',()=>{
+ for(const offset of [32,34,36]){
+  const v=car(0,0),p=ped(48,offset,{speed:34,rot:Math.PI/2,onRoad:false});
+  const {ai}=city({peds:[p],vehicles:[v]});ai.begin(.1);assert.equal(ai.trafficSpeed(v,100),100,'sidewalk offset '+offset);
+ }
+ const bike=car(0,0,{def:{bike:true}}),p=ped(60,23,{speed:34,rot:Math.PI/2});
+ const {ai}=city({peds:[p],vehicles:[bike]});ai.begin(.1);assert.equal(ai.trafficSpeed(bike,80),80);
+});
+
+test('a pedestrian inside the vehicle path remains protected even with stale sidewalk flags',()=>{
+ const v=car(0,0),p=ped(48,22.5,{onRoad:false});const {ai}=city({peds:[p],vehicles:[v]});
+ ai.begin(.1);assert.equal(ai.trafficSpeed(v,100),0);
+ const bus=car(0,0,{kind:'bus'}),front=ped(83,0,{onRoad:true});const b=city({peds:[front],vehicles:[bus]});
+ b.ai.begin(.1);assert.equal(b.ai.trafficSpeed(bus,80),0,'long buses must stop before the bumper overlaps a pedestrian');
+});
+
+test('traffic anticipates a moving pedestrian entering its lane but does not stop for a walker moving away',()=>{
+ for(const toward of [true,false]){
+  const v=car(0,0,{vx:80}),p=ped(110,55,{speed:45,rot:toward?0:Math.PI,crossing:true});
+  const {ai}=city({peds:[p],vehicles:[v],surfaceAt:(_x,y)=>Math.abs(y)<40?'road':'walk'});ai.begin(.1);
+  const speed=ai.trafficSpeed(v,100);if(toward)assert.ok(speed<80);else assert.equal(speed,100);
+ }
+});
+
+test('displaced residents release social or venue pauses and return control to road-exit walking',()=>{
+ const p=ped(0,0,{gather:{x:0,y:0}}),{G,ai}=city({peds:[p]});ai.steerPed(p,.1);assert.equal(p.cityState.mode,'pause');
+ G.surfaceAt=()=> 'road';assert.equal(ai.steerPed(p,.1),false);assert.equal(p.cityState.mode,'walk');assert.equal(p.onRoad,true);assert.equal(p.cityState.goal,null);
+});
+
 test('a bus stops at a shelter, waiting passengers board, and the bus resumes once', () => {
   const fixture = { x: 0, y: 40, kind: 2, rot: 0 }, p = ped(-23, 76), v = car(0, 0, { kind: 'bus' });
   const { G, ai, frame } = city({ peds: [p], vehicles: [v], street: { fixtures: [fixture] } });

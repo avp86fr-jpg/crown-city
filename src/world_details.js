@@ -17,13 +17,35 @@ export function applyWorldDetails(W,{CODE}){
  for(const x of E.airport.taxiways)W.fill(x-60,7580,120,80,CODE.lot);
  W.details={buildings:[],windsocks:[{x:7150,y:7360},{x:9700,y:7360}]};
  for(const b of [
-  {x:11128,y:4848,w:144,h:64,name:'PINEWATCH / RANGERS',roof:'terra',wall:'tan'},
+  {x:11128,y:4892,w:144,h:64,name:'PINEWATCH / RANGERS',roof:'terra',wall:'tan'},
   {x:5720,y:9570,w:136,h:72,name:'RED MESA / SUPPLY',roof:'metal2',wall:'cream'},
   {x:11020,y:9488,w:148,h:56,name:'SIERRA / RESCUE',roof:'metal',wall:'white'},
  ]){
   const building={...b,hgt:20,kind:'outpost'};W.buildings.push(building);W.details.buildings.push(building);
   W.fill(b.x,b.y,b.w,b.h,CODE.build);E.obstacles.push({x:b.x,y:b.y,w:b.w,h:b.h,hgt:20});
  }
+ // Two composed destinations replace unused terrain with readable buildings,
+ // connected public forecourts and parking, rather than scattered random props.
+ const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+(a.w||0)>b.x&&a.y<b.y+b.h&&a.y+(a.h||0)>b.y;
+ const site=(r,ground)=>{
+  for(const key of ['buildings','trees','lots','features','pools'])W[key]=W[key].filter(p=>!overlaps({x:p.x-(p.r||0),y:p.y-(p.r||0),w:p.w||p.r*2||1,h:p.h||p.r*2||1},r));
+  E.obstacles=E.obstacles.filter(p=>!overlaps(p,r));W.fill(r.x,r.y,r.w,r.h,ground);
+ };
+ site({x:7700,y:8260,w:1000,h:620},CODE.grass);
+ site({x:11708,y:4490,w:490,h:550},CODE.grass);
+ for(const b of [
+  {x:7800,y:8310,w:800,h:180,name:'CROWN AIR / TERMINAL',roof:'metal2',wall:'cream',hgt:34},
+  {x:11740,y:4520,w:180,h:100,name:'PINEWATCH / SUPPLY',roof:'terra',wall:'tan',hgt:22},
+  {x:12000,y:4520,w:144,h:100,name:'PINEWATCH / LODGE',roof:'terra',wall:'tan',hgt:22},
+ ]){const building={...b,kind:'outpost'};W.buildings.push(building);W.details.buildings.push(building);W.fill(b.x,b.y,b.w,b.h,CODE.build);E.obstacles.push({x:b.x,y:b.y,w:b.w,h:b.h,hgt:b.hgt});}
+ for(const p of [
+  {x:7700,y:8520,w:1000,h:350,entry:{x:8200,y:8910},name:'CROWN AIR / ARRIVALS',walkways:[{x:8226,y:8532,w:52,h:198}]},
+  {x:11708,y:4700,w:490,h:320,entry:{x:11635,y:4870},name:'PINEWATCH / VILLAGE',walkways:[{x:11812,y:4700,w:36,h:178},{x:12054,y:4700,w:36,h:178}]},
+ ]){W.fill(p.x,p.y,p.w,p.h,CODE.lot);W.lots.push({...p,k:'parking'});}
+ // Pavement connects the village frontage to its shared court and road.
+ W.fill(11708,4635,490,65,CODE.walk);W.fill(11664,4800,56,140,CODE.lot,c=>c!==CODE.road);
+ W.fill(7830,8150,72,160,CODE.walk);W.fill(7800,8490,800,30,CODE.walk);
+ W.places=[{name:'CROWN AIR TERMINAL',x:8200,y:8390},{name:'PINEWATCH VILLAGE',x:11940,y:4640}];
  // Small solid footprints match the visible tent bodies and fuel pumps.
  for(const p of [{x:11147,y:4975,w:53,h:50},{x:11257,y:4975,w:53,h:50},{x:5755,y:9687,w:20,h:30},{x:5817,y:9687,w:20,h:30}]){W.fill(p.x,p.y,p.w,p.h,CODE.build);E.obstacles.push({...p,hgt:12});}
 }
@@ -56,6 +78,36 @@ function airport(c,W,r,pats){
  for(const w of W.details.windsocks){oval(c,w.x+2,w.y+3,13,8,'#b9b292');oval(c,w.x,w.y,10,6,'#3b4845');}
 }
 function destinations(c,W,r){
+ // These entrances sit beyond the roof footprint, so their identity survives
+ // both the overhead mobile bake and desktop building projection.
+ const canopy=(cx,y,w,col)=>{
+  box(c,cx-w/2+4,y+6,w,24,'rgba(15,28,29,.22)');
+  box(c,cx-w/2,y,w,22,col);box(c,cx-w/2,y,w,3,'#c9d8ce');
+  for(let x=cx-w/2+16;x<cx+w/2;x+=32)box(c,x,y+3,2,16,'#294e53');
+  box(c,cx-w/2,y+21,w,3,'#253f43');
+ };
+ const bench=(x,y)=>{box(c,x+2,y+2,42,12,'rgba(12,27,26,.18)');box(c,x,y,40,9,'#a88d64');for(const yy of [2,5])box(c,x,y+yy,40,1,'#d0b78b');box(c,x+4,y-2,3,13,'#41534f');box(c,x+33,y-2,3,13,'#41534f');};
+ if(visible(r,7700,8490,1000,220)){
+  box(c,7790,8508,820,24,'#b6b5a1');box(c,7790,8531,820,3,'#6d837d');
+  // A pedestrian spine links arrivals to the parking aisle, with zebra paint
+  // where it crosses that aisle. The central vehicle access remains open.
+  box(c,8226,8532,52,112,'#adb4a4');
+  for(let y=8644;y<8730;y+=13)box(c,8226,y,52,7,'#dddac0');
+  canopy(8252,8500,220,'#557e85');
+  box(c,8154,8501,196,20,'#243f46');text(c,'CROWN AIR',8252,8515,14,'#ece2be');
+  text(c,'ARRIVALS  /  TERMINAL',8252,8530,9,'#e4dfc6');
+  for(const x of [7820,8550]){bench(x,8512);box(c,x+64,8508,18,18,'#596c62');oval(c,x+73,8517,7,5,'#78966a');}
+  for(const [x,label] of [[7980,'CITY TRANSFER'],[8440,'DEPARTURES']]){box(c,x-60,8508,120,17,'#405f60');text(c,label,x,8520,10,'#dedfc9');}
+ }
+ if(visible(r,11708,4635,490,250)){
+  box(c,11708,4648,490,47,'#b2aa8c');box(c,11708,4693,490,3,'#6a7763');
+  for(const [x,label,col] of [[11830,'PINEWATCH SUPPLY','#778c68'],[12072,'FOREST LODGE','#8a7960']]){
+   canopy(x,4650,110,col);text(c,label,x,4690,10,'#243e36');
+   box(c,x-18,4700,36,91,'#b4b198');for(let y=4796;y<4878;y+=13)box(c,x-18,y,36,7,'#d8d4b7');
+  }
+  bench(11942,4660);box(c,11720,4658,17,20,'#5c6e57');oval(c,11728,4668,7,6,'#7d9761');
+  text(c,'PINEWATCH VILLAGE',11953,4752,14,'#d7d4b9');
+ }
  for(const p of W.expansion.decor){if(!['camp','fuel','rescue'].includes(p.kind)||!visible(r,p.x-30,p.y-30,p.w+60,p.h+60))continue;
   c.save();c.translate(p.x,p.y);
   if(p.kind==='camp'){
