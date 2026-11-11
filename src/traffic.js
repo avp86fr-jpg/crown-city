@@ -148,7 +148,8 @@ export function lightGreen(G, n, e) {
 const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };
 
 export function createTraffic(G) {
-  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[],closedCaps=new Set();
+  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[],closedCaps=new Set(),staticRoutes=new Map();
+  let routeSurface=G.surfaceAt;
   function route(v,end,ne){
     const tr=v.tr,e=tr.e,nfwd=ne.A===end,nlane=Math.min(tr.lane,ne.lanes-1),ns=trimAt(end,ne);
     const p0=edgePoint(e,tr.fwd,e.len-trimAt(end,e),tr.lane),p2=edgePoint(ne,nfwd,ns,nlane);
@@ -165,12 +166,29 @@ export function createTraffic(G) {
   function exitClear(v,t){
     const b=bodySize(v),probe=t.exitProbe||(t.exitProbe={...edgePoint(t.ne,t.nfwd,t.ns+b.l+22,t.nlane),kind:v.kind,def:v.def}),radius=bodyRadius(v);
     // Do not enter a junction unless the whole car can fit beyond it.
+    if(G.surfaceAt&&worldBodyHit(G,probe,probe.x,probe.y))return false;
     return !nearby(probe.x,probe.y,b.l+100,o=>o!==v&&(o.def?bodiesNear(probe,o,radius)&&bodyContact(probe,o):!o.dead&&circleBody(probe,o.x,o.y,9)));
   }
+  function staticRouteClear(v,t){
+    if(!G.surfaceAt)return true;
+    if(routeSurface!==G.surfaceAt){routeSurface=G.surfaceAt;staticRoutes.clear();}
+    const key=v.tr.e.id+':'+t.node.id+':'+t.ne.id+':'+v.tr.lane+':'+v.kind;
+    if(staticRoutes.has(key))return staticRoutes.get(key);
+    const probe={kind:v.kind,def:v.def,rot:0};
+    for(let i=0;i<=24;i++){const p=turnPoint(t,i/24);probe.rot=p.rot;if(worldBodyHit(G,probe,p.x,p.y)){staticRoutes.set(key,false);return false;}}
+    staticRoutes.set(key,true);return true;
+  }
   function chooseRoute(v,end,clearOnly=false){
-    const e=v.tr.e,options=end.edges.filter(o=>o!==e&&!closedCaps.has(o)&&(o.w-o.med)/(2*o.lanes)>=bodySize(v).w*2+2),hx=v.tr.fwd?e.dx:-e.dx,hy=v.tr.fwd?e.dy:-e.dy;
-    if(!options.length)options.push(e);
-    const plans=options.map(ne=>route(v,end,ne)).filter(t=>!clearOnly||exitClear(v,t));
+    const e=v.tr.e,hx=v.tr.fwd?e.dx:-e.dx,hy=v.tr.fwd?e.dy:-e.dy,key=e.id+':'+end.id+':'+v.tr.lane;
+    // Waiting on an occupied exit must not rebuild hundreds of swept poses
+    // and compatibility pairs every frame. Geometry only changes at a new approach.
+    let candidates=v.tr.candidates;
+    if(!candidates||candidates.key!==key||candidates.surface!==G.surfaceAt){
+      const options=end.edges.filter(o=>o!==e&&!closedCaps.has(o)&&(o.w-o.med)/(2*o.lanes)>=bodySize(v).w*2+2);
+      if(!options.length)options.push(e);
+      candidates=v.tr.candidates={key,surface:G.surfaceAt,plans:options.map(ne=>route(v,end,ne)).filter(t=>staticRouteClear(v,t))};
+    }
+    const plans=clearOnly?candidates.plans.filter(t=>exitClear(v,t)):candidates.plans;
     if(!plans.length)return null;
     if(v.role==='ambulance'&&v.target)return plans.reduce((best,t)=>{
       const next=t.nfwd?t.ne.B:t.ne.A,previous=best.nfwd?best.ne.B:best.ne.A;
@@ -188,6 +206,15 @@ export function createTraffic(G) {
     const iu=1-u,x=iu*iu*t.p0.x+2*iu*u*t.p1.x+u*u*t.p2.x,y=iu*iu*t.p0.y+2*iu*u*t.p1.y+u*u*t.p2.y;
     const dx=2*iu*(t.p1.x-t.p0.x)+2*u*(t.p2.x-t.p1.x),dy=2*iu*(t.p1.y-t.p0.y)+2*u*(t.p2.y-t.p1.y);
     return {x,y,rot:Math.atan2(dx,-dy),speed:Math.max(12,Math.hypot(dx,dy))};
+  }
+  function routesCompatible(a,v,b,o){
+    if(!a||!b||a.cubic||b.cubic)return false;
+    const cache=a.compatible||(a.compatible=new WeakMap());
+    if(cache.has(b))return cache.get(b);
+    const sweep=(t,car)=>t.swept||(t.swept=Array.from({length:25},(_,i)=>({...turnPoint(t,i/24),def:car.def,kind:car.kind})));
+    const A=sweep(a,v),B=sweep(b,o);let clear=true;
+    outer:for(const p of A)for(const q of B)if(bodiesNear(p,q)&&bodyContact(p,q)){clear=false;break outer;}
+    cache.set(b,clear);return clear;
   }
   function poseClear(v,p){
     const probe={...p,kind:v.kind,def:v.def},radius=bodyRadius(v);
@@ -329,17 +356,17 @@ export function createTraffic(G) {
           if(controlled&&!owners?.has(v)&&green&&room<100&&gap>room+8){
             let plan=tr.route;
             if(!plan||!exitClear(v,plan))plan=chooseRoute(v,end,true);
-            const straight=t=>t&&t.p0.dx*t.p2.dx+t.p0.dy*t.p2.dy>.999&&Math.abs((t.p2.x-t.p0.x)*t.p0.dy-(t.p2.y-t.p0.y)*t.p0.dx)<1;
-            // Parallel through lanes may clear together. Turning movements keep
-            // exclusive ownership, including their rear-swing clearance.
+            // Reserve the swept bodies, not the whole intersection. A slight
+            // lane taper used to serialize every approach for several signals.
+            // Non-conflicting through lanes and right turns can now clear together.
             const compatible=plan&&(!owners||(end.zoneSize||1)<=1&&[...owners].every(o=>{
-              const other=o.tr.turn||o.tr.route;return straight(plan)&&straight(other)&&Math.abs(plan.p0.dx*other.p0.dx+plan.p0.dy*other.p0.dy)>.999&&Math.abs((plan.p0.x-other.p0.x)*plan.p0.dy-(plan.p0.y-other.p0.y)*plan.p0.dx)>bodySize(v).w+bodySize(o).w+1;
+              return routesCompatible(plan,v,o.tr.turn||o.tr.route,o);
             }));
             if(compatible){tr.route=plan;if(!owners){owners=new Set();junctions.set(zone,owners);}owners.add(v);tr.reserved=zone;}
           }
           // Reserve before crossing the stop line; competing entrants cannot
           // overwrite a car already committed to clearing the junction.
-          const blocked=controlled?!owners?.has(v):!green;
+          const blocked=(controlled?!owners?.has(v):!green)||!tr.route&&toStop<300;
           const stopping=blocked&&tr.s<=hold+2;
           if(stopping)want=Math.min(want,Math.sqrt(2*115*room),room*1.8);
           if(end.edges.length>1&&toStop<90)want=Math.min(want,Math.max(45,v.cruise*.55));
@@ -354,6 +381,7 @@ export function createTraffic(G) {
           if(travel<tr.spd*dt)tr.spd=travel/dt;
           if(tr.s>=stopAt){
             tr.turn=tr.route||chooseRoute(v,end);tr.route=null;
+            if(!tr.turn){tr.spd=v.vx=v.vy=0;continue;}
             tr.waitSince=null;
             v.turnSign=Math.sign(tr.turn.p0.dx*tr.turn.p2.dy-tr.turn.p0.dy*tr.turn.p2.dx)||0;
           } else {

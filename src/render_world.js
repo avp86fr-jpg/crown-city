@@ -1,4 +1,5 @@
 /* Streaming tile layers, chunked procedural ground, extruded buildings, trees. */
+import {drawCircuitGround,CIRCUIT} from './circuit_world.js';
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
 import {drawWorldDetails} from './world_details.js';
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
@@ -78,7 +79,7 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const pats = {};let revision=0,useId=0;
+  const pats = {};let revision=0,useId=0,viewPlan=null,circuitScale=1;
   loadImg('assets/premium/frontier-scenery.webp').then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
   // Eight material paintings, decoded once; detail is baked into streamed chunks.
   loadImg('assets/premium/world-materials.webp').then(atlas=>{
@@ -115,6 +116,8 @@ export function makeGround(W, tex, codeAt) {
     const x = c.getContext("2d");
     const ox = ix * CH, oy = iy * CH;
     x.translate(-ox, -oy);
+    const view={x0:ox,y0:oy,x1:ox+CH,y1:oy+CH};
+    if(ox>=CIRCUIT.x&&oy>=CIRCUIT.y&&ox+CH<=CIRCUIT.x+CIRCUIT.w&&oy+CH<=CIRCUIT.y+CIRCUIT.h){drawCircuitGround(x,view,pats,circuitScale);return c;}
     const cx0 = ox / CELL, cy0 = oy / CELL, n = CH / CELL;
     let any = false;
     for (let cy = cy0; cy < cy0 + n; cy++) {
@@ -290,23 +293,32 @@ export function makeGround(W, tex, codeAt) {
       if (b.x > rx1 || b.y > ry1 || b.x + b.w < rx0 || b.y + b.h < ry0) continue;
       x.fillStyle = "rgba(20,18,22,0.85)"; x.fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
     }
+    drawCircuitGround(x,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,circuitScale);
     return c;
   }
   return {
     maxChunks:64,
     get revision(){return revision;},
+    drawCircuit(ctx,r,scale=.5){drawCircuitGround(ctx,r,pats,scale);},
     draw(ctx, r, frame) {
       // Offscreen mobile composition deliberately passes frame=0. A separate usage
       // clock is required or every such chunk stays "current" and can never evict.
-      const stamp=++useId;
+      const stamp=++useId; circuitScale=this.maxChunks<=8?.5:1;
       const ix0 = Math.max(0, Math.floor(r.x0 / CH)), iy0 = Math.max(0, Math.floor(r.y0 / CH));
       const ix1 = Math.min(WORLD_W / CH - 1, Math.floor(r.x1 / CH)), iy1 = Math.min(WORLD_H / CH - 1, Math.floor(r.y1 / CH));
+      const key=ix0+','+iy0+','+ix1+','+iy1;
+      if(viewPlan?.key!==key){const tiles=[],mx=(r.x0+r.x1)/2,my=(r.y0+r.y1)/2;for(let iy=iy0;iy<=iy1;iy++)for(let ix=ix0;ix<=ix1;ix++)tiles.push({ix,iy,d:((ix+.5)*CH-mx)**2+((iy+.5)*CH-my)**2});tiles.sort((a,b)=>a.d-b.d);viewPlan={key,tiles};}
       let built = 0;
-      for (let iy = iy0; iy <= iy1; iy++) for (let ix = ix0; ix <= ix1; ix++) {
+      for (const {ix,iy} of viewPlan.tiles) {
         const k = ix + iy * 100;
         let e = cache.get(k);
         if (!e) {
-          if (built >= 2 && frame > 2) continue; // budget per frame
+          if (built >= 2 && frame > 2) {
+            // A small surface mosaic is bounded work; core art remains visible.
+            const colors=['#343b3e','#96978b','#697471','#22565b','#b7a181','#536649','#343b3e','#84765e','#24585d','#485253','#8e8061'];
+            if(ctx.fillRect)for(let y=0;y<CH;y+=64)for(let x=0;x<CH;x+=64){const code=cellAt((ix*CH+x+32)/CELL|0,(iy*CH+y+32)/CELL|0);if(code===255)continue;ctx.fillStyle=colors[code]||'#64735b';ctx.fillRect(ix*CH+x,iy*CH+y,64,64);}
+            continue;
+          }
           e = { c: render(ix, iy), f: stamp }; built++;
           cache.set(k, e);
         }

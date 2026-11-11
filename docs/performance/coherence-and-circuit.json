@@ -1,0 +1,827 @@
+{
+  "coherence-base": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "boulevard",
+        "seconds": 4.04860000000149,
+        "ticks": 241,
+        "frames": 170,
+        "touch": true,
+        "peds": 86,
+        "vehicles": 142,
+        "position": [
+          2108,
+          1708.7951967805918
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 4.076583094245155,
+          "tick": 6.128440698772906,
+          "hud": 1.3677419287228052
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 0,
+          "outerVisible": 0,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 0,
+          "groundLimit": 8,
+          "actors": 16
+        },
+        "drawCalls": {
+          "fillRect": 9,
+          "stroke": 4,
+          "fill": 26,
+          "drawImage": 41,
+          "fillText": 8,
+          "measureText": 0
+        },
+        "workMsPerSecond": 417.42824678648753,
+        "presentedFps": 41.98982364272525,
+        "workP50": 9.299999997019768,
+        "workP95": 14.099999994039536,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.400000000000546,
+        "over50ms": 1
+      },
+      {
+        "scene": "regional",
+        "seconds": 4.00660000000149,
+        "ticks": 241,
+        "frames": 200,
+        "touch": true,
+        "peds": 62,
+        "vehicles": 130,
+        "position": [
+          10215,
+          4984
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 2.3245018281180667,
+          "tick": 2.3604616218192267,
+          "hud": 1.0141679805272983
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 6,
+          "outerVisible": 4,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 6,
+          "groundLimit": 8,
+          "actors": 5
+        },
+        "drawCalls": {
+          "fillRect": 15,
+          "stroke": 5,
+          "fill": 11,
+          "drawImage": 13,
+          "fillText": 10,
+          "measureText": 0
+        },
+        "workMsPerSecond": 250.73628512051704,
+        "presentedFps": 49.917635900745175,
+        "workP50": 4.699999995529652,
+        "workP95": 8.299999997019768,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.399999999999636,
+        "over50ms": 0
+      },
+      {
+        "scene": "forest",
+        "seconds": 4.01670000000298,
+        "ticks": 241,
+        "frames": 231,
+        "touch": true,
+        "peds": 46,
+        "vehicles": 126,
+        "position": [
+          11220,
+          2293.601003014851
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 5.49676214923532,
+          "tick": 1.5704375650945162,
+          "hud": 1.0063804359774138
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 15,
+          "outerVisible": 6,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 2
+        },
+        "drawCalls": {
+          "fillRect": 10,
+          "stroke": 4,
+          "fill": 19,
+          "drawImage": 9,
+          "fillText": 7,
+          "measureText": 0
+        },
+        "workMsPerSecond": 261.68247564944,
+        "presentedFps": 57.5098961833915,
+        "workP50": 3.600000001490116,
+        "workP95": 6.799999997019768,
+        "frameP50": 16.700000000000728,
+        "frameP95": 16.799999999999272,
+        "over50ms": 3
+      },
+      {
+        "scene": "airfield",
+        "seconds": 4.01610000000149,
+        "ticks": 241,
+        "frames": 199,
+        "touch": true,
+        "peds": 69,
+        "vehicles": 125,
+        "position": [
+          7740.184602117085,
+          7500.280265455282
+        ],
+        "altitude": 68.73333333333333,
+        "prof": {
+          "render": 3.645197241322688,
+          "tick": 2.5283432460892823,
+          "hud": 1.8728374979315274
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 30,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 7
+        },
+        "drawCalls": {
+          "fillRect": 23,
+          "stroke": 6,
+          "fill": 22,
+          "drawImage": 20,
+          "fillText": 11,
+          "measureText": 0
+        },
+        "workMsPerSecond": 354.94634097557844,
+        "presentedFps": 49.550559000006515,
+        "workP50": 5.200000002980232,
+        "workP95": 13.700000002980232,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.400000000001455,
+        "over50ms": 6
+      }
+    ]
+  },
+  "coherence-release": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "boulevard",
+        "seconds": 4.03560000000149,
+        "ticks": 224,
+        "frames": 122,
+        "touch": true,
+        "peds": 82,
+        "vehicles": 142,
+        "position": [
+          2108,
+          1794.59032039503
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 4.71816032709529,
+          "tick": 7.65684119001212,
+          "hud": 1.5805949157170662
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 0,
+          "outerVisible": 0,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 0,
+          "groundLimit": 8,
+          "actors": 15
+        },
+        "drawCalls": {
+          "fillRect": 9,
+          "stroke": 8,
+          "fill": 28,
+          "drawImage": 38,
+          "fillText": 11,
+          "measureText": 0
+        },
+        "workMsPerSecond": 414.63475071586663,
+        "presentedFps": 30.23094459311006,
+        "workP50": 12.600000001490116,
+        "workP95": 22.399999998509884,
+        "frameP50": 33.29999999999927,
+        "frameP95": 50,
+        "over50ms": 5
+      },
+      {
+        "scene": "regional",
+        "seconds": 4.02060000000149,
+        "ticks": 241,
+        "frames": 179,
+        "touch": true,
+        "peds": 57,
+        "vehicles": 135,
+        "position": [
+          10215,
+          4984
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 3.555312898973495,
+          "tick": 2.4129350284388766,
+          "hud": 1.7750665358138564
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 6,
+          "outerVisible": 4,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 6,
+          "groundLimit": 8,
+          "actors": 5
+        },
+        "drawCalls": {
+          "fillRect": 15,
+          "stroke": 8,
+          "fill": 13,
+          "drawImage": 12,
+          "fillText": 13,
+          "measureText": 0
+        },
+        "workMsPerSecond": 257.2999054718231,
+        "presentedFps": 44.52071830073463,
+        "workP50": 5.300000004470348,
+        "workP95": 10.5,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.400000000001455,
+        "over50ms": 1
+      },
+      {
+        "scene": "forest",
+        "seconds": 4.017200000002981,
+        "ticks": 241,
+        "frames": 219,
+        "touch": true,
+        "peds": 46,
+        "vehicles": 131,
+        "position": [
+          11220,
+          2293.601003014851
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 6.096101979017227,
+          "tick": 2.1855599071536407,
+          "hud": 1.2224036195537027
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 15,
+          "outerVisible": 6,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 2
+        },
+        "drawCalls": {
+          "fillRect": 10,
+          "stroke": 7,
+          "fill": 22,
+          "drawImage": 9,
+          "fillText": 10,
+          "measureText": 0
+        },
+        "workMsPerSecond": 295.2056158345551,
+        "presentedFps": 54.5155829930891,
+        "workP50": 4.200000002980232,
+        "workP95": 9.599999994039536,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.19999999999709,
+        "over50ms": 4
+      },
+      {
+        "scene": "airfield",
+        "seconds": 4.01210000000149,
+        "ticks": 242,
+        "frames": 162,
+        "touch": true,
+        "peds": 76,
+        "vehicles": 130,
+        "position": [
+          7747.127850311996,
+          7500.3733883045925
+        ],
+        "altitude": 69.23333333333333,
+        "prof": {
+          "render": 4.696872683511642,
+          "tick": 3.4957562409972742,
+          "hud": 1.7191164743843774
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 30,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 7
+        },
+        "drawCalls": {
+          "fillRect": 23,
+          "stroke": 9,
+          "fill": 27,
+          "drawImage": 22,
+          "fillText": 14,
+          "measureText": 0
+        },
+        "workMsPerSecond": 399.3669150865573,
+        "presentedFps": 40.377856982612556,
+        "workP50": 6.5,
+        "workP95": 24.799999997019768,
+        "frameP50": 16.700000000000728,
+        "frameP95": 50,
+        "over50ms": 8
+      }
+    ]
+  },
+  "coherence-cached": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "boulevard",
+        "seconds": 4.01129999999702,
+        "ticks": 241,
+        "frames": 184,
+        "touch": true,
+        "peds": 88,
+        "vehicles": 140,
+        "position": [
+          2108,
+          1713.5619386104395
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 3.6424445874541096,
+          "tick": 4.725303885024541,
+          "hud": 1.4092832094648429
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 0,
+          "outerVisible": 0,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 0,
+          "groundLimit": 8,
+          "actors": 15
+        },
+        "drawCalls": {
+          "fillRect": 9,
+          "stroke": 5,
+          "fill": 25,
+          "drawImage": 38,
+          "fillText": 8,
+          "measureText": 0
+        },
+        "workMsPerSecond": 382.59417147406646,
+        "presentedFps": 45.870416074623364,
+        "workP50": 8.200000002980232,
+        "workP95": 13.700000002980232,
+        "frameP50": 16.699999999999818,
+        "frameP95": 33.399999999999636,
+        "over50ms": 1
+      },
+      {
+        "scene": "regional",
+        "seconds": 4.01180000000447,
+        "ticks": 240,
+        "frames": 189,
+        "touch": true,
+        "peds": 51,
+        "vehicles": 136,
+        "position": [
+          10215,
+          4984
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 2.617801923363029,
+          "tick": 3.353998197520605,
+          "hud": 1.1728276746868889
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 6,
+          "outerVisible": 4,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 6,
+          "groundLimit": 8,
+          "actors": 6
+        },
+        "drawCalls": {
+          "fillRect": 15,
+          "stroke": 5,
+          "fill": 11,
+          "drawImage": 13,
+          "fillText": 10,
+          "measureText": 0
+        },
+        "workMsPerSecond": 248.71628693575272,
+        "presentedFps": 47.11102248362067,
+        "workP50": 4.700000002980232,
+        "workP95": 8.399999998509884,
+        "frameP50": 16.700000000000728,
+        "frameP95": 33.400000000001455,
+        "over50ms": 1
+      },
+      {
+        "scene": "forest",
+        "seconds": 4.01110000000149,
+        "ticks": 241,
+        "frames": 225,
+        "touch": true,
+        "peds": 46,
+        "vehicles": 129,
+        "position": [
+          11220,
+          2293.601003014851
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 5.246228554560616,
+          "tick": 1.9324102548187418,
+          "hud": 1.0817792820169505
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 15,
+          "outerVisible": 6,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 1
+        },
+        "drawCalls": {
+          "fillRect": 10,
+          "stroke": 4,
+          "fill": 19,
+          "drawImage": 9,
+          "fillText": 7,
+          "measureText": 0
+        },
+        "workMsPerSecond": 290.91770337265996,
+        "presentedFps": 56.09433821144235,
+        "workP50": 3.600000001490116,
+        "workP95": 8.600000001490116,
+        "frameP50": 16.69999999999709,
+        "frameP95": 16.799999999999272,
+        "over50ms": 3
+      },
+      {
+        "scene": "airfield",
+        "seconds": 4.0242999999970195,
+        "ticks": 242,
+        "frames": 181,
+        "touch": true,
+        "peds": 74,
+        "vehicles": 128,
+        "position": [
+          7747.1272965123435,
+          7500.466412063483
+        ],
+        "altitude": 69.23333333333333,
+        "prof": {
+          "render": 4.155798790668046,
+          "tick": 2.832314033049224,
+          "hud": 2.0009712684442658
+        },
+        "tiles": {
+          "tiles": 11,
+          "outerTiles": 30,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 7
+        },
+        "drawCalls": {
+          "fillRect": 23,
+          "stroke": 6,
+          "fill": 23,
+          "drawImage": 21,
+          "fillText": 11,
+          "measureText": 0
+        },
+        "workMsPerSecond": 353.577019592826,
+        "presentedFps": 44.9767661456984,
+        "workP50": 5.700000002980232,
+        "workP95": 14.300000004470348,
+        "frameP50": 16.700000000000728,
+        "frameP95": 50,
+        "over50ms": 7
+      }
+    ]
+  },
+  "coherence-circuit": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "circuit",
+        "seconds": 4.01820000000298,
+        "ticks": 236,
+        "frames": 145,
+        "touch": true,
+        "peds": 65,
+        "vehicles": 146,
+        "position": [
+          2818.191549568565,
+          7865.991981971488
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 6.848434420930697,
+          "tick": 4.061409934794806,
+          "hud": 1.6686513980371995
+        },
+        "tiles": {
+          "tiles": 8,
+          "outerTiles": 23,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 4
+        },
+        "drawCalls": {
+          "fillRect": 12,
+          "stroke": 10,
+          "fill": 10,
+          "drawImage": 11,
+          "fillText": 12,
+          "measureText": 6
+        },
+        "workMsPerSecond": 527.6243093922448,
+        "presentedFps": 36.08580956644579,
+        "workP50": 6.5,
+        "workP95": 83.20000000298023,
+        "frameP50": 16.700000000000728,
+        "frameP95": 100,
+        "over50ms": 13
+      }
+    ]
+  },
+  "coherence-circuit-cached": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "circuit",
+        "seconds": 4.02060000000149,
+        "ticks": 241,
+        "frames": 125,
+        "touch": true,
+        "peds": 65,
+        "vehicles": 144,
+        "position": [
+          2864.151689436688,
+          7868.6965261994565
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 6.460710697503713,
+          "tick": 6.289199761148847,
+          "hud": 1.8745754336577443
+        },
+        "tiles": {
+          "tiles": 8,
+          "outerTiles": 23,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 4
+        },
+        "drawCalls": {
+          "fillRect": 12,
+          "stroke": 10,
+          "fill": 10,
+          "drawImage": 11,
+          "fillText": 12,
+          "measureText": 6
+        },
+        "workMsPerSecond": 514.5251952394821,
+        "presentedFps": 31.089887081518597,
+        "workP50": 10.699999995529652,
+        "workP95": 55.600000001490116,
+        "frameP50": 33.29999999999927,
+        "frameP95": 66.70000000000073,
+        "over50ms": 14
+      }
+    ]
+  },
+  "coherence-circuit-final": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "circuit",
+        "seconds": 4.0186000000014905,
+        "ticks": 236,
+        "frames": 120,
+        "touch": true,
+        "peds": 70,
+        "vehicles": 143,
+        "position": [
+          2821.7575546337935,
+          7869.712562681176
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 9.626709873448709,
+          "tick": 4.517881648646611,
+          "hud": 2.4519593190576052
+        },
+        "tiles": {
+          "tiles": 8,
+          "outerTiles": 23,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 3
+        },
+        "drawCalls": {
+          "fillRect": 12,
+          "stroke": 10,
+          "fill": 10,
+          "drawImage": 11,
+          "fillText": 12,
+          "measureText": 6
+        },
+        "workMsPerSecond": 524.4612551525419,
+        "presentedFps": 29.86114567261123,
+        "workP50": 9.799999997019768,
+        "workP95": 64.20000000298023,
+        "frameP50": 33.29999999999927,
+        "frameP95": 83.5,
+        "over50ms": 15
+      }
+    ]
+  },
+  "coherence-circuit-direct": {
+    "environment": {
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "cpuThrottle": 4,
+      "quality": "low",
+      "autoResolution": false,
+      "seed": 77123,
+      "input": "CDP touch drag; no keyboard events",
+      "sampleSeconds": 4
+    },
+    "scenarios": [
+      {
+        "scene": "circuit",
+        "seconds": 4.016199999995529,
+        "ticks": 236,
+        "frames": 140,
+        "touch": true,
+        "peds": 69,
+        "vehicles": 141,
+        "position": [
+          2818.0751824986487,
+          7867.368743119481
+        ],
+        "altitude": 0,
+        "prof": {
+          "render": 8.010117417184869,
+          "tick": 4.469073741901941,
+          "hud": 2.2051354211095537
+        },
+        "tiles": {
+          "tiles": 8,
+          "outerTiles": 23,
+          "outerVisible": 12,
+          "outerPending": 0,
+          "outerLimit": 40,
+          "groundChunks": 8,
+          "groundLimit": 8,
+          "actors": 4
+        },
+        "drawCalls": {
+          "fillRect": 12,
+          "stroke": 10,
+          "fill": 10,
+          "drawImage": 11,
+          "fillText": 12,
+          "measureText": 6
+        },
+        "workMsPerSecond": 486.57935362284167,
+        "presentedFps": 34.858821771862914,
+        "workP50": 9.199999995529652,
+        "workP95": 40.5,
+        "frameP50": 16.799999999999272,
+        "frameP95": 66.59999999999945,
+        "over50ms": 9
+      }
+    ]
+  },
+  "baseline_commit": "d4161c36f119919ac0a13cd33139d562cf6bd7b1",
+  "notes": "Desktop Chromium, 844x390 touch viewport, DPR 2, Performance quality, adaptive resolution disabled, 4x CPU throttle. Four-second samples; live actors and camera positions vary. Intermediate builds are retained to show rejected regressions. Circuit numbers cover active opponents and real touch steering. Not a physical Redmi Note benchmark."
+}

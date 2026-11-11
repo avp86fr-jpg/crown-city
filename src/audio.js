@@ -319,7 +319,7 @@ export function createAudio() {
       }
     }
     // intensity: 0 calm, 1 mission/active, 2 wanted 1-2, 3 chase (3+ or seen)
-    let target = play ? (G.wanted >= 3 ? 3 : G.wanted > 0 ? 2.2 : (G._flow ? 1 : 0.4)) : G.scene === "title" ? 0.9 : 0.3;
+    let target = play ? (G.wanted >= 3 ? 3 : G.wanted > 0 ? 2.2 : G.circuitSession?.running ? 2.1 : (G._flow ? 1 : 0.4)) : G.scene === "title" ? 0.9 : 0.3;
     if (G.scene === "vn" || G.scene === "brief") target = 0.2;
     A._int += (target - A._int) * Math.min(1, dt * 0.6);
     A.recordedMusic=soundtrack?.update(G,A.station)||false;

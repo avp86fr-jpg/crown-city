@@ -15,10 +15,11 @@ export function localPoint(v,x,y) {
   return {x:dx*c+dy*s,y:-dx*s+dy*c};
 }
 export function circleBody(v,x,y,r=0) {
-  const p=localPoint(v,x,y),b=bodySize(v);
-  const qx=Math.max(-b.w,Math.min(b.w,p.x)),qy=Math.max(-b.l,Math.min(b.l,p.y));
-  const dx=p.x-qx,dy=p.y-qy;
-  return dx*dx+dy*dy<=r*r;
+  const b=bodySize(v),dx=x-v.x,dy=y-v.y,bound=b.w+b.l+r;
+  if(Math.abs(dx)>bound||Math.abs(dy)>bound)return false;
+  const co=Math.cos(v.rot),sn=Math.sin(v.rot),lx=dx*co+dy*sn,ly=-dx*sn+dy*co;
+  const ex=Math.max(0,Math.abs(lx)-b.w),ey=Math.max(0,Math.abs(ly)-b.l);
+  return ex*ex+ey*ey<=r*r;
 }
 export function segmentBody(v,x0,y0,x1,y1,pad=0) {
   const a=localPoint(v,x0,y0),z=localPoint(v,x1,y1),b=bodySize(v);let enter=0,leave=1;

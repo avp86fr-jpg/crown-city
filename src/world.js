@@ -1,3 +1,5 @@
+import {applyStreetGateways} from './world_streets.js';
+import {applyCircuit,inCircuit} from './circuit_world.js';
 import {SLOT_MACHINES} from './slots.js';
 import {applyCityHubs} from './world_hubs.js';
 /* Crown City world: painted core (tiled, streamed) + procedural outer districts.
@@ -42,6 +44,7 @@ export const CORE_DISTRICTS = [
   { name: "DESERT EDGE", r: [3600, 3000, 496, 1096] },
 ];
 export function districtAt(x, y) {
+  if(inCircuit(x,y))return 'BUGATTI / CROWN CIRCUIT';
   const biome=terrainRegion(x,y);if(biome)return biome==='forest'?'PINEWATCH FOREST':biome==='desert'?'RED MESA':'SIERRA CROWN';
   if(x>=6784&&x<=7152&&y>560&&y<6800)return 'CROWN CANAL';
   if(x>=7540&&x<=8960&&y>=2820&&y<=3590)return 'METAWIN TERRACE';
@@ -390,6 +393,8 @@ export function buildWorld(meta, coreMask, coreMS) {
   // A tree canopy may not cover a basin, even when its trunk is on dry ground.
   const basins=W.features.filter(f=>f.k==='fountain'||f.k==='pond');
   W.trees=W.trees.filter(t=>!basins.some(f=>Math.hypot(t.x-f.x,t.y-f.y)<f.r*1.2+t.r+12));
+  applyStreetGateways(W,meta,CODE);
+  applyCircuit(W,CODE);
   planParking(W);
   W.coreBuildings = (meta.buildings || []).map((b) => ({ ...b, core: true }));
   applyCityHubs(W,meta,CODE);

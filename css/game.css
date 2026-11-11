@@ -94,3 +94,6 @@ body.left-handed #touch .cluster { right:auto; left:calc(14px + var(--sal)); tra
 @media (max-height:380px) { #touch .cluster { transform:scale(min(var(--control-scale),.9)); } }
 
 #touch{z-index:2}
+
+#touch.drive #tFire.cargo{display:flex;opacity:1}
+#touch.flying .btn.weapon,#touch.flying .btn.reload,#touch.flying .btn.fire:not(.cargo){display:none}

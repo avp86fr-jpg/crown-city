@@ -1,4 +1,8 @@
+import {drawStreetGateways} from './world_streets.js';
+import {drawDropMission} from './airdrop.js';
+import {drawCircuitActivity} from './motorsport.js';
 import {drawCityHubs} from './world_hubs.js';
+import {CIRCUIT} from './circuit_world.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadImage} from './assets.js';
@@ -25,8 +29,12 @@ function outerTile(G,tx,ty){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const c=canvas.getContext('2d',{alpha:false});
  c.fillStyle='#193e43';c.fillRect(0,0,256,256);c.scale(.5,.5);c.translate(-tx*OUTER,-ty*OUTER);
  const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
- G.ground.draw(c,r,0);G.bld.staticDraw(c,r);
- const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,r);}finally{G.ctx=prior;}
+ const circuit=r.x0>=CIRCUIT.x&&r.y0>=CIRCUIT.y&&r.x1<=CIRCUIT.x+CIRCUIT.w&&r.y1<=CIRCUIT.y+CIRCUIT.h&&G.ground.drawCircuit;
+ if(circuit)G.ground.drawCircuit(c,r,.5);
+ else{
+  G.ground.draw(c,r,0);G.bld.staticDraw(c,r);
+  const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,r);}finally{G.ctx=prior;}
+ }
  entry=seal({canvas,revision,t:G.ticks});cache.set(key,entry);trim(cache,G._outerLimit||40);return entry.canvas;
 }
 function tile(G,tx,ty,night) {
@@ -82,7 +90,7 @@ export function drawMobileWorld(G,H) {
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
-  drawCityHubs(G,r);
+  drawStreetGateways(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
   drawCasinoWorld(G,r);

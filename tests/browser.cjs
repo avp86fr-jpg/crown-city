@@ -169,7 +169,7 @@ async function dialogue(page, choices) {
       assert.equal(await phone.evaluate(()=>__CC.G.settings.leftHanded),true);assert.equal(await phone.locator('body').evaluate(e=>e.classList.contains('left-handed')),true);
       assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('mw_crown_city_settings')).leftHanded),true);
       await button(phone,'BACK',true);await button(phone,'STORY / DOSSIER',true);assert.equal(await phone.evaluate(()=>__CC.G.scene),'dossier');await button(phone,'BACK TO CITY',true);
-      await phone.locator('#tCrew').tap();await step(phone);await button(phone,'MORE JOBS / HUNTER + VERA ›',true);
+      await phone.locator('#tCrew').tap();await step(phone);await button(phone,'JOBS 1 / 5  ·  NEXT THREE ›',true);
       await button(phone,'TAKE JOB / +950',true);assert.equal(await phone.evaluate(()=>__CC.G.action.contract.id),'rescue');
       await phone.evaluate(()=>{__CC.save();T.loadSave(__CC.G);T.render(__CC.G)});assert.ok(await phone.evaluate(()=>__CC.G.waypoint));
       await phone.locator('#tCrew').tap();await step(phone);await button(phone,'CANCEL CONTRACT',true);await button(phone,'BACK TO CITY',true);
