@@ -1,4 +1,5 @@
 /* Shared world-space bodies for rendering, swept projectiles and vehicle contacts. */
+import {worldBoundaryContact} from './world_limits.js';
 const BODIES=Object.freeze(Object.fromEntries(Object.entries({plane:{w:86,l:67},heli:{w:30,l:55},bike:{w:10,l:35},bus:{w:28,l:69},gulf:{w:29,l:62},boat:{w:20,l:57},van:{w:25,l:58},car:{w:24,l:52}}).map(([key,body])=>[key,Object.freeze(body)])));
 export function bodySize(v) {
   if(v.def?.aircraft)return v.kind==='plane'?BODIES.plane:BODIES.heli;
@@ -36,18 +37,31 @@ export function segmentCircle(x0,y0,x1,y1,x,y,r) {
 }
 export function bodyContact(a,b) {
   const A=bodySize(a),B=bodySize(b),ac=Math.cos(a.rot),as=Math.sin(a.rot),bc=Math.cos(b.rot),bs=Math.sin(b.rot);
-  const axes=[[ac,as],[-as,ac],[bc,bs],[-bs,bc]],dx=b.x-a.x,dy=b.y-a.y;let pen=Infinity,best;
-  for(const [x,y] of axes){
+  const dx=b.x-a.x,dy=b.y-a.y;let pen=Infinity,nx=0,ny=0;
+  // Four SAT axes, without allocating four temporary vectors per candidate.
+  for(let i=0;i<4;i++){
+    const x=i===0?ac:i===1?-as:i===2?bc:-bs,y=i===0?as:i===1?ac:i===2?bs:bc;
     const ra=A.w*Math.abs(x*ac+y*as)+A.l*Math.abs(-x*as+y*ac);
     const rb=B.w*Math.abs(x*bc+y*bs)+B.l*Math.abs(-x*bs+y*bc);
     const d=dx*x+dy*y,overlap=ra+rb-Math.abs(d);if(overlap<=0)return null;
-    if(overlap<pen){pen=overlap;const sign=d>=0?1:-1;best={nx:x*sign,ny:y*sign,pen};}
+    if(overlap<pen){pen=overlap;const sign=d>=0?1:-1;nx=x*sign;ny=y*sign;}
   }
-  return best;
+  return {nx,ny,pen};
+}
+// Low restitution keeps light contacts from bouncing like rubber. A bounded
+// tangent impulse lets glancing hulls slide while dissipating sideways energy.
+export function resolveVehicleImpulse(a,b,nx,ny,ma,mb){
+  const rv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;if(rv>=0)return 0;
+  const water=!!(a.def?.boat||b.def?.boat),inverse=1/ma+1/mb,closing=-rv;
+  const restitution=water?.045:.08+Math.min(.10,closing/240*.10),impulse=(1+restitution)*closing/inverse;
+  const tx=-ny,ty=nx,tangent=(b.vx-a.vx)*tx+(b.vy-a.vy)*ty,limit=impulse*(water?.10:.22),friction=Math.max(-limit,Math.min(limit,-tangent/inverse));
+  const ix=impulse*nx+friction*tx,iy=impulse*ny+friction*ty;
+  a.vx-=ix/ma;a.vy-=iy/ma;b.vx+=ix/mb;b.vy+=iy/mb;return closing;
 }
 const SAMPLES=[[0,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1],[-1,0],[1,0],[-1,-.5],[1,-.5],[-1,.5],[1,.5]];
 export function worldBodyHit(G,v,x,y) {
-  const b=bodySize(v),c=Math.cos(v.rot),s=Math.sin(v.rot);let nx=0,ny=0,count=0;
+  const b=bodySize(v),edge=worldBoundaryContact(G.world?.limits,v,x,y,b);if(edge)return edge;
+  const c=Math.cos(v.rot),s=Math.sin(v.rot);let nx=0,ny=0,count=0;
   for(const [a,d] of SAMPLES){const dx=a*b.w*c-d*b.l*s,dy=a*b.w*s+d*b.l*c,surface=v.def.boat?(G.world?.boatSurfaceAt?.(x+dx,y+dy)||G.surfaceAt(x+dx,y+dy)):G.surfaceAt(x+dx,y+dy);
     const blocked=v.def.boat?surface!=='water'&&surface!=='canal':surface==='build';
     if(blocked){nx-=dx;ny-=dy;count++;}

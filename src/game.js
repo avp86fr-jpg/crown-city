@@ -1,4 +1,5 @@
 import {drawDialogue,openingScene} from './dialogue.js';
+import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,drawCasino,drawCasinoWorld} from './casino.js';
 import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
 import {slideFoot} from './foot_motion.js';
 import {characterFrame,characterLayout} from './sprite_frames.js';
@@ -6,7 +7,7 @@ import {firstSolid,shotSpread,projectileDamage} from './combat.js';
 import {initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
 import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
-import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
+import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, resolveVehicleImpulse, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
 import { vehicleCondition, recordVehicleDamage, damageSnapshot, restoreDamage, drawVehicleDamage } from './vehicle_dynamics.js';
 import { AIRCRAFT_DEFS, airborne, spawnAircraft, tickAircraft, aircraftSnapshot, restoreAircraft, drawAircraft, aviationHint, canExitAircraft } from './aviation.js';
 import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, drawExpansionHUD } from './expansion.js';
@@ -33,6 +34,7 @@ import { directorState, directorSave, beginJob, tickDirector, finishJob, recordI
 
 const SAVE_KEY = "mw_crown_city_v1";
 const FREE_SAVE_KEY = "mw_crown_city_freeride_v1";
+const CASINO_HOOKS={button:uiButton,save:G=>save(G,true)};
 const WORLD = 4096; // painted core size
 const SETTINGS_KEY = "mw_crown_city_settings";
 const TAU = Math.PI * 2;
@@ -200,7 +202,7 @@ export async function boot() {
   servicePoints(G); buildStreetScene(G);
   G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
-  initExpansion(G);initTransit(G);initWildlife(G);
+  initExpansion(G);initTransit(G);initWildlife(G);initCasino(G);
   seedPickups(G);
   // Warm the first city tiles without running the city behind the static title.
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
@@ -610,7 +612,7 @@ function setupTouch(G) {
   hold('tDodge', d => { if(d) G.input.dodgeP=true; });
   hold('tCrew', d => { if(d) G.input.crewP=true; });
   const enterL = document.getElementById("tEnterL"), enterB = document.getElementById("tEnter"), boostB = document.getElementById("tBoost");
-  const enterIcon=enterB.querySelector('path'),icons={TALK:'M4 4h16v12H9l-5 4V4zM8 8h8M8 12h5',REPLAY:'M5 10a7 7 0 1 1 1 8M5 4v6h6',RAIL:'M6 3h12v14H6zM6 10h12M9 3v7M15 3v7M8 21l2-4M16 21l-2-4M8 14h1M15 14h1',TAKE:'M4 8l8-4 8 4v11H4V8zM4 8l8 4 8-4M12 12v7',BOAT:'M3 13l9-4 9 4-3 6H6l-3-6zM7 11V6h10v5M3 21l4-1 5 1 5-1 4 1',FLY:'M12 2v20M3 12l9-4 9 4M7 21l5-3 5 3',LAND:'M12 2v14M7 11l5 5 5-5M4 21h16',EXIT:'M10 3H4v18h6M10 12h11M16 7l5 5-5 5',BIKE:'M8 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM24 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM4 17l6-10 10 10M8 7h5',CAR:'M5 16l1.5-5.2A2 2 0 0 1 8.4 9.3h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5'};
+  const enterIcon=enterB.querySelector('path'),icons={PLAY:'M6 3h12v18H6zM12 7l3 5-3 5-3-5 3-5z',TALK:'M4 4h16v12H9l-5 4V4zM8 8h8M8 12h5',REPLAY:'M5 10a7 7 0 1 1 1 8M5 4v6h6',RAIL:'M6 3h12v14H6zM6 10h12M9 3v7M15 3v7M8 21l2-4M16 21l-2-4M8 14h1M15 14h1',TAKE:'M4 8l8-4 8 4v11H4V8zM4 8l8 4 8-4M12 12v7',BOAT:'M3 13l9-4 9 4-3 6H6l-3-6zM7 11V6h10v5M3 21l4-1 5 1 5-1 4 1',FLY:'M12 2v20M3 12l9-4 9 4M7 21l5-3 5 3',LAND:'M12 2v14M7 11l5 5 5-5M4 21h16',EXIT:'M10 3H4v18h6M10 12h11M16 7l5 5-5 5',BIKE:'M8 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM24 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM4 17l6-10 10 10M8 7h5',CAR:'M5 16l1.5-5.2A2 2 0 0 1 8.4 9.3h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5'};
   let lastMode = "";
   G._syncTouch = () => {
     syncControlStyle(G);
@@ -624,13 +626,14 @@ function setupTouch(G) {
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 104);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
-      const lbl = G.contactNear&&!drive ? (G.contactTalk?.id===G.contactNear.id&&G.contactTalk.repeat?'REPLAY':'TALK') : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
+      const casino=!drive&&nearCasino(G);
+      const lbl = casino?'PLAY':G.contactNear&&!drive ? (G.contactTalk?.id===G.contactNear.id&&G.contactTalk.repeat?'REPLAY':'TALK') : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
       if (enterL.textContent !== lbl) {enterL.textContent=lbl;enterIcon?.setAttribute('d',icons[lbl]||icons.CAR);}
-      enterB.classList.toggle("ready", (!!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
-      enterB.style.opacity = drive || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
+      enterB.classList.toggle("ready", (!!casino || !!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
+      enterB.style.opacity = drive || casino || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
       boostB.classList.toggle("off", !(drive && (G.player.def.sprite === "nyx" || G.player.def.aircraft)));
       const flying=drive&&G.player.def.aircraft;
-      for(const [id,text] of [["tBoost",flying?"UP":"BOOST"],["tBrake",flying?"DOWN":"BRAKE"],["tHand",flying?"LAND":"DRIFT"]]){const el=document.getElementById(id),label=el?.querySelector("span:last-child");if(label&&label.textContent!==text)label.textContent=text;}
+      for(const [id,text] of [["tBoost",flying?"UP":"BOOST"],["tBrake",flying?"DOWN":drive&&G.player.brakeReverse?"REVERSE":"BRAKE"],["tHand",flying?"LAND":"DRIFT"]]){const el=document.getElementById(id),label=el?.querySelector("span:last-child");if(label&&label.textContent!==text)label.textContent=text;}
     }
   };
 }
@@ -645,13 +648,13 @@ function watchCanvas(G,canvas){
   if(canvas._ccWatched||!canvas.addEventListener)return;canvas._ccWatched=true;
   canvas.addEventListener('contextlost',e=>{e.preventDefault();G.releaseControls?.();G.frozenWorld=null;G.renderRecovery=(G.renderRecovery||0)+1;});
   canvas.addEventListener('contextrestored',()=>{
-    G.frozenWorld=null;G._waterPat=null;
+    G.frozenWorld=null;G._waterPat=null;G.aircraftArtCache?.clear();G.regionalPlatformCache?.clear();G.journeyArt?.clear();
     for(const entry of G.mobileOuter?.values()||[]){entry.retired=true;entry.bitmap?.close();if(entry.canvas)entry.canvas.width=1;}
     G.mobileOuter?.clear();G.ground.cache.clear();G.light=createLighting();fit(G);
   });
 }
 
-function mobileCityRaster(G){return navigator.maxTouchPoints>0&&G.settings?.quality==='low'&&!['title','vn','end','train'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');}
+function mobileCityRaster(G){return navigator.maxTouchPoints>0&&G.settings?.quality==='low'&&!['title','vn','end','train','casino'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');}
 
 function fit(G) {
   const c = G.canvas;
@@ -702,6 +705,7 @@ function snapshot(G) {
     vehicleDamage: damageSnapshot(G.player),
     expansion: {...G.expansionState,visited:[...(G.expansionState?.visited||[])]},
     transit:{clock:G.transit?.clock||0,completed:G.transit?.completed||0},
+    casino:casinoSave(G),
     missionState: { ...G.missionState }, ended: G.ended, needsBegin: G.needsBegin,
     scene: G.scene, vnId: G.scene === 'vn' ? G.vn.id : null, vnQueue: [...(G.vnQueue || [])],
     race: G.race ? { i: G.race.i, rivalI: G.race.rivalI, t: G.race.t, countdown: G.race.countdown,
@@ -709,8 +713,8 @@ function snapshot(G) {
     van: G.van ? { x: G.van.x, y: G.van.y, health: G.van.health, dead: G.van.dead, loose: G.van.loose } : null,
   };
 }
-function save(G) {
-  try { localStorage.setItem(G.mode==='freeride'?FREE_SAVE_KEY:SAVE_KEY, JSON.stringify({ ...snapshot(G), checkpoint: G.checkpoint })); if(G.mode!=='freeride')G.saveExists = true; toast(G, "Saved."); } catch {}
+function save(G,quiet=false) {
+  try { localStorage.setItem(G.mode==='freeride'?FREE_SAVE_KEY:SAVE_KEY, JSON.stringify({ ...snapshot(G), checkpoint: G.checkpoint })); if(G.mode!=='freeride')G.saveExists = true; if(!quiet)toast(G, "Saved."); } catch {}
 }
 function loadSave(G, mode = G.mode || 'story') {
   const data = readJSON(localStorage, mode==='freeride'?FREE_SAVE_KEY:SAVE_KEY);
@@ -788,7 +792,7 @@ function restoreState(G, d) {
   else if (G.needsBegin && !G.ended) beginMission(G, G.missionIndex);
   else G.scene = G.ended && !G.freeRoam ? 'end' : 'play';
   setHint(G);
-  initExpansion(G,d.expansion);initTransit(G,d.transit);initWildlife(G);
+  initExpansion(G,d.expansion);initTransit(G,d.transit);initWildlife(G);initCasino(G,d.casino);
   beginJob(G);
   return true;
 }
@@ -867,6 +871,7 @@ function tick(G, dt) {
   else if (G.scene === "vn") tickVN(G, dt);
   else if (G.scene === "end") tickEnd(G, dt);
   else if (G.scene === "train") {tickJourney(G,dt,{makeFoot,save,tickWeather});menuKeys(G);}
+  else if (G.scene === 'casino') {tickCasino(G,dt,CASINO_HOOKS);if(G.input.pauseP)leaveCasino(G,CASINO_HOOKS);else menuKeys(G);}
   else if (G.scene === "transit") {if(G.input.pauseP)cancelTransit(G);else menuKeys(G);}
   else if (['pause','map','crew','garage','dossier'].includes(G.scene)) tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
@@ -920,7 +925,7 @@ function startNew(G) {
   G.cityAI=createCityAI(G);
   const s = G.meta.spawns.player;
   G.player = makeFoot(G, s[0], s[1], 0);
-  initExpansion(G,{});initTransit(G);initWildlife(G);
+  initExpansion(G,{});initTransit(G);initWildlife(G);initCasino(G);
   G.cam.x = s[0]; G.cam.y = s[1];
   G.needsBegin = true;
   G.weatherT = 90;
@@ -1058,7 +1063,7 @@ function tickTips(G, dt) {
   const steps = [
     { t: touch ? "Drag anywhere on the left to walk. Push further to run." : "WASD / arrows to walk. Shift to run.", done: () => (G.walked || 0) > 140 || P.type === "veh" },
     { t: touch ? "Walk to the gold marker and tap CAR to get in." : "Walk to the gold marker and press E to get in.", done: () => P.type === "veh" },
-    { t: touch ? "Point the stick where you want to go. BRAKE reverses, DRIFT slides." : "W gas, S brake/reverse, A/D steer, Space handbrake.", done: () => (G.drove || 0) > 600 },
+    { t: touch ? "Point the stick to steer. BRAKE: stop, then hold to reverse. DRIFT: slide." : "W gas, S brake/reverse, A/D steer, Space handbrake.", done: () => (G.drove || 0) > 600 },
     { t: "Follow the gold arrow and the minimap line to the van.", done: () => G.objectiveIndex >= 2 },
   ];
   if (P.type === "foot") G.walked = (G.walked || 0) + (P.speed || 0) * dt;
@@ -1195,6 +1200,8 @@ function tickPlay(G, dt) {
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
   tickWeather(G, dt);
   tickTransit(G,dt);
+  tickCasino(G,dt);
+  if(G.input.enterP&&interactCasino(G)){G.releaseControls?.();G.input.enterP=false;return;}
   if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
   if(G.input.enterP&&interactTransit(G)){G.input.enterP=false;return;}
   if (G.input.enterP && nearbyInteraction(G)) {
@@ -1427,9 +1434,17 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  const throttle = input.brake?0:Math.max(0,input.y||0);
-  const reverse=input.brake?0:Math.max(0,-(input.y||0));
-  if(input.brake){fwd=Math.sign(fwd)*Math.max(0,Math.abs(fwd)-def.brake*condition.brake*dt);lat*=Math.exp(-4*dt);}
+  let braking=!!input.brake,throttle=braking?0:Math.max(0,input.y||0),reverse=braking?0:Math.max(0,-(input.y||0));
+  const carPedal=isPlayer&&braking&&!def.boat&&!def.bike&&!def.aircraft;
+  if(carPedal){
+    if(fwd < -3)v.brakeReverse=true;
+    if(!v.brakeReverse){
+      v.brakeHold=Math.abs(fwd)<2&&Math.abs(lat)<6?(v.brakeHold||0)+dt:0;
+      if(v.brakeHold>=.32)v.brakeReverse=true;
+    }
+    if(v.brakeReverse){braking=false;reverse=.7;}
+  }else{v.brakeHold=0;v.brakeReverse=false;}
+  if(braking){fwd=Math.sign(fwd)*Math.max(0,Math.abs(fwd)-def.brake*condition.brake*dt);lat*=Math.exp(-4*dt);}
   const hand = !!input.hand;
   v.reverseDelay=reverse&&fwd>4?.22:Math.max(0,(v.reverseDelay||0)-dt);
   const isNyx = def.sprite === "nyx" && isPlayer;
@@ -1471,10 +1486,11 @@ function tickDrive(G, v, input, dt, isPlayer) {
   fwd *= Math.exp(-((def.boat&&!throttle?.38:.12) + (onLand ? 3 : 0) + (surf === "grass" || surf === "sand" || surf === "dirt" ? 0.35 : 0)) * dt);
   fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 0.0009 * fwd * fwd * dt * 60 * 0.02);
   if (def.boat && !onLand) fwd *= Math.exp(-Math.abs(v.yaw || 0) * 0.35 * dt); // turning bleeds speed into the wake
-  fwd = clamp(fwd, -def.max * 0.42, top);
+  const reverseTop=!def.boat&&!def.bike?Math.min(72,def.max*.32):def.max*.42;
+  fwd = clamp(fwd, -reverseTop, top);
   v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : def.boat ? 0.3 : 0.16) + (def.boat && !onLand ? Math.sin(G.ticks * 0.07 + v.x * 0.01) * 0.05 : 0), (def.bike ? 10 : 8) * dt);
   v.turnSign = steerIn;
-  v.braking = !!input.brake || reverse > 0 && fwd > 5 || hand;
+  v.braking = braking || reverse > 0 && fwd > 5 || hand;
   v.visualAccel = lerp(v.visualAccel || 0, clamp((fwd - (v.fwd || 0)) / Math.max(.01, dt) / 250, -1, 1), Math.min(1, dt * 9));
   v.visualTravel = (v.visualTravel || 0) + speed * dt;
   v.fwd = fwd;
@@ -1577,7 +1593,8 @@ function tickCollisions(G) {
   for(const v of near){const key=Math.floor(v.x/160)*65536+Math.floor(v.y/160);let bucket=grid.get(key);if(!bucket){bucket=pool.pop()||[];grid.set(key,bucket);}bucket.push(v);}
   G.streetVehicleGrid=grid;G.streetVehicleSource=G.vehicles;G.streetVehicleGeneration=(G.streetVehicleGeneration||0)+1;
   if(G.streetVehicleQueries)G.streetVehicleQueries.clear();else G.streetVehicleQueries=new Map();
-  G.movingVehicles=near.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
+  const moving=G.movingVehicles||(G.movingVehicles=[]);moving.length=0;
+  for(const v of near)if(!v.dead&&!v.def.boat&&!airborne(v)&&v.vx*v.vx+v.vy*v.vy>2025)moving.push(v);
   for(const [a,b] of nearbyPairs(near,G.collisionWorkspace||(G.collisionWorkspace={ignoreParked:true}))) {
       if(!!a.def.boat!==!!b.def.boat)continue;
       if(a.parked&&b.parked&&!a.loose&&!b.loose)continue;
@@ -1601,10 +1618,7 @@ function tickCollisions(G) {
       const otherImpact = a===P ? -b.vx*best.nx-b.vy*best.ny : b===P ? a.vx*best.nx+a.vy*best.ny : Infinity;
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
       if (rv < 0) {
-        const jimp = -(1.3) * rv / (1 / ma + 1 / mb);
-        a.vx -= jimp / ma * best.nx; a.vy -= jimp / ma * best.ny;
-        b.vx += jimp / mb * best.nx; b.vy += jimp / mb * best.ny;
-        const imp = Math.abs(rv);
+        const imp = resolveVehicleImpulse(a,b,best.nx,best.ny,ma,mb);
         for (const v of [a, b]) {
           if (v.isVan && imp > 50) v.loose = true;
           if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
@@ -2439,6 +2453,7 @@ function render(G) {
   } else if (G.scene === "vn") { if (G.vn.pending) drawBoot(ctx, canvas, 0.9, "Loading scene art…"); else drawVN(G); }
   else if (G.scene === "end") drawEnd(G);
   else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save,tickWeather});
+  else if(G.scene === 'casino')drawCasino(G,CASINO_HOOKS);
   else {
     const frozen = ['pause', 'map', 'settings','crew','garage','dossier','transit'].includes(G.scene);
     if (frozen && G.frozenWorld && G.frozenWorld.width === canvas.width && G.frozenWorld.height === canvas.height) {
@@ -2844,7 +2859,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawExpansionOverhead(G,r);drawTransitWorld(G,r);
+  drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -3134,8 +3149,13 @@ function drawVeh(G, v) {
   const ctx = G.ctx;
   ctx.save();
   if(v.def.boat){
-    const bridges=[...(G.world.expansion?.bridges||[]),...(G.world.expansion?.riverBridges||[])].filter(b=>v.x+100>b.x&&v.x-100<b.x+b.w&&v.y+120>b.y&&v.y-120<b.y+b.h)||[];
-    if(bridges.length){ctx.beginPath();ctx.rect(-1000,-1000,WORLD_W+2000,WORLD_H+2000);for(const b of bridges)ctx.rect(b.x,b.y,b.w,b.h);ctx.clip('evenodd');}
+    let clipping=false;
+    for(const b of G.world.expansion?.overpasses||[]){
+      if(v.x+100<=b.x||v.x-100>=b.x+b.w||v.y+120<=b.y||v.y-120>=b.y+b.h)continue;
+      if(!clipping){ctx.beginPath();ctx.rect(-1000,-1000,WORLD_W+2000,WORLD_H+2000);clipping=true;}
+      ctx.rect(b.x,b.y,b.w,b.h);
+    }
+    if(clipping)ctx.clip('evenodd');
   }
   ctx.translate(v.x, v.y);
   const pose = vehiclePose(v, G.ticks / 60, G.settings.reducedMotion);

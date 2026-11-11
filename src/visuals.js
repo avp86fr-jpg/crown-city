@@ -1,4 +1,5 @@
 import {LIGHT} from './lighting.js';
+import {projectedRoofBounds} from './render_world.js';
 /* Rendering-only effects. No collision, economy or mission state is changed here. */
 const TAU = Math.PI * 2;
 const clamp = (n, a = 0, b = 1) => Math.max(a, Math.min(b, n));
@@ -28,8 +29,8 @@ export function drawVehicleFinish(G, v, w, h, pose) {
   const ctx = G.ctx;
   ctx.save();
   if(G.settings.quality==='low'){
-    if(v.fwd< -8&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#d4eeeb';ctx.fillRect(-w*.25,h*.4,4,3);ctx.fillRect(w*.25-4,h*.4,4,3);}
     if(v.braking&&!v.dead&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
+    if(v.fwd< -5&&!v.dead&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#d3f4ff';ctx.fillRect(-w*.24,h*.39,3,2);ctx.fillRect(w*.24-3,h*.39,3,2);}
     ctx.restore();return;
   }
   // A moving clear-coat highlight follows the car's angle to the city lights.
@@ -56,7 +57,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
     }
     if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);}
     // Reverse lights are distinct from the warm brake lamps.
-    if ((v.fwd || 0) < -8) { ctx.fillStyle = '#d3f4ff'; ctx.fillRect(-w * .24, h * .39, 3, 2); ctx.fillRect(w * .24 - 3, h * .39, 3, 2); }
+    if (!v.dead && (v.fwd || 0) < -5) { ctx.fillStyle = '#d3f4ff'; ctx.fillRect(-w * .24, h * .39, 3, 2); ctx.fillRect(w * .24 - 3, h * .39, 3, 2); }
   }
   if (G.rainAmt > .15 && !v.def.bike && !v.def.boat && !v.dead) {
     const angle = G.settings.reducedMotion ? -.4 : Math.sin(G.ticks / 60 * 5) * .75;
@@ -195,13 +196,13 @@ export function drawGrade(G) {
 export function drawArchitectureLights(G, r, night) {
   if (night < .1) return;
   const ctx = G.ctx, time = G.settings.reducedMotion ? 0 : G.ticks / 60;
-  const buildings = G.bld.inView(r), D = 980 / Math.max(.45, G.cam.scale);
+  // A sign's glow extends beyond its roof edge, so keep its source visible too.
+  const buildings = G.bld.inView(r,100), roof={};
   let signs = 0;
   for (const b of buildings) {
     if (!['shop', 'loft', 'garage', 'office', 'casino'].includes(b.kind)) continue;
-    const h = b.core ? 0 : b.hgt;
-    const k = h / D, rx = b.x + (b.x - G.cam.x) * k, ry = b.y + (b.y - G.cam.y) * k;
-    const rw = b.w * (1 + k), rh = b.h * (1 + k);
+    projectedRoofBounds(b,G.cam,roof);
+    const {x:rx,y:ry,w:rw,h:rh}=roof;
     const color = b.kind === 'loft' ? '98,208,255' : b.kind === 'garage' ? '255,165,76' : b.kind === 'casino' ? '255,106,194' : ['60,219,232', '244,104,171', '255,193,106'][Math.floor(hash(b.seed) * 3)];
     ctx.save();
     // Corner strips give selected commercial buildings a clear silhouette.

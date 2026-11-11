@@ -1,5 +1,6 @@
 /* Screen-local environmental detail. No particle allocations and no hidden-world updates. */
-import {nightMix,LIGHT} from './lighting.js';
+import {nightMix,ambientAt,LIGHT} from './lighting.js';
+import {drawBoundaryBackdrop,drawBoundaryMarkers} from './world_limits.js';
 function drawAirfieldSignals(G,r){
  const details=G.world.details;if(!details||r.x1<6580||r.x0>10000||r.y1<7300||r.y0>7970)return;
  const c=G.ctx,n=nightMix(G.time),t=G.settings.reducedMotion?0:G.ticks/60;c.save();
@@ -14,6 +15,14 @@ function drawAirfieldSignals(G,r){
  }c.restore();
 }
 export function drawLocalAtmosphere(G,r){
+ const bounds=G.world.limits;
+ if(bounds&&(r.x0<bounds.x||r.x1>bounds.x+bounds.w||r.y0<bounds.y||r.y1>bounds.y+bounds.h)){
+  // Quantize only the remote vista tint; no cache rebuild or terrain work as time advances.
+  const minute=Math.floor(G.time*60);if(G._boundaryMinute!==minute){G._boundaryMinute=minute;const rgb=ambientAt(G.time);G._boundaryTint=`rgb(${rgb.map(Math.round).join(',')})`;}
+  drawBoundaryBackdrop(G.ctx,bounds,r,G);
+ }
+ // The west/north painted core bypasses the procedural ground cache.
+ if(r.x0<24&&r.y0<4096||r.y0<24&&r.x0<4096)drawBoundaryMarkers(G.ctx,G.world,{x0:r.x0,y0:r.y0,x1:Math.min(4096,r.x1),y1:Math.min(4096,r.y1)});
  drawAirfieldSignals(G,r);
  if(G.settings.reducedMotion)return;const c=G.ctx,t=G.ticks/60,n=nightMix(G.time),count=G.settings.quality==='low'?10:22,w=r.x1-r.x0,h=r.y1-r.y0,forest=G.player.x>10400&&G.player.y<8400,desert=G.player.y>9216&&G.player.x<8800;
  c.save();

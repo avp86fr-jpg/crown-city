@@ -5,6 +5,16 @@ import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
 import { loadImage as loadImg } from "./assets.js";
+const roofParallax=(offset,k)=>Math.max(-24,Math.min(24,offset*k));
+// Roof art, rooftop details and neon share the same capped perspective.
+// Callers can reuse `out` while painting a complete building batch.
+export function projectedRoofBounds(b,cam,out={}){
+  const k=(b.core?0:b.hgt)/(980/Math.max(.45,cam.scale));
+  out.x=b.x+roofParallax(b.x-cam.x,k);out.y=b.y+roofParallax(b.y-cam.y,k);
+  out.w=b.x+b.w+roofParallax(b.x+b.w-cam.x,k)-out.x;
+  out.h=b.y+b.h+roofParallax(b.y+b.h-cam.y,k)-out.y;
+  return out;
+}
 
 export class TileLayer {
   constructor(name, keys, size, ext = "webp") {
@@ -536,13 +546,38 @@ export function makeBuildings(W, tex, coreRoofs) {
   });
   const treeBins = new Map();
   for (const t of W.trees) { const k = Math.floor(t.x / BIN) + Math.floor(t.y / BIN) * 100; if (!treeBins.has(k)) treeBins.set(k, []); treeBins.get(k).push(t); }
-  function inView(r, binsMap) {
-    const out = new Set();
-    for (let bx = Math.floor(r.x0 / BIN); bx <= Math.floor(r.x1 / BIN); bx++)
-      for (let by = Math.floor(r.y0 / BIN); by <= Math.floor(r.y1 / BIN); by++) {
-        const l = binsMap.get(bx + by * 100); if (l) for (const b of l) out.add(b);
-      }
-    return out;
+  // Static geometry changes only when a world is built. Reuse candidate lists
+  // while the view moves inside the same bins instead of rebuilding Sets for
+  // every roof, window, foliage and shadow pass. Exact bounds still run below.
+  const buildingQueries=new Map(),treeQueries=new Map(),visibleBuildings=[],visibleTrees=[],drawOrder=[];
+  const maxHeight=all.reduce((h,b)=>Math.max(h,b.core?0:b.hgt||0),0),maxTreeRadius=W.trees.reduce((r,t)=>Math.max(r,t.r*(t.pine?1.7:1.25)),0);
+  const queryStats={builds:0,buildingCandidates:0,buildings:0,treeCandidates:0,trees:0};
+  function candidates(r,binsMap,cache,pad){
+    const x0=Math.floor((r.x0-pad)/BIN),y0=Math.floor((r.y0-pad)/BIN),x1=Math.floor((r.x1+pad)/BIN),y1=Math.floor((r.y1+pad)/BIN),key=x0+':'+y0+':'+x1+':'+y1;
+    let list=cache.get(key);if(list)return list;
+    const seen=new Set();list=[];
+    for(let bx=x0;bx<=x1;bx++)for(let by=y0;by<=y1;by++){
+      const bin=binsMap.get(bx+by*100);if(bin)for(const item of bin)if(!seen.has(item)){seen.add(item);list.push(item);}
+    }
+    cache.set(key,list);queryStats.builds++;if(cache.size>8)cache.delete(cache.keys().next().value);return list;
+  }
+  function inView(r,pad=24,sun=null){
+    const list=candidates(r,bins,buildingQueries,sun?maxHeight*sun.len:pad),out=visibleBuildings;out.length=0;
+    for(const b of list){
+      const h=b.core?0:b.hgt||0,dx=sun?-sun.x*h*sun.len:0,dy=sun?-sun.y*h*sun.len:0;
+      if(b.x+Math.min(0,dx)-pad>r.x1||b.y+Math.min(0,dy)-pad>r.y1||b.x+b.w+Math.max(0,dx)+pad<r.x0||b.y+b.h+Math.max(0,dy)+pad<r.y0)continue;
+      out.push(b);
+    }
+    queryStats.buildingCandidates=list.length;queryStats.buildings=out.length;return out;
+  }
+  function inViewTrees(r,shadow=null){
+    const extra=shadow?26*shadow.len:80,list=candidates(r,treeBins,treeQueries,maxTreeRadius+extra),out=visibleTrees;out.length=0;
+    for(const t of list){
+      const radius=t.r*(t.pine?1.7:1.25),dx=shadow?-shadow.x*26*shadow.len:0,dy=shadow?-shadow.y*26*shadow.len:0,pad=shadow?radius:radius+extra;
+      if(t.x+dx+pad<r.x0||t.x+dx-pad>r.x1||t.y+dy+pad<r.y0||t.y+dy-pad>r.y1)continue;
+      out.push(t);
+    }
+    queryStats.treeCandidates=list.length;queryStats.trees=out.length;return out;
   }
   const wallCol = (b) => {
     const w = W.WALLS[b.wall] || (b.core ? coreWall(b) : W.WALLS.grey);
@@ -561,16 +596,16 @@ export function makeBuildings(W, tex, coreRoofs) {
     const k = h / D;
     // Keep roof parallax within its block instead of stretching a distant
     // tower over a neighbouring roadway. The static/mobile footprint stays valid.
-    const cap=24;return [px+Math.max(-cap,Math.min(cap,(px-cam.x)*k)),py+Math.max(-cap,Math.min(cap,(py-cam.y)*k))];
+    return [px+roofParallax(px-cam.x,k),py+roofParallax(py-cam.y,k)];
   }
   // ---- painted roof bake: texture + per-building tint + grime + sun gradient + AO edge + parapet + details
-  const roofCache = new Map();
+  const roofCache = new Map(),roofBudget=12*1024*1024;let roofBytes=0;
   function roofSprite(b) {
-    let c = roofCache.get(b);
-    if (c) { roofCache.delete(b); roofCache.set(b, c); return c; }
+    let entry=roofCache.get(b);
+    if(entry){roofCache.delete(b);roofCache.set(b,entry);return entry.c;}
     const sc = Math.min(1, 256 / Math.max(b.w, b.h));
     const W = Math.max(8, Math.round(b.w * sc)), H = Math.max(8, Math.round(b.h * sc));
-    c = document.createElement("canvas"); c.width = W; c.height = H;
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
     const x = c.getContext("2d");
     x.scale(sc, sc);
     const p = pat[b.roof] || pat.gravel;
@@ -601,8 +636,9 @@ export function makeBuildings(W, tex, coreRoofs) {
     x.strokeStyle = "rgba(0,0,0,0.4)"; x.lineWidth = 3; x.strokeRect(1.5, 1.5, b.w - 3, b.h - 3);
     x.strokeStyle = "rgba(255,255,255,0.2)"; x.lineWidth = 1.5; x.strokeRect(4, 4, b.w - 8, b.h - 8);
     roofDetails(x, b, 0, 0, b.w, b.h);
-    roofCache.set(b, c);
-    if (roofCache.size > 160) roofCache.delete(roofCache.keys().next().value);
+    entry={c,bytes:W*H*4};roofCache.set(b,entry);roofBytes+=entry.bytes;
+    while(roofCache.size>160||roofBytes>roofBudget){const key=roofCache.keys().next().value,old=roofCache.get(key);roofCache.delete(key);roofBytes-=old.bytes;old.c.width=old.c.height=1;}
+    queryStats.roofBytes=roofBytes;queryStats.roofEntries=roofCache.size;queryStats.roofBudget=roofBudget;
     return c;
   }
   function wall(ctx, a, b, qa, qb, col, hgt, facP, sun, nx, ny) {
@@ -618,10 +654,10 @@ export function makeBuildings(W, tex, coreRoofs) {
     ctx.fillStyle = `rgba(0,0,0,${(1 - lit) * 0.75})`; ctx.fill();
   }
   return {
-    all, inView: (r) => inView(r, bins),
+    all, inView: (r,pad=24) => inView(r,pad),queryStats,
     // Camera-independent roofs and foliage are baked into mobile scenery tiles.
     staticDraw(ctx,r){
-      for(const b of inView(r,bins)){
+      for(const b of inView(r,18)){
         if(b.core)continue;
         ctx.fillStyle='rgba(10,16,18,.3)';ctx.fillRect(b.x+9,b.y+12,b.w+5,b.h+5);
         if(b.kind==='container'){ctx.fillStyle=b.color||'#7e7770';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='rgba(0,0,0,.2)';for(let x=b.x+4;x<b.x+b.w;x+=7)ctx.fillRect(x,b.y,2,b.h);}
@@ -631,7 +667,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     },
     draw(ctx, cam, r, frame, sun, opts) {
       const D = 980 / Math.max(0.45, cam.scale);
-      const list = [...inView(r, bins)];
+      const list=drawOrder;list.length=0;for(const b of inView(r))list.push(b);
       // far-from-camera first so near walls overlap correctly
       for (const b of list) { const dx = b.x + b.w / 2 - cam.x, dy = b.y + b.h / 2 - cam.y; b._dk = dx * dx + dy * dy; }
       list.sort((p, q) => q._dk - p._dk);
@@ -675,7 +711,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     drawLit(ctx, cam, r, night) {
       // lit windows pass (additive, after the light map)
       const D = 980 / Math.max(0.45, cam.scale);
-      for (const b of inView(r, bins)) {
+      for (const b of inView(r)) {
         if (b.kind === "container" || b.kind === "hangar") continue;
         const h = b.core ? 0 : b.hgt;
         if (h < 18) continue;
@@ -701,13 +737,13 @@ export function makeBuildings(W, tex, coreRoofs) {
       // ground shadows, drawn opaque into a mask
       if (sun.len < 0.02) return;
       ctx.fillStyle = "#000";
-      for (const b of inView(r, bins)) {
+      for (const b of inView(r,0,sun)) {
         const h = b.core ? 0 : b.hgt;
         if(!h)continue; // The illustrated core already includes ground shadows.
         const dx = -sun.x * h * sun.len, dy = -sun.y * h * sun.len;
         shadowHull(ctx, b.x, b.y, b.w, b.h, dx, dy);
       }
-      for (const t of inViewTrees(r)) {
+      for (const t of inViewTrees(r,sun)) {
         ctx.beginPath(); ctx.ellipse(t.x - sun.x * 26 * sun.len, t.y - sun.y * 26 * sun.len, t.r, t.r * 0.9, 0, 0, TAU); ctx.fill();
       }
     },
@@ -731,20 +767,15 @@ export function makeBuildings(W, tex, coreRoofs) {
       }
     },
   };
-  function inViewTrees(r) { return inView({x0:r.x0-96,y0:r.y0-96,x1:r.x1+96,y1:r.y1+96}, treeBins); }
 }
 function shadowHull(ctx, x, y, w, h, dx, dy) {
-  const pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
-  const all = pts.concat(pts.map((p) => [p[0] + dx, p[1] + dy]));
-  // convex hull (monotone chain) of 8 pts
-  all.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const lo = [], up = [];
-  for (const p of all) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
-  for (let i = all.length - 1; i >= 0; i--) { const p = all[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
-  const hull = lo.slice(0, -1).concat(up.slice(0, -1));
-  ctx.beginPath(); ctx.moveTo(hull[0][0], hull[0][1]);
-  for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i][0], hull[i][1]);
+  // A rectangle extruded along one vector always has this six-vertex hull.
+  // Avoid sorting eight allocated points for every visible building each frame.
+  const x1=x+w,y1=y+h;ctx.beginPath();
+  if(dx>=0&&dy>=0){ctx.moveTo(x,y);ctx.lineTo(x1,y);ctx.lineTo(x1+dx,y+dy);ctx.lineTo(x1+dx,y1+dy);ctx.lineTo(x+dx,y1+dy);ctx.lineTo(x,y1);}
+  else if(dx>=0){ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.lineTo(x1+dx,y+dy);ctx.lineTo(x1+dx,y1+dy);ctx.lineTo(x1,y1);ctx.lineTo(x,y1);}
+  else if(dy<0){ctx.moveTo(x+dx,y+dy);ctx.lineTo(x1+dx,y+dy);ctx.lineTo(x1,y);ctx.lineTo(x1,y1);ctx.lineTo(x,y1);ctx.lineTo(x+dx,y1+dy);}
+  else{ctx.moveTo(x,y);ctx.lineTo(x1,y);ctx.lineTo(x1,y1);ctx.lineTo(x1+dx,y1+dy);ctx.lineTo(x+dx,y1+dy);ctx.lineTo(x+dx,y+dy);}
   ctx.closePath(); ctx.fill();
 }
 function roofDetails(ctx, b, rx, ry, rw, rh) {

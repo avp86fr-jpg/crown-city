@@ -1,6 +1,7 @@
 /* Ground coordinates and altitude are separate: the same aircraft exists on the
    apron, in flight, in a save, and in the collision/render passes. */
 import {vehicleCondition,drawVehicleDamage} from './vehicle_dynamics.js';
+import {bodyContact,bodySize} from './collision.js';
 import { WORLD_W, WORLD_H } from './world.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const num=(v,d,a=-Infinity,b=Infinity)=>Number.isFinite(v)?clamp(v,a,b):d;
@@ -23,11 +24,12 @@ export function landingZone(G,v){
  return 'CLEARING';
 }
 export function canExitAircraft(v){return !v.def?.aircraft||((v.altitude||0)<=1&&Math.hypot(v.vx||0,v.vy||0)<12);}
-export function aircraftSnapshot(v){return v?.def?.aircraft?{id:v.aircraftId,altitude:v.altitude||0,verticalSpeed:v.verticalSpeed||0,airspeed:v.airspeed||0,vx:v.vx,vy:v.vy,landing:!!v.landing,rotor:v.rotor||0,approachDirection:v.approachDirection||0,autoBrake:!!v.autoBrake}:null;}
+export function aircraftSnapshot(v){return v?.def?.aircraft?{id:v.aircraftId,livery:v.aircraftLivery,altitude:v.altitude||0,verticalSpeed:v.verticalSpeed||0,airspeed:v.airspeed||0,vx:v.vx,vy:v.vy,landing:!!v.landing,rotor:v.rotor||0,approachDirection:v.approachDirection||0,autoBrake:!!v.autoBrake}:null;}
 export function restoreAircraft(v,s={}){
  v.altitude=num(s?.altitude,0,0,420);v.verticalSpeed=num(s?.verticalSpeed,0,-85,65);
  v.airspeed=num(s?.airspeed,0,0,v.def.max);v.vx=num(s?.vx,0,-v.def.max,v.def.max);v.vy=num(s?.vy,0,-v.def.max,v.def.max);
  v.landing=s?.landing===true;v.rotor=num(s?.rotor,0,0,1);v.aircraftId=typeof s?.id==='string'?s.id:v.aircraftId;
+ if(['gold','teal','red','slate'].includes(s?.livery))v.aircraftLivery=s.livery;
  v.approachDirection=s?.approachDirection===-1?-1:s?.approachDirection===1?1:0;v.autoBrake=s?.autoBrake===true;
  v.flightState=v.altitude>1?'CRUISE':'PARKED';v.stall=false;
 }
@@ -39,7 +41,13 @@ export function spawnAircraft(G,makeVeh){
  ];
  for(const s of spawns){if(!AIRCRAFT_DEFS[s.kind]||G.vehicles.some(v=>v.aircraftId===s.id&&!v.dead))continue;
   G.vehicles=G.vehicles.filter(v=>!(v.dead&&v.aircraftId===s.id));
-  const v=makeVeh(s.kind,s.x,s.y,s.rot||0,{keep:true,aircraftId:s.id,home:{x:s.x,y:s.y,rot:s.rot||0}});restoreAircraft(v);G.vehicles.push(v);
+  const v=makeVeh(s.kind,s.x,s.y,s.rot||0,{keep:true,aircraftId:s.id,aircraftLivery:s.livery||'gold',home:{x:s.x,y:s.y,rot:s.rot||0}});restoreAircraft(v);
+  // A returning aircraft or parked car may occupy a stand. Keep the spawn
+  // reserved until the complete wings/rotor and its ground footprint fit.
+  if(aircraftClearance(G,v)>0||G.vehicles.some(o=>!airborne(o)&&bodyContact(v,o)))continue;
+  const size=bodySize(v),co=Math.cos(v.rot),si=Math.sin(v.rot);let wet=false;
+  for(const x of [-size.w,0,size.w])for(const y of [-size.l,0,size.l])if(['water','canal','build'].includes(G.surfaceAt(v.x+x*co-y*si,v.y+x*si+y*co)))wet=true;
+  if(!wet)G.vehicles.push(v);
  }
 }
 // A static building index makes aerial clearance independent of city size.
@@ -107,8 +115,13 @@ export function tickAircraft(G,v,I,dt,hooks={}){
    speed+=clamp(210-speed,-60,60)*dt;
   }else if(!ground&&I.touchFlight&&throttle===0&&!up){speed+=clamp(240-speed,-25,25)*dt;}
   else speed+=((throttle>0?throttle*105*condition.power:ground?-23:-8)-((down||v.autoBrake)&&ground?150:0)-(throttle<0?-throttle*120:0))*dt;
+  // The apron is a taxiway, not a second runway. Keep turns readable and avoid
+  // reaching takeoff speed between parked wings or beside the terminal.
+  if(ground&&(!onRunway(G,v)||Math.abs(Math.cos(v.rot))>.35)&&speed>82)speed=Math.max(82,speed-150*dt);
   speed=clamp(speed,0,v.def.max*condition.top);v.airspeed=speed;
-  const yaw=steer*(ground?1.15:.74)*clamp(speed/120,.1,1);v.yaw=(v.yaw||0)+(yaw-(v.yaw||0))*(1-Math.exp(-(ground?9:5)*dt));v.rot=angle(v.rot+v.yaw*dt);v.lean=(v.lean||0)+(steer*.25-(v.lean||0))*(1-Math.exp(-5*dt));
+  // Nose-wheel steering needs a tighter radius than banking in flight so a
+  // Skylark can follow the apron corners without cutting across other stands.
+  const yaw=steer*(ground?1.5:.74)*clamp(speed/(ground?100:120),.1,1);v.yaw=(v.yaw||0)+(yaw-(v.yaw||0))*(1-Math.exp(-(ground?12:5)*dt));v.rot=angle(v.rot+v.yaw*dt);v.lean=(v.lean||0)+(steer*.25-(v.lean||0))*(1-Math.exp(-5*dt));
   v.vx=Math.sin(v.rot)*speed;v.vy=-Math.cos(v.rot)*speed;
   v.stall=!ground&&speed<155;
   if(ground&&throttle>0&&!v.groundLock&&speed>=185&&onRunway(G,v)&&Math.abs(Math.cos(v.rot))<.35&&!down){vertical=38;v.altitude=1.1;}
@@ -145,36 +158,53 @@ export function aviationHint(G){
  const controls=G.touch?(v.def.airplane?'Stick: throttle / turn · UP: climb · DOWN: descend · LAND: runway assist':'Stick: fly · UP: climb · DOWN: descend · LAND'):(v.def.airplane?'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: runway assist':'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: land');
  return `${v.def.name.toUpperCase()} / ${v.flightState||'PARKED'} · ALT ${Math.round(v.altitude||0)} · SPD ${Math.round(v.airspeed||0)}\n${controls}`;
 }
+function aircraftBody(G,v){
+ const resolution=G.touch||G.settings.quality==='low'?1:2,key=[v.kind,v.aircraftLivery||'gold',v.dead?1:0,resolution].join(':');
+ const cache=G.aircraftArtCache||(G.aircraftArtCache=new Map());if(cache.has(key))return cache.get(key);
+ const canvas=document.createElement('canvas');canvas.width=224*resolution;canvas.height=208*resolution;
+ const c=canvas.getContext('2d'),heli=v.def.helicopter;c.scale(resolution,resolution);c.translate(112,104);
+ const path=(points,fill,stroke='#13252c',width=2)=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();c.strokeStyle=stroke;c.lineWidth=width;c.stroke();};
+ const stripe=({gold:'#c79845',teal:'#368e8c',red:'#aa5653',slate:'#617b91'})[v.aircraftLivery]||'#c79845';
+ const hull=c.createLinearGradient(-22,0,22,0);hull.addColorStop(0,v.dead?'#354046':'#254958');hull.addColorStop(.45,v.dead?'#566166':'#e5e8da');hull.addColorStop(.65,v.dead?'#30383c':'#fff9dc');hull.addColorStop(1,v.dead?'#202c31':'#829d9b');
+ if(heli){
+  // Skids, tail boom, horizontal stabilizers, then the glazed cabin.
+  c.strokeStyle='#172e38';c.lineWidth=5;for(const x of [-25,25]){c.beginPath();c.moveTo(x,-30);c.lineTo(x,32);c.stroke();}c.lineWidth=3;c.beginPath();c.moveTo(-25,-10);c.lineTo(25,-10);c.moveTo(-25,22);c.lineTo(25,22);c.stroke();
+  path([[-6,18],[-4,77],[5,77],[8,18]],hull);path([[-23,58],[24,58],[21,65],[-21,65]],stripe);
+  path([[0,-47],[-15,-37],[-20,-12],[-16,23],[0,32],[16,23],[20,-12],[15,-37]],hull);
+  path([[-13,-30],[-3,-40],[-3,-13],[-15,-13]],'#285369');path([[3,-40],[13,-30],[15,-13],[3,-13]],'#5c8c9a');
+  c.strokeStyle='#d7ecda';c.lineWidth=1;c.beginPath();c.moveTo(-12,-29);c.lineTo(-5,-34);c.moveTo(6,-33);c.lineTo(11,-27);c.stroke();
+  path([[-17,-4],[-7,-4],[-7,15],[-15,13]],'#315969');path([[7,-4],[17,-4],[15,13],[7,15]],'#416c7a');
+  c.fillStyle=stripe;c.fillRect(-17,19,34,4);c.fillStyle='#eef5de';c.font='bold 6px sans-serif';c.textAlign='center';c.fillText('CROWN',0,28);
+ }else{
+  path([[-8,23],[-37,48],[-35,57],[0,46],[35,57],[37,48],[8,23]],hull);
+  path([[-10,-21],[-88,0],[-88,16],[-12,7],[12,7],[88,16],[88,0],[10,-21]],hull);
+  path([[-77,2],[-34,-9],[-34,-3],[-77,8]],stripe);path([[34,-9],[77,2],[77,8],[34,-3]],stripe);
+  path([[0,-69],[-11,-47],[-14,-5],[-9,38],[0,65],[9,38],[14,-5],[11,-47]],hull);
+  path([[-8,-44],[0,-52],[8,-44],[9,-22],[-9,-22]],'#346275');c.strokeStyle='#a9d6ce';c.lineWidth=2;c.beginPath();c.moveTo(0,-48);c.lineTo(0,-25);c.stroke();
+  for(const x of [-33,33])path([[x-6,-31],[x+6,-31],[x+7,0],[x-7,0]],hull);
+  c.fillStyle=stripe;c.fillRect(-8,30,16,5);c.fillStyle='#203b4b';c.font='bold 7px sans-serif';c.textAlign='center';c.fillText('CW',0,18);
+  path([[0,25],[-3,60],[3,60]],'#264c60');
+ }
+
+ if(cache.size>=8){const oldest=cache.keys().next().value;cache.get(oldest).width=1;cache.delete(oldest);}
+ cache.set(key,canvas);G.aircraftArtBuilds=(G.aircraftArtBuilds||0)+1;return canvas;
+}
 export function drawAircraft(G,v){
  const c=G.ctx,heli=v.def.helicopter,z=v.altitude||0,t=G.ticks/60;
  c.save();c.translate(v.x+z*.12,v.y+z*.08);c.rotate(v.rot);c.globalAlpha=clamp(.3-z/1800,.08,.3);c.fillStyle='#08151d';
  c.beginPath();c.ellipse(0,0,heli?40:82,heli?57:70,0,0,Math.PI*2);c.fill();c.restore();
  c.save();c.translate(v.x,v.y-z*.22);c.rotate(v.rot);const scale=1+z/1800;c.scale(scale,scale);
- const path=(points,fill,stroke='#13252c',width=2)=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();c.strokeStyle=stroke;c.lineWidth=width;c.stroke();};
- const hull=c.createLinearGradient(-22,0,22,0);hull.addColorStop(0,v.dead?'#354046':'#254958');hull.addColorStop(.45,v.dead?'#566166':'#e5e8da');hull.addColorStop(.65,v.dead?'#30383c':'#fff9dc');hull.addColorStop(1,v.dead?'#202c31':'#829d9b');
+ c.drawImage(aircraftBody(G,v),-112,-104,224,208);
+ // Only moving assemblies and current damage are drawn each frame. A parked
+ // helicopter's tail rotor now stops with its main rotor.
  if(heli){
-  // Skids, tail boom, horizontal stabilizers, then the glazed cabin.
-  c.strokeStyle='#172e38';c.lineWidth=5;for(const x of [-25,25]){c.beginPath();c.moveTo(x,-30);c.lineTo(x,32);c.stroke();}c.lineWidth=3;c.beginPath();c.moveTo(-25,-10);c.lineTo(25,-10);c.moveTo(-25,22);c.lineTo(25,22);c.stroke();
-  path([[-6,18],[-4,77],[5,77],[8,18]],hull);path([[-23,58],[24,58],[21,65],[-21,65]],'#dfb663');
-  path([[0,-47],[-15,-37],[-20,-12],[-16,23],[0,32],[16,23],[20,-12],[15,-37]],hull);
-  path([[-13,-30],[-3,-40],[-3,-13],[-15,-13]],'#285369');path([[3,-40],[13,-30],[15,-13],[3,-13]],'#5c8c9a');
-  c.strokeStyle='#d7ecda';c.lineWidth=1;c.beginPath();c.moveTo(-12,-29);c.lineTo(-5,-34);c.moveTo(6,-33);c.lineTo(11,-27);c.stroke();
-  path([[-17,-4],[-7,-4],[-7,15],[-15,13]],'#315969');path([[7,-4],[17,-4],[15,13],[7,15]],'#416c7a');
-  c.fillStyle='#d5ac57';c.fillRect(-17,19,34,4);c.fillStyle='#eef5de';c.font='bold 6px sans-serif';c.textAlign='center';c.fillText('CROWN',0,28);
-  c.save();c.translate(0,72);c.rotate(t*(v.dead?0:34));c.fillStyle='#1e3540';c.fillRect(-15,-2,30,4);c.fillRect(-2,-15,4,30);c.restore();
-  const spin=v.dead?0:t*(v.rotor||0)*35;c.save();c.translate(0,-2);c.rotate(spin);c.fillStyle='#233a41';for(let i=0;i<4;i++){c.rotate(Math.PI/2);path([[5,-3],[66,-5],[68,1],[7,4]],'#263c44','#152832',1);c.fillStyle='#d6bd6c';c.fillRect(57,-4,10,4);}c.restore();
+  const powered=!v.dead&&(v.rotor||0)>0,spin=powered?t*v.rotor*35:0;
+  c.save();c.translate(0,72);c.rotate(powered?t*v.rotor*34:0);c.fillStyle='#1e3540';c.fillRect(-15,-2,30,4);c.fillRect(-2,-15,4,30);c.restore();
+  c.save();c.translate(0,-2);c.rotate(spin);c.fillStyle='#263c44';
+  for(let i=0;i<4;i++){c.rotate(Math.PI/2);c.fillRect(5,-3,63,6);c.fillStyle='#d6bd6c';c.fillRect(57,-3,10,4);c.fillStyle='#263c44';}c.restore();
   if(v.rotor>.5&&!G.settings?.reducedMotion){c.globalAlpha=.14;c.strokeStyle='#ccd5c4';c.lineWidth=8;c.beginPath();c.ellipse(0,-2,64,64,0,0,Math.PI*2);c.stroke();c.globalAlpha=1;}
   c.fillStyle='#c4aa66';c.beginPath();c.arc(0,-2,6,0,Math.PI*2);c.fill();
- }else{
-  path([[-8,23],[-37,48],[-35,57],[0,46],[35,57],[37,48],[8,23]],hull);
-  path([[-10,-21],[-88,0],[-88,16],[-12,7],[12,7],[88,16],[88,0],[10,-21]],hull);
-  path([[-77,2],[-34,-9],[-34,-3],[-77,8]],'#c79845');path([[34,-9],[77,2],[77,8],[34,-3]],'#c79845');
-  path([[0,-69],[-11,-47],[-14,-5],[-9,38],[0,65],[9,38],[14,-5],[11,-47]],hull);
-  path([[-8,-44],[0,-52],[8,-44],[9,-22],[-9,-22]],'#346275');c.strokeStyle='#a9d6ce';c.lineWidth=2;c.beginPath();c.moveTo(0,-48);c.lineTo(0,-25);c.stroke();
-  for(const x of [-33,33]){path([[x-6,-31],[x+6,-31],[x+7,0],[x-7,0]],hull);c.save();c.translate(x,-32);c.rotate(t*(v.dead||v!==G.player&&!(v.airspeed>8)?0:70));c.fillStyle='#263640';c.fillRect(-14,-2,28,4);c.restore();}
-  c.fillStyle='#cda64f';c.fillRect(-8,30,16,5);c.fillStyle='#203b4b';c.font='bold 7px sans-serif';c.textAlign='center';c.fillText('CW',0,18);
-  path([[0,25],[-3,60],[3,60]],'#264c60');
- }
+ }else for(const x of [-33,33]){c.save();c.translate(x,-32);c.rotate(v.dead||v!==G.player&&!(v.airspeed>8)?0:t*70);c.fillStyle='#263640';c.fillRect(-14,-2,28,4);c.restore();}
  drawVehicleDamage(c,v);
  c.fillStyle='#e45d62';c.beginPath();c.arc(heli?-22:-87,heli?4:10,2.5,0,Math.PI*2);c.fill();c.fillStyle='#84f2c4';c.beginPath();c.arc(heli?22:87,heli?4:10,2.5,0,Math.PI*2);c.fill();c.restore();
 }
