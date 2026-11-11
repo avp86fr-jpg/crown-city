@@ -32,7 +32,7 @@ function maskPixels() {
   return { pixels, width, height };
 }
 
-export async function harness({ width = 1280, height = 720, stored = {} } = {}) {
+export async function harness({ width = 1280, height = 720, stored = {}, raster = null } = {}) {
   const mask = maskPixels(), nodes = new Map(), events = new Map(), calls = [], storage = new Map(Object.entries(stored));
   const noop = () => {};
   const on = (type, fn) => { if (!events.has(type)) events.set(type, []); events.get(type).push(fn); };
@@ -68,6 +68,12 @@ export async function harness({ width = 1280, height = 720, stored = {} } = {}) 
         return noop;
       }
     });
+    if (raster && (tag === 'canvas' || tag === 'c')) {
+      const canvas = raster.createCanvas(node.width, node.height);
+      const { width: _w, height: _h, ...props } = node;
+      Object.assign(canvas, props);
+      return canvas;
+    }
     node.getContext = () => ctx;
     return node;
   }
@@ -83,7 +89,12 @@ export async function harness({ width = 1280, height = 720, stored = {} } = {}) 
     get src() { return this._src; }
     decode() { return Promise.resolve(); }
   }
-  globalThis.Image = Image;
+  if (raster) {
+    class RasterImage extends raster.Image {
+      set src(src) { calls.push(src); super.src = fs.readFileSync(path.join(root, src)); }
+    }
+    globalThis.Image = RasterImage;
+  } else globalThis.Image = Image;
   globalThis.window = { innerWidth: width, innerHeight: height, devicePixelRatio: 1, addEventListener: on, matchMedia: () => ({ matches: false }) };
   globalThis.document = { hidden: false, body: element('body'), documentElement: element('html'),
     getElementById: id => { if (!nodes.has(id)) nodes.set(id, element(id)); return nodes.get(id); },
@@ -95,7 +106,7 @@ export async function harness({ width = 1280, height = 720, stored = {} } = {}) 
   globalThis.getComputedStyle = () => ({ paddingTop: '0', paddingRight: '0', paddingBottom: '0', paddingLeft: '0' });
   globalThis.screen = { orientation: { lock: async () => {} } };
   globalThis.requestAnimationFrame = noop;
-  globalThis.DOMMatrix = class { constructor(values) { this.values = values; } };
+  globalThis.DOMMatrix = raster?.DOMMatrix || class { constructor(values) { this.values = values; } };
   const G = await boot();
   const dispatch = (type, value) => { for (const fn of events.get(type) || []) fn({ preventDefault: noop, repeat: false, ...value }); };
   const readyVN = () => Promise.all(G.storyLoads.values());

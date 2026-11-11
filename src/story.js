@@ -6,7 +6,7 @@ export const CHAR = {
   neural: { name: "NEURAL", color: "#c040ff", portrait: "assets/portraits/neural.jpg", side: "right" },
   mask: { name: "MASK", color: "#c0c0c8", portrait: "assets/portraits/mask.jpg", side: "right" },
   gold_mage: { name: "GOLD MAGE", color: "#f2c14e", portrait: "assets/portraits/gold_mage.jpg", side: "right" },
-  vera: { name: "VERA VALE", color: "#e31b23", portrait: "assets/vera/vera_mic.png", side: "right" },
+  vera: { name: "VERA VALE", color: "#e31b23", portrait: "assets/vera/vera_mic_hd.webp", side: "right" },
 };
 
 export const MISSIONS = [
@@ -206,7 +206,7 @@ export function missionFlow(id, flags) {
         startVN: "m2_intro",
         objectives: [
           { id: "to_track", kind: "goto", at: "raceStart", r: 80, vehicle: true, hint: "Meet Fire at the Crown Loop." },
-          { id: "race", kind: "race", laps: 2, hint: "Beat Fire over two laps. Hit every numbered gate." },
+          { id: "race", kind: "race", laps: 2, hint: "Beat Fire over two laps. Follow every glowing gate." },
         ],
         winVN: "m2_win",
         loseVN: "m2_lose",

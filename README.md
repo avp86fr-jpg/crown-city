@@ -8,7 +8,7 @@ Serve this directory with any static HTTP server; no build or runtime dependenci
 
 ## Controls
 
-WASD / arrows move or drive, E enters/exits and takes marked packages, Space fires, Shift sprints/boosts, R changes radio, M opens the map, Escape pauses. Click the map to set a blue waypoint; JOB ROUTE returns to the gold objective. Touch controls include TAKE/ENTER and MAP. Settings include graphics quality, automatic resolution and camera shake.
+WASD / arrows move or drive, E enters/exits and takes marked packages, Space fires, Shift sprints/boosts, R changes radio, M opens the map, Escape pauses. Click the map to set a blue waypoint; JOB ROUTE returns to the gold objective. Touch controls include TAKE/ENTER and MAP. Settings include graphics quality, automatic resolution and reduced motion.
 
 ## Campaign
 
@@ -16,8 +16,14 @@ Six connected jobs: intercept the seed-plate van, win a two-lap street race, del
 
 Objectives create local checkpoints. RETRY OBJECTIVE restores the current checkpoint, including cash and payment state. Version 2 saves retain race progress, dialogue transitions, vehicle condition and the ending; previous saves are accepted with defaults. Saves remain in browser local storage on the same device and origin.
 
+## Graphics and animation
+
+The renderer adds commercial neon accents, wet-road light streaks, rain ripples, drifting steam, layered tree canopies with wind and a cached vignette. Vehicles articulate their front wheels, react to acceleration/braking, bob on water and run rain wipers. Characters have footplant motion, breathing and shot recoil. Boat wakes, smoke, dust, sparks, fire and explosions use continuous lifetime-based effects. Water frames blend on medium/high quality. Cutscenes use a slow cover-cropped camera move. Reduced Motion disables the new decorative actor/camera motion and trims lightning.
+
+[Animated renderer preview](docs/previews/graphics-animation.webp) · [Night race still](docs/previews/graphics-night.webp)
+
 ## Validation
 
-Run `npm test` and `npm run check` with Node 20 or later. Tests use the actual world, collision mask, mission logic and vehicle physics with a mocked browser/canvas. They cover both campaign choice routes (moving between objectives in the test), a physically driven two-lap race, reachability, checkpoint/save recovery, controls, responsive button bounds and asset request behavior.
+Run `npm test` and `npm run check` with Node 20 or later. Tests use the actual world, collision mask, mission logic and vehicle physics with a mocked browser/canvas. They cover presentation bounds and reduced motion, both campaign choice routes (moving between objectives in the test), a physically driven two-lap race, reachability, checkpoint/save recovery, controls, responsive button bounds and asset request behavior.
 
 These checks do not replace browser visual, audio and touch playtesting. See [the improvement notes](docs/improvement-pass.md) for scope and remaining verification.

@@ -576,11 +576,19 @@ export function makeBuildings(W, tex, coreRoofs) {
       const D = 980 / Math.max(0.45, cam.scale);
       for (const t of inViewTrees(r)) {
         const k = 28 / D;
-        const x = t.x + (t.x - cam.x) * k, y = t.y + (t.y - cam.y) * k;
+        const wind = opts.time ? Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012) * 1.6 : 0;
+        const x = t.x + (t.x - cam.x) * k + wind, y = t.y + (t.y - cam.y) * k + wind * .35;
         ctx.fillStyle = "#4a3422"; ctx.fillRect(t.x - 2, t.y - 2, 4, 4);
         const g = t.t === 0 ? ["#2f5a26", "#4d8a37", "#6fb04a"] : t.t === 1 ? ["#2a4f2c", "#3f7a3c", "#5f9e52"] : ["#3c5a22", "#5f8a2e", "#86b04a"];
-        ctx.fillStyle = g[0]; ctx.beginPath(); ctx.arc(x, y, t.r, 0, TAU); ctx.fill();
-        ctx.fillStyle = g[1]; ctx.beginPath(); ctx.arc(x - t.r * 0.18, y - t.r * 0.18, t.r * 0.74, 0, TAU); ctx.fill();
+        const crown = ctx.createRadialGradient(x - t.r * .3, y - t.r * .35, 1, x, y, t.r);
+        crown.addColorStop(0, g[2]); crown.addColorStop(.5, g[1]); crown.addColorStop(1, g[0]);
+        ctx.fillStyle = crown; ctx.beginPath(); ctx.arc(x, y, t.r, 0, TAU); ctx.fill();
+        if (!opts.low) for (let i = 0; i < 6; i++) {
+          const a = i * TAU / 6 + t.x, radius = t.r * .48;
+          ctx.fillStyle = i % 2 ? g[1] : g[0]; ctx.globalAlpha = .35;
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * radius, y + Math.sin(a) * radius, t.r * .43, 0, TAU); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
         if (!opts.low) { ctx.fillStyle = g[2]; ctx.beginPath(); ctx.arc(x - t.r * 0.32, y - t.r * 0.34, t.r * 0.36, 0, TAU); ctx.fill(); }
       }
     },

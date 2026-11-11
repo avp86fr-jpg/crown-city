@@ -1,3 +1,4 @@
+import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
 import { loadImage as loadImg } from "./assets.js";
 import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, resetInput } from "./session.js";
 import { createAudio } from "./audio.js";
@@ -898,7 +899,7 @@ function openVN(G, page) {
   if (p === "end") { G.scene = "end"; G.ended = true; save(G); return; }
   const node = VN[p];
   if (!node) { G.scene = "play"; return; }
-  G.vn = { id: p, node, t: 0, sel: 0, char: 0, wipe: 0.32, typed: 0 };
+  G.vn = { id: p, node, t: 0, sel: 0, char: 0, wipe: G.settings.reducedMotion ? 0 : 0.32, typed: 0 };
   G.vn.pending = true;
   const scene = G.vn;
   G.scene = "vn";
@@ -909,7 +910,7 @@ function ensureStoryAssets(G, node) {
   const keys = [['vn_' + node.bg, 'assets/vn/' + node.bg + '.jpg']];
   for (const id of [node.left, node.right]) if (CHAR[id]) {
     keys.push(['port_' + id, CHAR[id].portrait]);
-    if (id === 'vera') keys.push(['port_vera_point', 'assets/vera/vera_point.png'], ['port_vera_cross', 'assets/vera/vera_cross.png']);
+
   }
   return Promise.all(keys.map(([key, src]) => {
     if (G.assets.sprites[key]) return Promise.resolve();
@@ -1187,8 +1188,8 @@ function tickWeather(G, dt) {
   if (G.weather === "rain") {
     G.lightningT -= dt;
     if (G.lightningT <= 0) {
-      G.lightning = 1;
-      G.cam.shake = Math.max(G.cam.shake, 10);
+      G.lightning = G.settings.reducedMotion ? .08 : .45;
+      if (!G.settings.reducedMotion) G.cam.shake = Math.max(G.cam.shake, 10);
       G.lightningT = 6 + Math.random() * 10;
     }
   }
@@ -1255,7 +1256,9 @@ function tickPlayer(G, dt) {
   const h = headingVec(p.rot);
   moveFoot(G, p, h.x * p.spd * dt, h.y * p.spd * dt);
   p.speed = p.spd;
+  const lastStep = Math.floor((p.dist || 0) / 25);
   p.dist += p.spd * dt;
+  if (G.wet > .2 && Math.floor(p.dist / 25) !== lastStep) G.particles.push({ kind: 'footstep', x: p.x, y: p.y + 10, life: .45, maxLife: .45 });
   if (p.exitT > 0) p.exitT -= dt * 2.2;
   if (G.input.enterP) tryEnter(G);
   if (G.input.fire && now() - G.lastShot > 0.22) shoot(G, p, true);
@@ -1349,6 +1352,8 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : def.boat ? 0.3 : 0.16) + (def.boat && !onLand ? Math.sin(G.ticks * 0.07 + v.x * 0.01) * 0.05 : 0), (def.bike ? 10 : 8) * dt);
   v.turnSign = steerIn;
   v.braking = reverse > 0 && fwd > 5 || hand;
+  v.visualAccel = lerp(v.visualAccel || 0, clamp((fwd - (v.fwd || 0)) / Math.max(.01, dt) / 250, -1, 1), Math.min(1, dt * 9));
+  v.visualTravel = (v.visualTravel || 0) + speed * dt;
   v.fwd = fwd;
   if (v.drifting) {
     G.skids.push({ x: v.x - h.x * 14, y: v.y - h.y * 14, a: 0.8, rot: v.rot });
@@ -1392,7 +1397,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.x = nx; v.y = ny;
   smashNear(G, v.x, v.y, v.r + 8, Math.hypot(v.vx, v.vy));
   const spdNow = Math.hypot(v.vx, v.vy);
-  if (def.boat && spdNow > 40) G.particles.push({ kind: "wake", x: v.x - nh.x * 18, y: v.y - nh.y * 18, vx: -nh.x * 6 + (Math.random() - 0.5) * 12, vy: -nh.y * 6 + (Math.random() - 0.5) * 12, life: 0.5, a: 0.4 });
+  if (def.boat && spdNow > 40) G.particles.push({ kind: "wake", rot: v.rot, width: Math.min(42, 12 + Math.hypot(v.vx, v.vy) * .07), x: v.x - nh.x * 18, y: v.y - nh.y * 18, vx: -nh.x * 6 + (Math.random() - 0.5) * 12, vy: -nh.y * 6 + (Math.random() - 0.5) * 12, life: 0.5, a: 0.4 });
   if (isPlayer && spdNow > 50 && G.wet > 0.25 && (G.ticks % 3) === 0) G.particles.push({ kind: "splash", x: v.x - nh.x * 12, y: v.y - nh.y * 12, vx: (Math.random() - 0.5) * 30, vy: -30, life: 0.35, a: 0.7 });
   if (isPlayer && (surf === "sand" || surf === "dirt" || surf === "grass") && spdNow > 40 && (G.ticks % 2) === 0) G.particles.push({ kind: "dust", x: v.x - nh.x * 14, y: v.y - nh.y * 14, vx: -nh.x * 10, vy: -nh.y * 10, life: 0.5, a: 0.5 });
   tickVehDamage(G, v, dt);
@@ -1603,6 +1608,7 @@ function spawnPlayerCar(G, kind, x, y, rot) {
 }
 
 function shoot(G, from, onFoot) {
+  from.shotTick = G.ticks;
   G.lastShot = now();
   let rot = from.rot;
   if (onFoot && G.input.mouse.fire && !G.touch) {
@@ -1857,7 +1863,7 @@ function tickVehicles(G, dt) {
       const h = headingVec(v.rot);
       const s = G.surfaceAt(v.x + h.x * 30, v.y + h.y * 30);
       if (s === "water" || s === "canal") { v.x += h.x * 46 * dt; v.y += h.y * 46 * dt; v.vx = h.x * 46; v.vy = h.y * 46; }
-      if ((G.ticks % 8) === 0) G.particles.push({ kind: "wake", x: v.x - h.x * 18, y: v.y - h.y * 18, vx: -h.x * 5, vy: -h.y * 5, life: 0.5, a: 0.3 });
+      if ((G.ticks % 8) === 0) G.particles.push({ kind: "wake", rot: v.rot, width: Math.min(42, 12 + Math.hypot(v.vx, v.vy) * .07), x: v.x - h.x * 18, y: v.y - h.y * 18, vx: -h.x * 5, vy: -h.y * 5, life: 0.5, a: 0.3 });
       continue;
     }
     if (v.role === "ambulance" && v.target) {
@@ -2031,6 +2037,7 @@ function tickProps(G, dt) {
 
 function tickParticles(G, dt) {
   for (const p of G.particles) {
+    if (!p.maxLife) p.maxLife = p.life;
     p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.life -= dt;
     if (p.frame != null) p.frame += dt * 12;
   }
@@ -2046,8 +2053,8 @@ function tickCamera(G, dt) {
   const onFoot = p.type !== "veh";
   const portrait = G.cssH > G.cssW;
   const tgtScale = (onFoot
-    ? lerp(1.18, 1.02, clamp(spd / 160, 0, 1))
-    : lerp(0.98, 0.62, clamp(spd / 300, 0, 1))) * (portrait ? 0.86 : 1);
+    ? lerp(1.34, 1.14, clamp(spd / 160, 0, 1))
+    : lerp(1.10, 0.73, clamp(spd / 300, 0, 1))) * (portrait ? 0.86 : 1);
   G.cam.scale = lerp(G.cam.scale, tgtScale, 2.2 * dt);
   // look ahead in the direction of travel (more on phones)
   const lk = p.type === "veh" ? (G.touch ? 0.62 : 0.5) : 0.25;
@@ -2504,8 +2511,14 @@ function drawWorld(G) {
   // 2. painted core
   if (r.x0 < CORE && r.y0 < CORE) {
     if (!(G.dbg && G.dbg.noAlb)) L.albedo.draw(ctx, r, frame);
-    const wi = ((G.ticks / 12) | 0) % 4;
-    if (!(G.dbg && G.dbg.noWater)) L["water" + wi].draw(ctx, r, frame);
+    const wi = G.settings.reducedMotion ? 0 : ((G.ticks / 12) | 0) % 4;
+    if (!(G.dbg && G.dbg.noWater)) {
+      L["water" + wi].draw(ctx, r, frame);
+      if (!low && !G.settings.reducedMotion) {
+        ctx.globalAlpha = (G.ticks % 12) / 12;
+        L["water" + ((wi + 1) % 4)].draw(ctx, r, frame); ctx.globalAlpha = 1;
+      }
+    }
     for (let k = 0; k < 4; k++) if (k !== wi) for (const key of L["water" + k].keys) { const [tx, ty] = key.split("_").map(Number); if (tx * 1024 < r.x1 && tx * 1024 + 1024 > r.x0 && ty * 1024 < r.y1 && ty * 1024 + 1024 > r.y0) L["water" + k].get(tx, ty, frame); }
   }
   _ph('w_core');
@@ -2527,6 +2540,7 @@ function drawWorld(G) {
     ctx.restore();
   }
   _ph('w_shadow');
+  drawWetReflections(G, r, nightFactor(G));
   // 5. ground details
   ctx.lineWidth = 3;
   for (const s of G.skids) {
@@ -2561,15 +2575,25 @@ function drawWorld(G) {
   drawParticles(G, r, false);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
-  G.bld.trees(ctx, cam, r, { low });
+  G.bld.trees(ctx, cam, r, { low, time: G.settings.reducedMotion ? 0 : G.ticks / 60 });
   if (!(G.dbg && G.dbg.noBld)) G.bld.draw(ctx, cam, r, frame, sun, { low });
   // the player is never lost behind a tower: soft outline when occluded
-  if (G.player.type === "foot") { ctx.globalAlpha = 0.35; drawChar(G, G.player); ctx.globalAlpha = 1; }
+  if (G.player.type === "foot") {
+    const D = 980 / Math.max(.45, cam.scale);
+    const hidden = [...G.bld.inView(r)].some(b => {
+      const k = (b.core ? Math.min(70, b.hgt || 24) : b.hgt) / D;
+      const x = b.x + (b.x - cam.x) * k, y = b.y + (b.y - cam.y) * k;
+      return G.player.x > x && G.player.x < x + b.w * (1 + k) && G.player.y > y && G.player.y < y + b.h * (1 + k);
+    });
+    if (hidden) { ctx.save(); ctx.globalAlpha = .38; drawChar(G, G.player); ctx.restore(); }
+  }
   if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
   _ph('w_light');
+  drawArchitectureLights(G, r, nightFactor(G));
+  drawAtmosphere(G, r, nightFactor(G));
   drawParticles(G, r, true);
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
@@ -2577,6 +2601,7 @@ function drawWorld(G) {
   if (G.fog > 0.05) { ctx.fillStyle = `rgba(160,170,180,${0.28 * G.fog})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
+  drawGrade(G);
   if (G.hurtT > 0) { G.hurtT -= 1 / 60; const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.3, canvas.width / 2, canvas.height / 2, canvas.height * 0.8); g.addColorStop(0, "rgba(255,0,0,0)"); g.addColorStop(1, `rgba(200,0,20,${G.hurtT})`); ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 }
 
@@ -2757,38 +2782,26 @@ function drawParticles(G, r, top) {
     if (p.x < r.x0 || p.x > r.x1 || p.y < r.y0 || p.y > r.y1) continue;
     const isTop = p.kind === "rain" || p.kind === "sand";
     if (isTop !== top) continue;
+    if (drawParticleFX(ctx, p)) continue;
     if (p.kind === "rain") { ctx.strokeStyle = "rgba(180,200,220,0.5)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 3, p.y + 12); ctx.stroke(); }
     else if (p.kind === "sand") { ctx.fillStyle = "rgba(200,160,90,0.35)"; ctx.fillRect(p.x, p.y, 3, 2); }
-    else if (p.kind === "wake") { ctx.strokeStyle = `rgba(225,240,248,${Math.max(0, 0.5 * p.life)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, 3 + (0.5 - p.life) * 14, 0, TAU); ctx.stroke(); }
     else if (p.kind === "flash") { ctx.fillStyle = "#fff6d8"; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, TAU); ctx.fill(); }
     else if (p.kind === "spray") { ctx.fillStyle = "rgba(120,180,220,0.5)"; ctx.fillRect(p.x, p.y, 2, 4); }
-    else if (p.kind === "trail" || p.kind === "boost") { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.max(0, p.life * 3) * (p.a ?? 1); ctx.fillStyle = p.kind === "trail" ? "#ff2f4a" : (p.col || "#29f0ff"); ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
-    else if (p.kind === "spark") { ctx.globalAlpha = Math.max(0, p.life * 4); ctx.fillStyle = "#ffe3a0"; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); ctx.globalAlpha = 1; }
-    else if (p.kind === "smoke") { const sm = assets.sprites.smoke; const fr = Math.min(3, (p.frame | 0)); ctx.globalAlpha = Math.max(0, p.life * (p.dark ? 1.1 : 0.8)); if (sm) ctx.drawImage(sm, fr * 64, 0, 64, 64, p.x - 24, p.y - 24, 48, 48); ctx.globalAlpha = 1; }
-    else if (p.kind === "fire") { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.max(0, p.life * 2); ctx.fillStyle = p.life > 0.25 ? "#ffd060" : "#ff5a1a"; ctx.beginPath(); ctx.arc(p.x, p.y, 6 + (0.4 - p.life) * 12, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
-    else if (p.kind === "boom") { const ex = assets.sprites.explosion; const fr = Math.min(4, (p.frame | 0)); const s = p.big ? 150 : 56; if (ex) ctx.drawImage(ex, fr * 64, 0, 64, 64, p.x - s / 2, p.y - s / 2, s, s); }
     else if (p.kind === "bits") { ctx.fillStyle = "rgba(80,70,60,0.8)"; ctx.fillRect(p.x, p.y, 3, 3); }
     else if (p.kind === "blood") { ctx.fillStyle = `rgba(150,10,20,${Math.max(0, p.life)})`; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, TAU); ctx.fill(); }
     else if (p.kind === "splash") { ctx.fillStyle = `rgba(200,220,235,${Math.max(0, (p.a || 0.6) * p.life * 2)})`; ctx.beginPath(); ctx.ellipse(p.x, p.y, 5, 3, 0, 0, TAU); ctx.fill(); }
-    else if (p.kind === "dust") { ctx.fillStyle = `rgba(180,150,100,${Math.max(0, (p.a || 0.5) * p.life)})`; ctx.beginPath(); ctx.arc(p.x, p.y, 4 + (0.5 - p.life) * 10, 0, TAU); ctx.fill(); }
   }
 }
 
 function drawObjectiveGround(G) {
   const at = currentObjectivePos(G);
   if (!at) return;
-  const ctx = G.ctx, t = G.ticks * 0.06;
-  const rad = 34 + Math.sin(t * 2) * 4;
-  ctx.save();
-  ctx.strokeStyle = "rgba(242,193,78,0.9)"; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.arc(at.x, at.y, rad, 0, TAU); ctx.stroke();
-  ctx.fillStyle = "rgba(242,193,78,0.18)"; ctx.beginPath(); ctx.arc(at.x, at.y, rad, 0, TAU); ctx.fill();
-  ctx.restore();
+  drawObjectiveHalo(G, at, G.race);
 }
 function drawObjectiveBeacon(G) {
   const at = currentObjectivePos(G);
   if (!at) return;
-  const ctx = G.ctx, t = G.ticks * 0.06;
+  const ctx = G.ctx, t = G.settings.reducedMotion ? 0 : G.ticks * 0.06;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const g = ctx.createLinearGradient(at.x, at.y, at.x, at.y - 160);
@@ -2835,7 +2848,10 @@ function drawVeh(G, v) {
   const ctx = G.ctx;
   ctx.save();
   ctx.translate(v.x, v.y);
-  ctx.rotate(v.rot + (v.lean || 0) * 0.35);
+  const pose = vehiclePose(v, G.ticks / 60, G.settings.reducedMotion);
+  ctx.rotate(v.rot + pose.roll);
+  ctx.translate(0, pose.heave);
+  ctx.scale(1, pose.pitch);
   const sc = vehScale(v.def);
   let sprUse = spr;
   if (v.wrecked) {
@@ -2845,16 +2861,7 @@ function drawVeh(G, v) {
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); ctx.ellipse(3, 6, sprUse.width * sc * 0.38, sprUse.height * sc * 0.28, 0, 0, TAU); ctx.fill();
   ctx.drawImage(sprUse, -sprUse.width * sc / 2, -sprUse.height * sc / 2, sprUse.width * sc, sprUse.height * sc);
-  // fake wheel hubs (readable motion at this scale)
-  if (!v.def.boat && !v.def.bike) {
-    const wr = 3.2;
-    const wy = sprUse.height * sc * 0.28;
-    const wx = sprUse.width * sc * 0.32;
-    ctx.fillStyle = "rgba(16,16,18,0.85)";
-    for (const [sx, sy] of [[-wx, -wy], [wx, -wy], [-wx, wy], [wx, wy]]) {
-      ctx.beginPath(); ctx.ellipse(sx, sy, wr, wr * 0.7, 0, 0, TAU); ctx.fill();
-    }
-  }
+  drawVehicleFinish(G, v, sprUse.width * sc, sprUse.height * sc, pose);
   if (v.isVan) {
     ctx.fillStyle = "#f2c14e";
     ctx.font = "bold 9px sans-serif";
@@ -2938,7 +2945,7 @@ function drawVehLights() {}
 function drawChar(G, a) {
   const spr = G.assets.sprites["char_" + (a.sprite || "chaos")];
   if (!spr) return;
-  const ctx = G.ctx;
+  const ctx = G.ctx, opacity = ctx.globalAlpha;
   const fw = spr.width / 6, fh = spr.height / 8;
   const dir = ((Math.round(a.rot / (Math.PI / 4))) + 8) % 8;
   const row = (dir + 6) % 8; // sheet row 0 is East
@@ -2946,7 +2953,7 @@ function drawChar(G, a) {
   const moving = (a.speed || 0) > 20 || (a === G.player && a.type === "foot" && Math.hypot(G.input.x, G.input.y) > 0.15);
   if (moving) col = Math.floor((a.dist || 0) / 9) % 4;
   if (a === G.player && G.input.fire) col = 5;
-  if (a.dead) { ctx.globalAlpha = 0.5; col = 4; }
+  if (a.dead) { ctx.globalAlpha = opacity * 0.5; col = 4; }
   const sc = charScale(a.sprite || "chaos", spr);
   ctx.save();
   ctx.translate(a.x, a.y);
@@ -2962,7 +2969,8 @@ function drawChar(G, a) {
     ctx.rotate((a.rot || 0) * 0.15);
     ctx.scale(1.15, 0.42);
   }
-  const dx = -fw * 0.5 * sc, dy = -fh * 0.68 * sc, dw = fw * sc, dh = fh * sc;
+  const pose = characterPose(a, moving, G.ticks / 60, G.settings.reducedMotion);
+  const dx = -fw * 0.5 * sc, dy = -fh * 0.68 * sc + pose.bob + pose.recoil * 1.8, dw = fw * sc * pose.sx, dh = fh * sc * pose.sy;
   // soft south drop shadow
   ctx.save();
   const prevSmooth = ctx.imageSmoothingQuality;
@@ -2981,8 +2989,8 @@ function drawChar(G, a) {
     ctx.save();
     ctx.shadowColor = `rgba(190, 245, 255, ${0.95 * nightC})`;
     ctx.shadowBlur = 0;
-    const o = 2.8;
-    for (const [sx, sy] of [[-o, 0], [o, 0], [0, -o], [0, o], [-o, -o], [o, o], [-o, o], [o, -o]]) {
+    const o = 1.1;
+    for (const [sx, sy] of [[o, 0], [0, -o]]) {
       ctx.shadowOffsetX = sx;
       ctx.shadowOffsetY = sy;
       ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
@@ -2996,13 +3004,13 @@ function drawChar(G, a) {
   ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
   if (isHero && nightC > 0.18 && !a.dead) {
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.32 * nightC;
+    ctx.globalAlpha = opacity * 0.12 * nightC;
     ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy - 1, dw, dh);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = opacity;
     ctx.globalCompositeOperation = "source-over";
   }
   ctx.restore();
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = opacity;
 }
 
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
@@ -3200,6 +3208,14 @@ function drawHUD(G) {
     const label = r.countdown > 0 ? 'READY  ' + Math.ceil(r.countdown) :
       'LAP ' + Math.min(r.laps, Math.floor(r.i / r.gatesPerLap) + 1) + '/' + r.laps + '  ·  GATE ' + Math.min(r.i + 1, r.pts.length) + '/' + r.pts.length + '  ·  ' + r.t.toFixed(1) + 's  ·  FIRE ' + r.rivalI + '/' + r.pts.length;
     ctx.fillText(label, midX, oy + 22 * u); oy += 30 * u;
+    if (r.countdown > 0) {
+      const cy = Math.max(oy + 35 * u, H * .36);
+      uiPanel(ctx, midX - 75 * u, cy - 22 * u, 150 * u, 44 * u, 10 * u, {fill:'rgba(8,18,31,.9)'});
+      for (let i=0;i<3;i++) {
+        ctx.fillStyle = 3-r.countdown>=i ? '#ffe0a0' : '#33434c';
+        ctx.beginPath();ctx.arc(midX+(i-1)*34*u,cy,8*u,0,TAU);ctx.fill();
+      }
+    }
   }
   if (G.wanted > 0) {
     const max = 7 + G.wanted * 2.5;
@@ -3219,15 +3235,8 @@ function drawHUD(G) {
   }
   // speedo (bottom-center)
   if (G.player.type === "veh") {
-    const v = G.player, spd = Math.hypot(v.vx, v.vy), kmh = (spd * 0.5) | 0;
-    const bw = 150 * u, bx = narrow ? R - bw : W / 2 - bw / 2, by = narrow ? oy : H - 52 * u - sf.b;
-    uiPanel(ctx, bx, by, bw, 44 * u, 12 * u);
-    ctx.textAlign = "left"; ctx.fillStyle = "#fff"; ctx.font = uiFont(22 * u, 900, true);
-    ctx.fillText(String(kmh), bx + 12 * u, by + 30 * u);
-    ctx.font = uiFont(8.5 * u, 800); ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.fillText("KM/H", bx + 12 * u, by + 40 * u);
-    ctx.textAlign = "right"; ctx.font = uiFont(10 * u, 800); ctx.fillStyle = "#ffe27a"; ctx.fillText(v.def.name.toUpperCase(), bx + bw - 12 * u, by + 18 * u);
-    ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(bx + bw - 72 * u, by + 26 * u, 60 * u, 5 * u);
-    ctx.fillStyle = (v.health ?? 100) > 40 ? "#3ce06a" : "#ff8a2a"; ctx.fillRect(bx + bw - 72 * u, by + 26 * u, 60 * u * clamp((v.health ?? 100) / 100, 0, 1), 5 * u);
+    const bw = (narrow ? 170 : 210) * u, bx = narrow ? R - bw : W / 2 - bw / 2, by = narrow ? oy : H - 62 * u - sf.b;
+    drawSpeedometer(G, bx, by, bw, 50 * u);
   }
   prof(G, "h_spd", performance.now() - _t); _t = performance.now();
   // off-screen objective arrow
@@ -3429,7 +3438,7 @@ function drawSettings(G) {
     ["MUSIC", `${Math.round(G.audio.musVol * 100)}%`, (d) => { G.audio.setMus(volStep(G.audio.musVol, d)); S.mus = G.audio.musVol; saveSettings(G); }],
     ["GRAPHICS", S.quality === "low" ? "PERFORMANCE" : S.quality === "med" ? "BALANCED" : "QUALITY", () => { S.quality = S.quality === "low" ? "med" : S.quality === "med" ? "high" : "low"; G.resScale = 1; saveSettings(G); fit(G); applyQuality(G); }],
     ["AUTO RESOLUTION", S.autoRes ? "ON" : "OFF", () => { S.autoRes = !S.autoRes; saveSettings(G); }],
-    ["CAMERA SHAKE", S.reducedMotion ? "OFF" : "ON", () => { S.reducedMotion = !S.reducedMotion; saveSettings(G); }],
+    ["REDUCED MOTION", S.reducedMotion ? "ON" : "OFF", () => { S.reducedMotion = !S.reducedMotion; saveSettings(G); }],
     ["FPS COUNTER", S.showFps ? "ON" : "OFF", () => { S.showFps = !S.showFps; saveSettings(G); }],
     ["TIME OF DAY", speeds[S.timeSpeed ?? 1], (d) => { S.timeSpeed = ((S.timeSpeed ?? 1) + (d || 1) + 4) % 4; saveSettings(G); }],
     ["SET CLOCK", timeLabel(G.time).text, (d) => { G.time = (G.time + (d || 1) * 3 + 24) % 24; }],
@@ -3487,7 +3496,10 @@ function drawVN(G) {
   const n = G.vn.node;
   const bg = assets.sprites["vn_" + n.bg] || assets.title;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+  const motion = G.settings.reducedMotion ? 0 : Math.min(1, (G.vn.t || 0) / 14);
+  const bgScale = Math.max(canvas.width / bg.width, canvas.height / bg.height) * (1.025 + motion * .035);
+  const bgW = bg.width * bgScale, bgH = bg.height * bgScale;
+  ctx.drawImage(bg, (canvas.width - bgW) / 2 + motion * 8 * G.ui, (canvas.height - bgH) / 2, bgW, bgH);
   // pass 7: calm the busy backdrop so portraits pop (dim + vignette)
   {
     const g = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.4, canvas.height * 0.2, canvas.width / 2, canvas.height * 0.4, canvas.width * 0.7);
@@ -3512,18 +3524,13 @@ function drawVN(G) {
   const drawPort = (id, side) => {
     if (!id) return;
     let im = assets.sprites["port_" + id];
-    if (id === "vera") {
-      const cycle = ((G.vn.t / 2.6) | 0) % 3;
-      im = cycle === 1 && assets.sprites.port_vera_point ? assets.sprites.port_vera_point
-        : cycle === 2 && assets.sprites.port_vera_cross ? assets.sprites.port_vera_cross
-        : im;
-    }
+
     if (!im) return;
     const h = faceH;
     const w = Math.min(W * 0.34, h * 0.9);
     const x = side === "left" ? W * 0.06 : W * 0.94 - w;
-    const bob = Math.sin((G.vn.t || 0) * 1.4 + (side === "left" ? 0 : 1)) * 4 * u;
-    const breathe = 1 + Math.sin((G.vn.t || 0) * 1.1) * 0.016;
+    const bob = G.settings.reducedMotion ? 0 : Math.sin((G.vn.t || 0) * 1.4 + (side === "left" ? 0 : 1)) * 2 * u;
+    const breathe = G.settings.reducedMotion ? 1 : 1 + Math.sin((G.vn.t || 0) * 1.1) * 0.008;
     ctx.save();
     rounded(ctx, x, faceY, w, h, 16 * u);
     ctx.clip();
