@@ -34,3 +34,9 @@ The browser streams the Ogg tracks into the game's Web Audio master bus, fades b
 ## Release cover and trailer
 
 The corrected About/title cover depicts Chaos and a single complete red muscle coupe. It does not contain a generated Gold Mage. Gold Mage’s About card and story scenes use the original `assets/portraits/gold_mage.jpg`, unchanged. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.
+
+## Frontier cast and scenery
+
+The five columns of `assets/premium/frontier-cast.webp` are Hunter, Gold Mage, Neural, Mask and Fire, generated directly from the five retained portraits for their in-world encounters. These full-body adaptations add subtle breathing; the floating portrait markers and dialogue/crew portraits use the original images. In particular, Gold Mage’s original portrait file is unchanged. No additional individual token identities were claimed.
+
+`frontier-terrain.webp` supplies forest floor, sand, slate and casino paving. `frontier-scenery.webp` supplies a painted pine, slate outcrop, red mesa and cactus cluster. Both are original generated environmental atlases. Mechanical resizing and WebP compression retain alpha where present.

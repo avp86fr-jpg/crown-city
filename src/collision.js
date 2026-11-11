@@ -1,5 +1,6 @@
 /* Shared world-space bodies for rendering, swept projectiles and vehicle contacts. */
 export function bodySize(v) {
+  if(v.def?.aircraft)return v.kind==='plane'?{w:57,l:51}:{w:30,l:55};
   if(v.def?.bike)return {w:10,l:35};
   if(v.kind==='bus')return {w:28,l:69};
   if(v.kind==='gulf')return {w:29,l:62};
@@ -46,7 +47,7 @@ export function bodyContact(a,b) {
 const SAMPLES=[[0,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1],[-1,0],[1,0],[-1,-.5],[1,-.5],[-1,.5],[1,.5]];
 export function worldBodyHit(G,v,x,y) {
   const b=bodySize(v),c=Math.cos(v.rot),s=Math.sin(v.rot);let nx=0,ny=0,count=0;
-  for(const [a,d] of SAMPLES){const dx=a*b.w*c-d*b.l*s,dy=a*b.w*s+d*b.l*c,surface=G.surfaceAt(x+dx,y+dy);
+  for(const [a,d] of SAMPLES){const dx=a*b.w*c-d*b.l*s,dy=a*b.w*s+d*b.l*c,surface=v.def.boat?(G.world?.boatSurfaceAt?.(x+dx,y+dy)||G.surfaceAt(x+dx,y+dy)):G.surfaceAt(x+dx,y+dy);
     const blocked=v.def.boat?surface!=='water'&&surface!=='canal':surface==='build';
     if(blocked){nx-=dx;ny-=dy;count++;}
   }

@@ -16,7 +16,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  panel(R-cashW,T,cashW,44*d);text(Math.round(G.chips).toLocaleString('en-US')+'  CHIPS',R-cashW+9*d,T+17*d,12,'#e5c486',800);
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');
  const mx=portrait?L+mm+10*d:Math.max(L+mm+18*d,W*.28),mw=portrait?R-mx:Math.min(W*.42,340*d),my=portrait?T+52*d:T;
- const hint=G.hint||'Explore Crown City. The crew always has work.';
+ const hint=G.expansionHint||G.hint||'Explore Crown City. The crew always has work.';
  c.font=font(11*d,650);const rows=wrap(c,hint.replace(/\(E\)/g,'').replace(/press E/gi,'tap TAKE'),mw-20*d,5);
  panel(mx,my,mw,(26+rows.length*15)*d,'#ddba7c');text(missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
  rows.forEach((line,i)=>text(line,mx+10*d,my+(31+i*15)*d,11));
@@ -31,7 +31,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  const message=G.toastT>0?{name:'CROWN CITY',text:G.toast}:A.messageT>0?A.message:null;
  if(message){
   const ww=portrait?W-32*d:Math.min(330*d,W*.42),xx=(W-ww)/2;
-  c.font=font(11*d,600);const rows=wrap(c,message.text,ww-24*d,portrait?3:2),hh=(29+rows.length*15)*d;
+  c.font=font(11*d,600);const rows=wrap(c,message.text,ww-24*d,portrait?5:4),hh=(29+rows.length*15)*d;
   const y=portrait?H-sf.b-215*d-hh:H-sf.b-48*d-hh;
   panel(xx,y,ww,hh,'#9cc9bd');text(message.name,xx+12*d,y+15*d,8,'#9cc9bd',800);
   rows.forEach((s,i)=>text(s,xx+12*d,y+(31+i*15)*d,11));

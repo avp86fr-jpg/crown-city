@@ -283,7 +283,14 @@ export function createAudio() {
     musLevel = G.scene === "title" ? 0.85 : 1;
     // engine
     const E = L.engine;
-    if (inCar && A._eng !== false && !P.dead) {
+    if(inCar&&P.def.aircraft&&A._eng!==false&&!P.dead){
+      // A continuous turbine / propeller pitch with blade pulses, without car gear changes.
+      const heli=P.def.helicopter,rpm=heli?Math.max(.35,P.rotor||0):.3+.7*Math.min(1,(P.airspeed||0)/P.def.max),pulse=.73+.27*Math.sin(now()*Math.PI*2*(heli?11+rpm*6:25+rpm*13));
+      const f=heli?76+rpm*59:66+rpm*132;
+      set(E.o1.frequency,f,.14);set(E.o2.frequency,f*(heli?1.018:1.009),.14);set(E.o3.frequency,f*.5,.14);
+      set(E.f.frequency,heli?520:760+rpm*700,.12);set(E.g.gain,(heli?.075:.065)*rpm*pulse,.018);
+      set(E.rumble.g.gain,(heli?.19:.11)*rpm*pulse,.018);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
+    } else if (inCar && A._eng !== false && !P.dead) {
       const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind] || ENG.sedan;
       const spd = Math.hypot(P.vx, P.vy), top = P.def.max || 300;
       const gearN = 4, k = Math.min(1, spd / top), gear = Math.min(gearN - 1, (k * gearN) | 0), inG = (k * gearN) - gear;
@@ -314,15 +321,15 @@ export function createAudio() {
     } else set(S.g.gain, 0, 0.2);
     // ambience by district / place
     const dist = (G.district || "").toUpperCase();
-    const strip = P.x > 1650 && P.x < 2300 && P.y > 800 && P.y < 3800;
-    const water = G.surfaceAt && (["water", "pier"].includes(G.surfaceAt(P.x, P.y - 260)) || ["water", "pier"].includes(G.surfaceAt(P.x, P.y + 260)) || P.y < 1000);
+    const strip = P.x > 1650 && P.x < 2300 && P.y > 800 && P.y < 3800 || dist.includes("METAWIN");
+    const water = G.surfaceAt && (["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y - 260)) || ["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y + 260)) || P.y < 1000);
     const night = G.time > 20 || G.time < 6;
     const busy = Math.min(1, G.vehicles.filter((v) => v.traffic && Math.abs(v.x - P.x) < 700 && Math.abs(v.y - P.y) < 700).length / 8);
     set(L.traffic.g.gain, play ? 0.10 + 0.2 * busy : 0.05, 0.6);
     set(L.crowd.g.gain, play ? (strip ? 0.11 : dist.includes("MIDTOWN") || dist.includes("DOWNTOWN") ? 0.05 : 0.015) * (night && strip ? 1.3 : 1) : 0, 0.8);
     set(L.crowd.f.frequency, 600 + 300 * Math.sin(now() * 0.7), 0.4);
     set(L.surf.g.gain, play && water ? 0.16 + 0.08 * Math.sin(now() * 0.5) : 0, 0.8);
-    set(L.wind.g.gain, play ? (dist.includes("AIRFIELD") || dist.includes("SUNSET") ? 0.05 : 0.015) : 0.01, 1);
+    set(L.wind.g.gain,play?(P.def?.aircraft ? .10+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.055:dist.includes("FOREST")?.035:.015):.01,1);
     set(L.rain.g.gain, (A._rain || 0) * 0.2, 0.5);
     if (play && water && (gullT -= dt) < 0 && !night) { gullT = 3 + Math.random() * 6; gull(); }
     if (play && strip && (dingT -= dt) < 0) { dingT = 1.2 + Math.random() * 3; ding(); }

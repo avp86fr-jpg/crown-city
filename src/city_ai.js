@@ -36,7 +36,8 @@ export function createStreetIndex(size = 160) {
 
 export function createCityAI(G) {
   const people = createStreetIndex(), cars = createStreetIndex(), places = createStreetIndex(256);
-  const brains = new WeakMap(), drivers = new WeakMap(), reservations = new Map(), events = [];
+  let brains = new WeakMap(), drivers = new WeakMap();
+  const reservations = new Map(), events = [];
   let clock = 0, refresh = 0, serial = 0, fixtureSource = null;
   const stats = { decisions: 0, reactions: 0, conversations: 0, visits: 0, boarded: 0, indexBuilds: 0 };
   const rng = brain => {
@@ -171,6 +172,12 @@ export function createCityAI(G) {
 
   const api = {
     stats,
+    reset() {
+      // Reservations and conversation partners must not survive an actor reset.
+      for(const p of G.peds||[]){p.cityState=null;p.cityActivity=null;p.cityBoarded=false;p.flee=0;p.dive=0;p.threatX=p.threatY=undefined;}
+      brains=new WeakMap();drivers=new WeakMap();reservations.clear();events.length=0;
+      people.rebuild([]);cars.rebuild([]);refresh=0;
+    },
     emit(kind, x, y, options = {}) {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       events.push({ kind, x, y, radius: options.radius ?? (kind === 'horn' ? 90 : 260), until: clock + (options.duration ?? 1.5) });
@@ -190,7 +197,7 @@ export function createCityAI(G) {
       }
       const local = (G.peds || []).filter(p => Math.abs(p.x - focus.x) < 1550 && Math.abs(p.y - focus.y) < 1300);
       people.rebuild(local);
-      cars.rebuild((G.vehicles || []).concat(G.player?.type === 'veh' && !G.vehicles?.includes(G.player) ? [G.player] : []));
+      cars.rebuild((G.vehicles || []).concat(G.player?.type === 'veh' && !G.vehicles?.includes(G.player) ? [G.player] : []).filter(v=>!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)));
       if (fixtureSource !== G.street?.fixtures) { fixtureSource = G.street?.fixtures; places.rebuild(fixtureSource || []); }
       stats.indexBuilds++;
       for (const p of local) react(p);

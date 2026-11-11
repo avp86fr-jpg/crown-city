@@ -1,3 +1,4 @@
+import {expansionJobTarget,tickExpansionJob} from './expansion_jobs.js';
 /* Multi-stage street work. Blue routes remain independent from the campaign. */
 export const STREET_JOBS=[
  {id:'rescue',title:'BORROWED TIME',contact:'HUNTER',text:'Pick up Hunter’s witness near the Crown Loop. Stop a car for three seconds, then bring them to the garage without a tail.',reward:950,time:180},
@@ -6,6 +7,7 @@ export const STREET_JOBS=[
 ];
 const point=(p)=>({x:p[0],y:p[1]});
 export function streetJobTarget(G,c){
+ const expanded=expansionJobTarget(G,c);if(expanded)return expanded;
  const s=G.meta.spawns,i=G.meta.interactions;
  if(c.id==='harbour')return c.stage===1?{x:1960,y:200}:point(s.marina);
  if(c.id==='rescue')return point(c.stage?s.garage:s.raceStart);
@@ -16,6 +18,7 @@ export function streetJobTarget(G,c){
 }
 export function restoreStreetRoute(G){const c=G.action?.contract;if(!c)return;const target=streetJobTarget(G,c);if(target){G.waypoint=target;G.gps=null;}}
 export function tickStreetJob(G,c,dt,notify){
+ if(expansionJobTarget(G,c))return tickExpansionJob(G,c,dt,notify);
  const p=G.player,target=streetJobTarget(G,c);if(!target)return false;
  const distance=Math.hypot(p.x-target.x,p.y-target.y),speed=p.type==='veh'?Math.hypot(p.vx,p.vy):p.speed||0;
  if(c.id==='harbour'){

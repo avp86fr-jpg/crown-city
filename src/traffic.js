@@ -150,7 +150,7 @@ export function createTraffic(G) {
       // spatial hash for following
       const hash = new Map();
       const HK = (x, y) => ((x / 160) | 0) + ((y / 160) | 0) * 1000;
-      for (const v of G.vehicles) { const k = HK(v.x, v.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(v); }
+      for (const v of G.vehicles) { if(v.def?.boat||v.def?.aircraft&&v.altitude>10)continue;const k = HK(v.x, v.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(v); }
       if (P.type === "foot") { const k = HK(P.x, P.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(P); }
       for (const p of G.peds) if (!p.dead && p.onRoad) { const k = HK(p.x, p.y); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(p); }
       const ahead = (v, hx, hy, range) => {
@@ -283,7 +283,7 @@ export function createPeds(G) {
       if (Math.random() < 0.0015) { p.idle = 1.5 + Math.random() * 3; return; }
       const look = 18;
       const ahead = surf(p.x + p.hx * look, p.y + p.hy * look);
-      const ok = (s) => s === "walk" || s === "grass" || s === "pier" || s === "sand";
+      const ok = (s) => s === "walk" || s === "grass" || s === "pier" || s === "sand" || s === "lot" || s === "dirt";
       if (p.crossing) {
         if (ok(ahead) && surf(p.x, p.y) !== "road") p.crossing = false;
       } else if (!ok(ahead)) {
@@ -297,7 +297,10 @@ export function createPeds(G) {
       const tr = Math.atan2(p.hx, -p.hy);
       p.rot = p.rot + ((((tr - p.rot + Math.PI) % TAU) + TAU) % TAU - Math.PI) * Math.min(1, 8 * dt);
       const sp = p.crossing ? p.walk * 1.4 : p.walk;
-      p.x += Math.sin(p.rot) * sp * dt; p.y += -Math.cos(p.rot) * sp * dt;
+      const nx=p.x+Math.sin(p.rot)*sp*dt,ny=p.y-Math.cos(p.rot)*sp*dt;
+      const pass=(x,y)=>{const s=surf(x,y);return s!=="build"&&s!=="water"&&s!=="canal";};
+      if(!pass(nx,ny)||!pass(nx-6,ny)||!pass(nx+6,ny)||!pass(nx,ny-6)||!pass(nx,ny+6)){p.hx=-p.hx;p.hy=-p.hy;p.speed=0;p.crossing=false;return;}
+      p.x=nx;p.y=ny;
       p.speed = sp; p.dist += sp * dt;
       p.onRoad = p.crossing;
     },
@@ -330,12 +333,14 @@ export function createNav(G) {
   const dist = new Uint16Array(NW * NH);
   const q = new Int32Array(NW * NH);
   const N = {
-    C, NW, NH, pass, dist, t: 0, get raw() { return N_raw; },
+    C, NW, NH, pass, dist, t: 0, lastX:-1,lastY:-1, get raw() { return N_raw; },
     update(tx, ty, force) {
       N.t -= 1;
       if (N.t > 0 && !force) return;
       N.t = 24;
-      N.flood(dist, tx, ty, 170);
+      const cx=Math.floor(tx/C),cy=Math.floor(ty/C);
+      if(!force&&N.lastX===cx&&N.lastY===cy)return;
+      N.lastX=cx;N.lastY=cy;N.flood(dist, tx, ty, 170);
     },
     flood(D, tx, ty, maxD) {
       D.fill(65535);
