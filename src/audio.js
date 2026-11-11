@@ -39,9 +39,9 @@ export function createAudio() {
     amb = ctx.createGain(); amb.gain.value = 0.55 * A.sfxVol; amb.connect(glue);
     // shared reverb (generated impulse)
     verb = ctx.createConvolver();
-    const len = ctx.sampleRate * 2.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
-    verb.buffer = ir; verbSend = ctx.createGain(); verbSend.gain.value = 0.32; verbSend.connect(verb); verb.connect(glue);
+    const len = Math.floor(ctx.sampleRate * 1.3), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+    verb.buffer = ir; verbSend = ctx.createGain(); verbSend.gain.value = 0.32; if (!lite) verbSend.connect(verb); verb.connect(glue);
     // noise buffers
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
@@ -327,6 +327,9 @@ export function createAudio() {
   function gull() { oneShot((t) => { for (let k = 0; k < 2 + (Math.random() * 2 | 0); k++) { const o = ctx.createOscillator(), g = ctx.createGain(), tt = t + k * 0.22; o.type = "triangle"; const b = 1400 + Math.random() * 500; o.frequency.setValueAtTime(b, tt); o.frequency.exponentialRampToValueAtTime(b * 1.5, tt + 0.06); o.frequency.exponentialRampToValueAtTime(b * 0.7, tt + 0.18); env(g, tt, 0.01, 0.025, 0.18); const p = panNode(Math.random() * 2 - 1); o.connect(g); g.connect(p); p.connect(amb); o.start(tt); o.stop(tt + 0.22); } }, 0.9); }
   function ding() { oneShot((t) => { const f = [1568, 2093, 2637][Math.random() * 3 | 0]; const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; env(g, t, 0.003, 0.02, 0.6); const p = panNode(Math.random() * 1.6 - 0.8); o.connect(g); g.connect(p); p.connect(amb); g.connect(verbSend); o.start(t); o.stop(t + 0.65); }, 0.7); }
   A.duck = duck;
+  // low tier: drop the convolution reverb (the costliest node on weak phones)
+  let lite = false;
+  A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if (!lite) verbSend.connect(verb); };
   // capture tap for recording demos (tests only)
   A.tap = () => { ensure(); const d = ctx.createMediaStreamDestination(); master.connect(d); return d.stream; };
   return A;

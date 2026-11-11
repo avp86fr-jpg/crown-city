@@ -201,18 +201,18 @@ export async function boot() {
   const STEP = 1 / 60;
   function frame() {
     const t = now();
-    let dt = Math.min(0.05, t - last);
+    let dt = Math.min(0.1, t - last);
     last = t;
     acc += dt;
     G.dtStat = dt;
     G.fps = lerp(G.fps, 1 / Math.max(0.001, dt), 0.05);
     let n = 0;
     const _t0 = performance.now();
-    while (acc >= STEP && n++ < 4) {
+    while (acc >= STEP && n++ < 6) {
       tick(G, STEP);
       acc -= STEP;
     }
-    if (acc > STEP * 4) acc = 0;
+    if (acc > STEP * 6) acc = 0;
     const _t1 = performance.now();
     render(G);
     const _t2 = performance.now();
@@ -607,7 +607,7 @@ function fit(G) {
   const h = window.innerHeight || G.wrap.clientHeight;
   const q = G.settings ? G.settings.quality : "high";
   const maxDpr = q === "low" ? 1.15 : q === "med" ? 1.5 : 2;
-  const dpr = Math.max(0.6, Math.min(maxDpr, window.devicePixelRatio || 1) * (G.resScale || 1));
+  const dpr = Math.max(G.dprFloor || 0.6, Math.min(maxDpr, window.devicePixelRatio || 1) * (G.resScale || 1));
   c.width = Math.round(w * dpr);
   c.height = Math.round(h * dpr);
   G.dpr = dpr; G.cssW = w; G.cssH = h;
@@ -2057,6 +2057,7 @@ function adaptRes(G, dt) {
 }
 function volStep(v, d) { const n = Math.round((v + d * 0.1) * 10) / 10; return n > 1.001 ? 0 : n < -0.001 ? 1 : n; }
 function applyQuality(G) {
+  if (G.audio && G.audio.setLite) G.audio.setLite(G.settings.quality === "low");
   const q = G.settings.quality;
   if (G.traffic) G.traffic.target = q === "low" ? 18 : q === "med" ? 26 : 34;
   if (G.pedsys) G.pedsys.target = q === "low" ? 32 : q === "med" ? 48 : 64;
