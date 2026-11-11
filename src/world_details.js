@@ -13,8 +13,8 @@ export function applyWorldDetails(W,{CODE}){
   if(x1>x0&&y1>y0)W.fill(x0,y0,x1-x0,y1-y0,CODE.road);
  }
  // Continuous paved links across the former grass strip between apron and runway.
- E.airport={...E.airport,taxiways:[7250,8350,9750]};
- for(const x of E.airport.taxiways)W.fill(x-60,7580,120,80,CODE.lot);
+ E.airport={...E.airport,taxiways:[7250,8350,9750],taxiwayWidth:224,stands:E.aircraft.filter(s=>s.kind==='plane').map((s,i)=>({id:s.id,label:'A'+(i+1),x:s.x,y:s.y,w:244,h:184}))};
+ for(const x of E.airport.taxiways)W.fill(x-112,7580,224,80,CODE.lot);
  W.details={buildings:[],windsocks:[{x:7150,y:7360},{x:9700,y:7360}]};
  for(const b of [
   {x:11128,y:4892,w:144,h:64,name:'PINEWATCH / RANGERS',roof:'terra',wall:'tan'},
@@ -51,23 +51,28 @@ export function applyWorldDetails(W,{CODE}){
 }
 function airport(c,W,r,pats){
  if(!visible(r,6580,7330,3420,640))return;
- const {runway,apron,taxiways=[]}=W.expansion.airport;
+ const {runway,apron,taxiways=[],stands=[]}=W.expansion.airport;
  c.save();c.beginPath();c.rect(apron.x,apron.y,apron.w,apron.h);c.clip();
  c.strokeStyle='rgba(24,41,42,.18)';c.lineWidth=1;c.beginPath();
  for(let x=apron.x;x<apron.x+apron.w;x+=120){c.moveTo(x,apron.y);c.lineTo(x,apron.y+apron.h);}
  for(let y=apron.y;y<apron.y+apron.h;y+=90){c.moveTo(apron.x,y);c.lineTo(apron.x+apron.w,y);}c.stroke();
  c.strokeStyle='#d9b966';c.lineWidth=3;c.beginPath();c.moveTo(apron.x,7660);c.lineTo(apron.x+apron.w,7660);c.stroke();
- for(let i=0;i<4;i++){
-  const x=7470+i*450;c.beginPath();c.moveTo(x,7660);c.quadraticCurveTo(x+48,7660,x+48,7730);c.lineTo(x+48,7860);c.stroke();
-  box(c,x+31,7860,34,3,'#ead6a1');text(c,'A'+(i+1),x+48,7900,17,'#e4d7b0');
+ for(const s of stands){
+  c.strokeStyle='#c5ae70';c.lineWidth=2;c.beginPath();c.moveTo(s.x-48,7660);c.quadraticCurveTo(s.x,7660,s.x,7710);c.lineTo(s.x,s.y+78);c.stroke();
+  box(c,s.x-23,s.y-69,46,3,'#ead6a1');text(c,s.label,s.x,s.y+100,18,'#e4d7b0');
+  // Wing-clearance corners and a numbered stop bar match the parked aircraft.
+  c.strokeStyle='rgba(222,214,187,.7)';c.lineWidth=1.5;c.beginPath();
+  for(const side of [-1,1]){c.moveTo(s.x+side*118,s.y-76);c.lineTo(s.x+side*118,s.y+72);c.lineTo(s.x+side*90,s.y+72);}c.stroke();
+  for(const side of [-1,1]){box(c,s.x+side*134-12,s.y+98,24,3,'#d1bc7d');box(c,s.x+side*134-1,s.y+89,2,12,'#d1bc7d');}
  }
  c.strokeStyle='#c8c9b9';c.lineWidth=2;c.setLineDash([12,10]);c.beginPath();c.moveTo(apron.x,7930);c.lineTo(apron.x+apron.w,7930);c.stroke();c.setLineDash([]);
  for(let x=apron.x+250;x<apron.x+apron.w;x+=600)text(c,'SERVICE',x,7950,10,'#ddd4bb');c.restore();
  for(const [i,x] of taxiways.entries()){
   c.strokeStyle='#dfbd64';c.lineWidth=3;c.beginPath();c.moveTo(x,7500);c.lineTo(x,7618);c.quadraticCurveTo(x,7660,x+70,7660);c.stroke();
-  for(const y of [7593,7598])box(c,x-48,y,96,2,'#ead5a0');
-  for(let k=-45;k<47;k+=12)for(const y of [7605,7610])box(c,x+k,y,7,2,'#ead5a0');
-  box(c,x-106,7614,44,20,'#282e2b');text(c,'A'+(i+1),x-84,7629,13,'#ebc357');
+  for(const y of [7593,7598])box(c,x-100,y,200,2,'#ead5a0');
+  for(let k=-96;k<99;k+=12)for(const y of [7605,7610])box(c,x+k,y,7,2,'#ead5a0');
+  box(c,x-164,7614,54,20,'#282e2b');text(c,'T'+(i+1),x-137,7629,13,'#ebc357');
+  box(c,x+112,7586,68,23,'#8e443c');text(c,'09—27',x+146,7602,12,'#f2e5c7');
  }
  for(const [x,rot,num] of [[runway.x+172,Math.PI/2,'09'],[runway.x+runway.w-172,-Math.PI/2,'27']]){
   c.save();c.translate(x,7500);c.rotate(rot);box(c,-40,-24,80,50,pats.asphalt||'#3e4447');text(c,num,0,16,44,'#eeead7');c.restore();

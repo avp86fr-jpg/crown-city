@@ -13,7 +13,8 @@ function flat(kind='heli',extra={}){
 test('airport aircraft are tangible vehicles on clear ground with a usable runway',()=>{
  const crafts=G.vehicles.filter(v=>v.def.aircraft);assert.ok(crafts.some(v=>v.kind==='heli'));assert.ok(crafts.some(v=>v.kind==='plane'));
  for(const v of crafts){assert.ok(!['water','canal','build'].includes(G.surfaceAt(v.x,v.y)));assert.equal(v.altitude,0);assert.ok(canExitAircraft(v));}
- const plane=crafts.find(v=>v.kind==='plane');assert.equal(landingZone(G,plane),'RUNWAY');
+ const planes=crafts.filter(v=>v.kind==='plane');assert.equal(planes.length,5);for(const plane of planes)assert.equal(landingZone(G,plane),null,'parked aircraft must leave runway clear');
+ assert.equal(landingZone(G,T.makeVeh('plane',7300,7500,Math.PI/2)),'RUNWAY');
  const heli=crafts.find(v=>v.kind==='heli');G.player=T.makeFoot(G,heli.x+65,heli.y,0);T.enterVeh(G,heli,true);assert.equal(G.player,heli);
  T.exitVeh(G);assert.equal(G.player.type,'foot');assert.ok(T.footClear(G,G.player.x,G.player.y,7));
 });

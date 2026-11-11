@@ -6,6 +6,7 @@ import {drawExpansionPeople} from './expansion.js';
 import {drawExpansionOverhead} from './expansion_world.js';
 import {WORLD_W,WORLD_H} from './world.js';
 import {drawTransitWorld} from './transit.js';
+import {drawCasinoWorld} from './casino.js';
 import {drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
 const CORE=4096,TILE=1024,OUTER=512;
@@ -39,6 +40,29 @@ function tile(G,tx,ty,night) {
   // The boot albedo keeps the first frame painted while its finished tile decodes.
   return e.image||G.assets.layers.albedo?.img.get(tx+'_'+ty)||null;
 }
+// Reuse tile descriptors as the camera travels within its current tile range.
+// Warm views need no distance sort; centre-first ordering matters only while
+// composition is pending. Rotation still gets an exact per-frame visibility test.
+export function visibleOuterTiles(G,r){
+ const x0=Math.max(0,Math.floor(r.x0/OUTER)),y0=Math.max(0,Math.floor(r.y0/OUTER)),x1=Math.min(WORLD_W/OUTER-1,Math.floor(r.x1/OUTER)),y1=Math.min(WORLD_H/OUTER-1,Math.floor(r.y1/OUTER));
+ let plan=G._outerPlan;
+ if(!plan||plan.x0!==x0||plan.y0!==y0||plan.x1!==x1||plan.y1!==y1){
+  const slots=plan?.slots||[];let n=0;
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+   if(x*OUTER<CORE&&y*OUTER<CORE)continue;
+   const p=slots[n]||(slots[n]={});Object.assign(p,{x,y,key:x+':'+y,cx:(x+.5)*OUTER,cy:(y+.5)*OUTER});n++;
+  }
+  slots.length=n;plan=G._outerPlan={x0,y0,x1,y1,slots};
+ }
+ const queue=G._outerQueue||(G._outerQueue=[]);queue.length=0;
+ const co=Math.cos(G.cam.rot),si=Math.sin(G.cam.rot),halfW=G.canvas.width/(2*r.S),halfH=G.canvas.height/(2*r.S),margin=OUTER*.708,revision=G.ground.revision*100+(G.street?.revision||0);let pending=false;
+ for(const p of plan.slots){const dx=p.cx-G.cam.x,dy=p.cy-G.cam.y;
+  if(Math.abs(dx*co+dy*si)>halfW+margin||Math.abs(-dx*si+dy*co)>halfH+margin)continue;
+  p.d=dx*dx+dy*dy;queue.push(p);const entry=G.mobileOuter?.get(p.key);if(!entry||entry.revision!==revision)pending=true;
+ }
+ if(pending)queue.sort((a,b)=>a.d-b.d);
+ return queue;
+}
 export function drawMobileWorld(G,H) {
   if(G.street&&!G.street.atlas)loadStreetArt(G);
   const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;
@@ -49,18 +73,17 @@ export function drawMobileWorld(G,H) {
     if(night>.02&&night<=.98){const lit=tile(G,x,y,true);if(lit){c.globalAlpha=night;c.drawImage(lit,x*TILE,y*TILE,TILE+.5,TILE+.5);c.globalAlpha=1;}}
   }
   G._outerBuilt=0;G._outerStart=performance.now();let pending=0;
-  const queue=G._outerQueue||(G._outerQueue=[]);queue.length=0;const co=Math.cos(G.cam.rot),si=Math.sin(G.cam.rot),halfW=G.canvas.width/(2*r.S),halfH=G.canvas.height/(2*r.S),margin=OUTER*.708;
-  if(r.x1>CORE||r.y1>CORE)for(let y=Math.max(0,Math.floor(r.y0/OUTER));y<=Math.min(WORLD_H/OUTER-1,Math.floor(r.y1/OUTER));y++)for(let x=Math.max(0,Math.floor(r.x0/OUTER));x<=Math.min(WORLD_W/OUTER-1,Math.floor(r.x1/OUTER));x++){
-    if(x*OUTER<CORE&&y*OUTER<CORE)continue;const dx=(x+.5)*OUTER-G.cam.x,dy=(y+.5)*OUTER-G.cam.y;
-    if(Math.abs(dx*co+dy*si)>halfW+margin||Math.abs(-dx*si+dy*co)>halfH+margin)continue;
-    queue.push({x,y,d:dx*dx+dy*dy});
-  }
+  const queue=visibleOuterTiles(G,r);
   // A rotated aircraft view can exceed the old 40-tile cache and evict itself forever.
   // Size to the visible working set, with a hard 24 MiB bitmap ceiling and center-first work.
-  G._outerLimit=Math.min(96,Math.max(40,queue.length+8));queue.sort((a,b)=>a.d-b.d);
+  G._outerLimit=Math.min(96,Math.max(40,queue.length+8));
   for(const {x,y} of queue){const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const surface=G.surfaceAt((x+.5)*OUTER,(y+.5)*OUTER);c.fillStyle=surface==='water'||surface==='canal'?'#193e43':surface==='grass'?'#59634b':surface==='sand'?'#9d8964':'#555d58';c.fillRect(x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}}
+  // Zooming back in must release the old wider working set even when all newly
+  // visible tiles are warm and no composition call would otherwise trim it.
+  if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
+  drawCasinoWorld(G,r);
   drawTrafficSignals(G,r);
   c.fillStyle='#17201f';for(const s of G.skids){if(s.x<r.x0||s.x>r.x1||s.y<r.y0||s.y>r.y1)continue;c.globalAlpha=s.a*.4;c.fillRect(s.x-7,s.y-3,3,6);c.fillRect(s.x+5,s.y-3,3,6);}c.globalAlpha=1;
   for(const p of G.props){

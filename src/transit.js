@@ -31,6 +31,11 @@ export function applyTransitWorld(W,{CODE}){
    // Only the canopy/posts block movement; the broad south approach remains accessible.
    W.fill(s.x-78,s.y-50,156,70,CODE.build);
    W.expansion?.obstacles.push({x:s.x-78,y:s.y-50,w:156,h:70,hgt:16});
+  }else{
+   // Street-level ticket pod stays south of the Pinewatch road crossing;
+   // the long platforms themselves are elevated over the existing surface.
+   W.fill(s.x-158,s.y-20,48,54,CODE.build);
+   W.expansion.obstacles.push({x:s.x-158,y:s.y-20,w:48,h:54,hgt:16});
   }
   const e=stationExit(s);W.fill(e.x-22,e.y-22,44,44,CODE.walk);
  }
@@ -71,7 +76,7 @@ export function tickJourney(G,dt,H={}){
  H.tickWeather?.(G,dt,false);
  // Timed contracts cannot gain free time by using a train, including skipped journeys.
  if(G.action?.contract&&(G.action.contract.id!=='courier'||G.action.contract.stage)){G.action.contract.t=Math.max(0,G.action.contract.t-dt);if(G.action.contract.t===0){ride.expired=true;G.action.contract=null;G.waypoint=null;G.gps=null;G.gpsPts=null;message(G,'CREW','The job window closed while you were on the train.');}}
- const after=ridePhase(ride).id;if(after!==before)G.audio.transit?.(after==='boarding'||after==='alighting'?'doors':after==='departing'?'depart':'rail');
+ const after=ridePhase(ride).id;if(after!==before)G.audio.transit?.(after==='boarding'||after==='alighting'?'doors':after==='departing'?'depart':after==='arriving'?'arrive':'rail');
  if(ride.elapsed>=ride.duration){
   const e=stationExit(ride.to),safe=G.findSafeAction?G.findSafeAction(e.x,e.y):e;
   G.player=H.makeFoot?H.makeFoot(G,safe.x,safe.y,Math.PI):{...G.player,type:'foot',x:safe.x,y:safe.y,vx:0,vy:0};
@@ -87,16 +92,22 @@ export function regionalTrainAt(clock,offset=0){
  const travel=26,dwell=7,total=legs.length*(travel+dwell),t=((clock+offset)%total+total)%total,k=Math.floor(t/(travel+dwell)),local=t%(travel+dwell),leg=legs[k],p=clamp((local-dwell)/travel,0,1),dir=Math.sign(leg.b.y-leg.a.y);
  return {x:10320+(offset?18:-18),y:leg.a.y+(leg.b.y-leg.a.y)*smooth(p),rot:dir>0?Math.PI:0,doors:local<dwell?Math.min(1,local*2,(dwell-local)*2):0,speed:local<dwell?0:6*p*(1-p)*Math.abs(leg.b.y-leg.a.y)/travel,next:leg.b.name};
 }
+export function nextDeparture(station,clock){
+ let wait=198;
+ for(const offset of [0,99]){const t=((clock+offset)%198+198)%198;for(let i=0;i<legs.length;i++)if(legs[i].a.id===station.id){const start=i*33;if(t>=start&&t<start+7)return 0;wait=Math.min(wait,(start-t+198)%198);}}
+ return wait;
+}
 function box(c,x,y,w,h,col){c.fillStyle=col;c.fillRect(x,y,w,h);}
 function label(c,t,x,y,size,col='#e4e3cf'){c.fillStyle=col;c.font=`800 ${size}px system-ui`;c.textAlign='center';c.fillText(t,x,y);}
 function art(c,im,rect,x,y,w,h){c.drawImage(im,rect[0]*im.width,rect[1]*im.height,rect[2]*im.width,rect[3]*im.height,x,y,w,h);}
-function trainCar(c,x,y,rot,doors=0,regional=true,im=null){
- if(im){c.save();c.translate(x,y);c.rotate(rot);art(c,im,[.685,0,.13,.5],-18,-72,36,140);for(const side of [-1,1])if(doors>0)box(c,side<0?-19:17,-8,2,doors*16,'#f3d69b');c.restore();return;}
+function trainCar(c,x,y,rot,doors=0,regional=true,im=null,platformSide=0){
+ const sides=platformSide?[platformSide]:[-1,1];
+ if(im){c.save();c.translate(x,y);c.rotate(rot);art(c,im,[.685,0,.13,.5],-18,-72,36,140);for(const side of sides)if(doors>0)box(c,side<0?-19:17,-8,2,doors*16,'#f3d69b');c.restore();return;}
  c.save();c.translate(x,y);c.rotate(rot);box(c,-15,-67,35,140,'#14272b');box(c,-18,-72,36,140,regional?'#c6d0c7':'#b9c8bf');box(c,-17,-59,34,6,regional?'#c68e48':'#42a6a1');box(c,-11,-69,22,12,'#153943');box(c,-14,49,28,14,'#153943');
  for(let y=-40;y<48;y+=28){box(c,-18,y,5,16,'#264f59');box(c,13,y,5,16,'#264f59');box(c,-12,y,24,18,'#83988f');box(c,-8,y+4,16,10,'#a9b8ae');}
- for(const side of [-1,1]){box(c,side<0?-19:14,-13-doors*7,5,12,'#dfdfcd');box(c,side<0?-19:14,1+doors*7,5,12,'#dfdfcd');box(c,side<0?-20:18,-3,2,doors*12,'#11272d');}
+ for(const side of sides){box(c,side<0?-19:14,-13-doors*7,5,12,'#dfdfcd');box(c,side<0?-19:14,1+doors*7,5,12,'#dfdfcd');box(c,side<0?-20:18,-3,2,doors*12,'#11272d');}
  if(im)art(c,im,[.685,0,.13,.5],-18,-72,36,140);
- for(const side of [-1,1])if(doors>0)box(c,side<0?-20:18,-8,2,doors*16,'#f3d69b');
+ for(const side of sides)if(doors>0)box(c,side<0?-20:18,-8,2,doors*16,'#f3d69b');
  box(c,-13,-71,6,3,'#fff1bf');box(c,7,-71,6,3,'#fff1bf');box(c,-12,65,5,2,'#c45143');box(c,7,65,5,2,'#c45143');c.restore();
 }
 export function drawTransitWorld(G,r,overhead=false){
@@ -110,14 +121,16 @@ export function drawTransitWorld(G,r,overhead=false){
    for(const a of [1,98])box(x,a,0,2,256,'#c0b99b');G.railPattern=c.createPattern(tile,'repeat');
   }
   box(c,rail.x-26,y0+18,103,y1-y0,'rgba(10,24,26,.32)');c.save();c.translate(rail.x-50,0);box(c,0,y0,100,y1-y0,G.railPattern);c.restore();
-  for(const offset of [0,99]){const v=regionalTrainAt(G.transit?.clock||0,offset);if(v.y<r.y0-420||v.y>r.y1+420)continue;for(let i=-1;i<=1;i++)trainCar(c,v.x,v.y+i*148,v.rot,i===0?v.doors:0,true,G.transitAtlas);}
+  for(const s of regionalStops)if(s.y>r.y0-250&&s.y<r.y1+250)c.drawImage(platformArt(G,s),s.x-112,s.y-244);
+  for(const offset of [0,99]){const v=regionalTrainAt(G.transit?.clock||0,offset);if(v.y<r.y0-420||v.y>r.y1+420)continue;const side=(offset?1:-1)*(Math.cos(v.rot)>0?1:-1);for(let i=-1;i<=1;i++)trainCar(c,v.x,v.y+i*148,v.rot,v.doors,true,G.transitAtlas,side);}
  }
  if(overhead)return;
  for(const s of STATIONS){if(s.x<r.x0-220||s.x>r.x1+220||s.y<r.y0-160||s.y>r.y1+160)continue;
   ensureTransitArt(G);c.drawImage(stationArt(G,s),s.x-200,s.y-132);
   c.save();c.translate(s.x,s.y);if(s.line==='metro')c.scale(.82,1);
   if(darkness(G.time)>.3)for(const x of [-165,164])box(c,x-6,-76,15,5,'#ffe4a4');
-  const e=stationExit(s);label(c,G.transit?.near?.id===s.id?(G.touch?'TAP RAIL':'E / RAIL'):'CROWN TRANSIT',e.x-s.x,102,9,'#173f40');c.restore();
+  const e=stationExit(s);label(c,G.transit?.near?.id===s.id?(G.touch?'TAP RAIL':'E / RAIL'):'CROWN TRANSIT',e.x-s.x,102,9,'#173f40');
+  if(s.line==='regional'){const wait=nextDeparture(s,G.transit?.clock||0);box(c,-179,49,98,17,'#17383e');label(c,wait<1?'BOARDING':Math.ceil(wait)+'s / NEXT TRAIN',-130,61,7,'#e2d4a2');}c.restore();
  }
 }
 function stationArt(G,s){
@@ -125,8 +138,10 @@ function stationArt(G,s){
  if(old&&old.atlas===G.transitAtlas)return old.canvas;
  if(old)old.canvas.width=1;
  const canvas=document.createElement('canvas');canvas.width=400;canvas.height=264;const c=canvas.getContext('2d');c.translate(200,132);
- if(s.line==='metro')c.scale(.82,1);box(c,-179,-94,358,204,'#8c9483');
+ if(s.line==='metro')c.scale(.82,1);if(s.line==='metro')box(c,-179,-94,358,204,'#8c9483');else box(c,-179,-24,84,134,'#8c9483');
+ if(s.line==='metro'){
   for(let y=-92;y<108;y+=16){box(c,-178,y,356,1,'#a3aa92');for(let x=-178+(y%32?0:12);x<179;x+=24)box(c,x,y,1,16,'rgba(49,72,63,.18)');}
+ }
   if(s.line==='metro'){
    box(c,-85,-12,170,69,'#172c32');for(let i=0;i<9;i++)box(c,-78,1+i*6,156,3,'#556863');
    box(c,-86,-58,172,62,'#1d464a');box(c,-80,-53,160,44,'#39716d');box(c,-83,-57,166,4,'#b9c7b4');
@@ -135,18 +150,41 @@ function stationArt(G,s){
    label(c,'M',-143,10,30,'#8fe0c7');label(c,'CROWN METRO',0,-31,11);label(c,s.name,0,-16,8);
    for(let i=0;i<3;i++)box(c,105+i*13,20,8,25,i===0?'#76bfa7':'#253e3b');
   }else{
-   box(c,-96,-94,42,202,'#b4b7a1');box(c,-58,-94,4,202,'#e0b84e');
-   box(c,54,-94,42,202,'#b4b7a1');box(c,54,-94,4,202,'#e0b84e');
-   // Platforms flank the moving tracks; the train is never painted over by a plaza.
-   box(c,-50,-96,100,204,'#555e59');for(let y=-92;y<108;y+=16)box(c,-42,y,84,5,'#8c8770');for(const x of [-31,-6,6,31])box(c,x,-96,3,204,'#b9c0b1');
-
-   box(c,-153,-72,50,98,'#28585b');box(c,-150,-69,44,90,'#477878');for(let i=0;i<9;i++)box(c,-146,34+i*5,38,2,'#c6c2a7');if(G.transitAtlas){art(c,G.transitAtlas,[.13,.5,.23,.5],-101,-96,47,202);art(c,G.transitAtlas,[.13,.5,.23,.5],54,-96,47,202);}
-   label(c,'R',-126,-36,27);box(c,-181,-118,124,18,'#203f40');label(c,s.name,-119,-105,9,'#e3d7b8');
+   box(c,-158,-20,48,54,'#28585b');box(c,-154,-17,40,46,'#477878');box(c,-156,-20,44,3,'#b8c7ae');
+   label(c,'R',-134,7,24);label(c,'TICKETS',-134,23,7);for(let i=0;i<9;i++)box(c,-146,69+i*4,38,2,'#c6c2a7');
+   box(c,-181,-45,110,18,'#203f40');label(c,s.name,-126,-32,8,'#e3d7b8');
   }
+  if(s.line==='metro'){
   for(const x of [-151,140]){box(c,x,57,22,8,'#5b5844');box(c,x,56,22,2,'#d4b98a');box(c,x,65,3,6,'#354941');box(c,x+19,65,3,6,'#354941');}
   box(c,112,-74,29,47,'#273d3e');box(c,116,-70,21,24,'#bba36b');label(c,'CITY',126,-55,6);
   for(const x of [-165,164]){box(c,x,-73,3,24,'#283c39');box(c,x-6,-76,15,5,'#bdc6ab');}
+  }
   cache.set(s.id,{canvas,atlas:G.transitAtlas});G.stationArtBuilds=(G.stationArtBuilds||0)+1;return canvas;
+}
+function platformArt(G,s){
+ const cache=G.regionalPlatformCache||(G.regionalPlatformCache=new Map());if(cache.has(s.id))return cache.get(s.id);
+ const canvas=document.createElement('canvas');canvas.width=224;canvas.height=488;const c=canvas.getContext('2d');c.translate(112,244);
+ // A three-car consist spans 436 units. Both elevated platforms continue
+ // beyond its end doors, while the public forecourt remains at street level.
+ for(const side of [-1,1]){const x=side<0?-100:40;box(c,x+4,-230,61,468,'rgba(9,24,27,.34)');box(c,x,-234,60,468,'#879080');
+  for(let y=-230;y<234;y+=18)box(c,x,y,60,1,'#a3ab94');
+  const edge=side<0?-44:40;box(c,edge,-234,4,468,'#dfbd62');for(let y=-228;y<234;y+=12)box(c,edge,y,4,3,'#8b794a');
+  box(c,side<0?-100:98,-234,2,468,'#c4c4a7');for(let y=-226;y<234;y+=28)box(c,side<0?-102:98,y,4,3,'#405757');
+  for(const y of [-172,124]){box(c,x+10,y+4,30,43,'#263e3e');box(c,x+6,y,38,40,'#476d68');box(c,x+8,y+2,34,3,'#bed0b2');box(c,x+12,y+33,26,4,'#b6a078');}
+  for(const y of [-204,-44,74,204]){box(c,x+12,y,18,5,'#4c5346');box(c,x+12,y,18,2,'#d5b484');}
+  // Stair head and numbered departure sign sit behind the tactile edge.
+  box(c,x+7,12,31,51,'#243e40');for(let i=0;i<9;i++)box(c,x+10,16+i*5,25,2,'#9caa95');
+  box(c,x+7,-90,40,23,'#1b4145');label(c,side<0?'1 / SOUTH':'2 / NORTH',x+27,-76,6,'#f0d99e');
+  for(const y of [-218,218]){box(c,x+29,y,3,12,'#35524e');box(c,x+20,y,22,3,'#d5ddbc');}
+ }
+ cache.set(s.id,canvas);G.regionalPlatformBuilds=(G.regionalPlatformBuilds||0)+1;return canvas;
+}
+function journeyArt(G,regional){
+ const cache=G.journeyArt||(G.journeyArt=new Map()),key=regional?'regional':'metro';if(cache.has(key))return cache.get(key);
+ const make=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;},wall=make(360,320),platform=make(2200,105),sleepers=make(24,125);let c=wall.getContext('2d');
+ box(c,0,0,360,320,regional?'#293f43':'#26383b');for(let i=0;i<2;i++){const x=i*180;box(c,x,0,4,320,'#436064');box(c,x+12,115,140,3,'#6a7770');box(c,x+25,160,110,60,'#1c3037');box(c,x+29,164,102,3,'#a28655');label(c,i?'THE CITY KEEPS MOVING':'CROWN TRANSIT',x+80,198,8,'#b4c0aa');box(c,x+20,45,120,5,'#d5dfbc');}
+ c=platform.getContext('2d');box(c,0,0,2200,105,'#565c51');box(c,0,1,2200,7,'#e4bb51');for(let x=0;x<2200;x+=20){box(c,x,15,2,88,'#8d8e75');box(c,x,58,20,1,'#8d8e75');}
+ c=sleepers.getContext('2d');box(c,0,0,24,125,'#15292e');box(c,0,24,8,82,'#605f51');const art={wall,platform,sleepers};cache.set(key,art);G.journeyArtBuilds=(G.journeyArtBuilds||0)+1;return art;
 }
 export function drawTransitMap(G,to,bounds=null){const c=G.ctx;c.save();for(const line of ['metro','regional']){const list=line==='metro'?metroStops:regionalStops;c.strokeStyle=line==='metro'?'#75d7c3':'#e2b46a';c.lineWidth=2*G.ui;c.beginPath();list.forEach((s,i)=>{const p=to(s.x,s.y);i?c.lineTo(...p):c.moveTo(...p);});if(line==='metro')c.closePath();c.stroke();for(const s of list){const p=to(s.x,s.y);if(bounds&&(p[0]<bounds.x-8||p[0]>bounds.x+bounds.size+8||p[1]<bounds.y-8||p[1]>bounds.y+bounds.size+8))continue;c.fillStyle='#122e34';c.beginPath();c.arc(...p,6*G.ui,0,TAU);c.fill();c.stroke();label(c,line==='metro'?'M':'R',p[0],p[1]+3*G.ui,8*G.ui,line==='metro'?'#75d7c3':'#e2b46a');}}c.restore();}
 export function drawTransitMenu(G,H){
@@ -171,14 +209,18 @@ export function drawJourney(G,H){
  const sy=Hh*.54,scale=Math.min(W/(920*d),Hh/(520*d))*d;c.save();c.translate(W/2,sy);c.scale(scale,scale);
  box(c,-1100,-260,2200,550,regional?'#293f43':'#26383b');
  const movement=phase.id==='riding'?t*230:phase.id==='departing'?smooth(phase.p)*420:phase.id==='arriving'?(1-smooth(phase.p))*420:0;
- for(let i=-6;i<7;i++){const x=i*180-(movement%180);box(c,x,-250,4,320,'#436064');box(c,x+12,-135,140,3,'#6a7770');box(c,x+25,-90,110,60,'#1c3037');box(c,x+29,-86,102,3,'#a28655');label(c,i%2?'THE CITY KEEPS MOVING':'CROWN TRANSIT',x+80,-52,8,'#b4c0aa');box(c,x+20,-205,120,5,'#d5dfbc');}
- box(c,-1100,45,2200,105,'#565c51');box(c,-1100,46,2200,7,'#e4bb51');for(let i=-60;i<60;i++){box(c,i*20,60,2,88,'#8d8e75');box(c,i*20,103,20,1,'#8d8e75');}
- box(c,-1100,153,2200,125,'#15292e');for(let i=-55;i<55;i++)box(c,i*24-(movement%24),177,8,82,'#605f51');box(c,-1100,185,2200,4,'#bec3ae');box(c,-1100,248,2200,4,'#bec3ae');
+ const cached=journeyArt(G,regional);for(let i=-3;i<=3;i++)c.drawImage(cached.wall,i*360-(movement%360),-250);
+ c.drawImage(cached.platform,-1100,45);if(!cached.pattern)cached.pattern=c.createPattern(cached.sleepers,'repeat');c.save();c.translate(-(movement%24),153);box(c,-1124,0,2248,125,cached.pattern);c.restore();box(c,-1100,185,2200,4,'#bec3ae');box(c,-1100,248,2200,4,'#bec3ae');
  const slide=G.settings.reducedMotion?0:phase.id==='approach'?(1-smooth(phase.p))*1150:phase.id==='departing'?-smooth(phase.p)*1150:phase.id==='arriving'?(1-smooth(phase.p))*1150:0;
  const showTrain=phase.id!=='riding';
  if(showTrain){c.save();c.translate(slide,0);for(let i=-1;i<=1;i++){
   const x=i*310-148,doors=phase.id==='boarding'?Math.sin(Math.PI*phase.p):phase.id==='alighting'?Math.sin(Math.PI*phase.p):0;
-  if(G.transitAtlas){art(c,G.transitAtlas,[.455,.635,.543,.22],x,-95,296,130);if(doors>.01){box(c,x+138,-57,33,70,'#16323a');art(c,G.transitAtlas,[.708,.7,.03,.117],x+138-doors*15,-57,16.4,69);art(c,G.transitAtlas,[.738,.7,.03,.117],x+154.4+doors*15,-57,16.4,69);}continue;}
+  if(G.transitAtlas){art(c,G.transitAtlas,[.455,.635,.543,.22],x,-95,296,130);if(doors>.01){
+   // Each sliding leaf is sampled from the actual door, not the neighbouring
+   // body panel. The reveal follows its full opening without a floating block.
+   box(c,x+131,-58,33,63,'#172f34');box(c,x+134,-55,27,4,'#b5a36c');box(c,x+133,2,29,3,'#b4aa8d');
+   art(c,G.transitAtlas,[.6953,.6974,.0289,.1048],x+131-doors*15,-58,16.4,63);art(c,G.transitAtlas,[.725,.6974,.0289,.1048],x+147.4+doors*15,-58,16.4,63);
+  }continue;}
   box(c,x+5,-79,296,122,'rgba(0,0,0,.35)');box(c,x,-93,296,128,'#bbc9bc');box(c,x,-91,296,8,'#e8e4cc');box(c,x,-5,296,16,regional?'#b77e42':'#399b96');box(c,x,25,296,10,'#394e4e');
   for(let j=0;j<4;j++){box(c,x+12+j*70,-73,55,48,'#152e38');box(c,x+15+j*70,-70,49,2,'#587e82');for(let p=0;p<2;p++){box(c,x+24+j*70+p*18,-44,10,18,'#816a54');box(c,x+26+j*70+p*18,-54,7,8,'#d0a77c');}}
   if(G.transitAtlas)art(c,G.transitAtlas,[.455,.635,.543,.22],x,-95,296,130);

@@ -1,5 +1,6 @@
-import {createEffects,createContactPlayer,surfaceMotion} from './sound_effects.js';
+import {createEffects,createContactPlayer,surfaceMotion,sceneAcoustics,soundPosition,railMotion} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
+import {regionalTrainAt,ridePhase} from './transit.js';
 /** Crown City sound design: original arranged radio plus synthesized spatial effects.
  *  Buses: sfx / music / ambience -> glue compressor -> limiter -> master.
  *  Dynamic score: a step sequencer with stems (pad, arp, bass, kick, snare, hats, lead) whose
@@ -17,7 +18,7 @@ export function createAudio() {
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;
-  let soundtrack=null, effects=null,contactSound=null,listener=null;const rollingMix={};
+  let soundtrack=null, effects=null,contactSound=null,listener=null;const rollingMix={},acoustics={},position={};
   const STYLES = {
     score: { bpm: 96, root: 45, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 6], swing: 0 },
     synth: { bpm: 104, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 2, 6], swing: 0 },
@@ -40,27 +41,34 @@ export function createAudio() {
     sfx = ctx.createGain(); sfx.gain.value = A.sfxVol; sfx.connect(glue);
     mus = ctx.createGain(); mus.gain.value = 0; mus.connect(glue);
     amb = ctx.createGain(); amb.gain.value = 0.55 * A.sfxVol; amb.connect(glue);
-    // shared reverb (generated impulse)
-    verb = ctx.createConvolver();
-    const len = Math.floor(ctx.sampleRate * 1.3), ir = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
-    verb.buffer = ir; verbSend = ctx.createGain(); verbSend.gain.value = 0.32; if (!lite) verbSend.connect(verb); verb.connect(glue);
+    // Performance mode never allocates an unused convolution impulse. Build
+    // it once, on demand, if the player later selects a richer sound tier.
+    verbSend=ctx.createGain();verbSend.gain.value=.32;if(!lite)verbSend.connect(reverb());
     // noise buffers
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
     brownBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
     { const d = brownBuf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; } }
-    effects=createEffects(ctx,sfx);contactSound=createContactPlayer(()=>ctx.currentTime,effects);buildMusic(); buildLoops();
+    effects=createEffects(ctx,sfx);contactSound=createContactPlayer(()=>ctx.currentTime,fx);buildMusic(); buildLoops();
   }
-  const now = () => ctx.currentTime;
+  function reverb(){
+    if(verb)return verb;verb=ctx.createConvolver();
+    const len=Math.floor(ctx.sampleRate*1.3),ir=ctx.createBuffer(2,len,ctx.sampleRate);
+    for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.6);}
+    // Wet effects must pass through the same SFX volume as their dry signal.
+    // The arranged soundtrack is already mastered; fallback music uses delay.
+    verb.buffer=ir;verb.connect(sfx);return verb;
+  }
+  const now = () => ctx?.currentTime||0;
   const noiseSrc = (buf = noiseBuf, loop = false) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = loop; if (!loop) s.playbackRate.value = 0.9 + Math.random() * 0.2; return s; };
   const env = (g, t, a, peak, d, end = 0.0001) => { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(end, t + a + d); };
-  let voices = 0;
+  const voiceEnds=[];
   function oneShot(build, dur) { // caps concurrent one-shots so audio never costs frames
-    if (!ctx || voices > 22) return;
-    voices++; setTimeout(() => voices--, dur * 1000 + 60);
-    build(now());
+    if(!ctx||ctx.state!=='running'||A.sfxVol<=.001||A.masterVol<=.001)return;
+    const t=now();for(let i=voiceEnds.length-1;i>=0;i--)if(voiceEnds[i]<=t)voiceEnds.splice(i,1);
+    if(voiceEnds.length>=22)return;voiceEnds.push(t+dur+.06);build(t);
   }
+  function fx(...args){return A.sfxVol>.001&&A.masterVol>.001?effects?.(...args):false;}
   function panNode(p) { const n = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain(); if (n.pan) n.pan.value = Math.max(-1, Math.min(1, p || 0)); return n; }
   function tone(freq, dur, type = "square", vol = 0.06, glide = 0, out = sfx, t0) {
     oneShot((t) => {
@@ -68,7 +76,7 @@ export function createAudio() {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = type; o.frequency.setValueAtTime(freq, t); if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + glide), t + dur);
       env(g, t, 0.004, vol, dur); o.connect(g); g.connect(out); o.onended=()=>{o.disconnect();g.disconnect();}; o.start(t); o.stop(t + dur + 0.05);
-    }, dur);
+    },dur+(t0&&ctx?Math.max(0,t0-now()):0));
   }
   function noiseHit({ dur = 0.2, vol = 0.3, type = "bandpass", f = 1200, q = 1, f2 = 0, pan = 0, out = sfx, a = 0.002, rate = 1 }) {
     oneShot((t) => {
@@ -93,16 +101,22 @@ export function createAudio() {
       soundtrack?.start();startMusic(); return true;
     } catch (e) { console.warn('Audio is unavailable; continuing silently.'); return false; }
   };
-  A.setSfx = (v) => { A.sfxVol = v; if (sfx) { sfx.gain.value = v; amb.gain.value = 0.55 * v; } };
-  A.setMus = (v) => { A.musVol = v; if (mus) mus.gain.setTargetAtTime(v * musLevel, now(), 0.1); };
-  A.setMaster = (v) => { A.masterVol = v; if (master) master.gain.value = v; };
+  const volume=v=>Number.isFinite(v)?Math.max(0,Math.min(1,v)):0;
+  const fadeVolume=(p,v)=>{const t=now();p.cancelScheduledValues(t);p.setValueAtTime(p.value,t);p.linearRampToValueAtTime(v,t+.035);};
+  A.setSfx = (v) => { A.sfxVol=volume(v);if(sfx){fadeVolume(sfx.gain,A.sfxVol);fadeVolume(amb.gain,.55*A.sfxVol);} };
+  A.setMus = (v) => { A.musVol=volume(v);if(mus)mus.gain.setTargetAtTime(A.musVol*musLevel,now(),.1); };
+  A.setMaster = (v) => { A.masterVol=volume(v);if(master)fadeVolume(master.gain,A.masterVol); };
   A.ui = () => { tone(880, 0.05, "triangle", 0.05); tone(1320, 0.06, "triangle", 0.035, 0, sfx, ctx && now() + 0.035); };
   A.click = () => tone(1400, 0.025, "square", 0.025);
   let lastType=0;
-  A.type=()=>{if(ctx&&now()-lastType>.12){lastType=now();effects?.('ui',.012);}};
-  A.reload = () => effects?.('reload',.34);
-  A.transit = kind => effects?.(kind,.24);
-  A.wildlife = (kind,vol=.12,pan=0) => effects?.(kind,vol,pan);
+  A.type=()=>{if(ctx&&now()-lastType>.12){lastType=now();fx('ui',.012);}};
+  A.reload = () => fx('reload',.34);
+  const cueTimes=new Map();
+  function cue(kind,gain,delay=.12,pan=0){if(!ctx)return false;const t=now();if(t-(cueTimes.get(kind)??-Infinity)<delay)return false;const played=fx(kind,gain,pan);if(played)cueTimes.set(kind,t);return played;}
+  A.transit=(kind,vol=.24,pan=0)=>cue(kind,vol,kind==='rail'?.22:.6,pan);
+  const CASINO={card:'card',deal:'card',chips:'chips',chip:'chips',win:'casinoWin',lose:'casinoLose',push:'casinoPush',open:'casinoOpen'};
+  A.casino=kind=>cue(CASINO[kind]||'card',kind==='win'?.25:.20,kind==='card'||kind==='deal'?.055:.15);
+  A.wildlife = (kind,vol=.12,pan=0) => fx(kind,vol,pan);
   A.cock = () => noiseHit({dur:.055,vol:.16,type:'highpass',f:2800});
   A.dodge = () => noiseHit({dur:.23,vol:.17,type:'lowpass',f:1200,f2:280});
   A.radioChirp = () => {tone(1100,.04,'sine',.022);tone(1600,.05,'sine',.018,0,sfx,ctx&&now()+.06);};
@@ -110,15 +124,14 @@ export function createAudio() {
   A.star = () => { if (!ctx) return; const t = now(); tone(988, 0.09, "square", 0.04, 0, sfx, t); tone(740, 0.12, "square", 0.04, 0, sfx, t + 0.1); };
   A.enter = () => { noiseHit({ dur: 0.08, vol: 0.25, type: "lowpass", f: 600 }); tone(110, 0.08, "sine", 0.12, -40); };
   A.exit = () => { noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); tone(140, 0.06, "sine", 0.1, -50); };
-  A.hit = () => effects?.('impact',.4);
-  A.shot = (pan=0,far=0,kind='pistol') => {effects?.(kind,.5*(1-far*.65),pan);};
+  A.hit = () => fx('impact',.4);
+  A.shot = (pan=0,far=0,kind='pistol') => {fx(kind,.5*(1-far*.65),pan);};
   A.contact=(event={})=>{
-    if(!contactSound||ctx.state!=='running'||A.sfxVol<=0)return false;
+    if(!contactSound||ctx.state!=='running'||A.sfxVol<=0||A.masterVol<=0)return false;
     const P=listener?.player,x=event.x??event.source?.x,y=event.y??event.source?.y;
     let gain=1,pan=event.pan||0;
     if(P&&Number.isFinite(x)&&Number.isFinite(y)){
-      const dx=x-P.x,dy=y-P.y,d=Math.hypot(dx,dy),rot=listener.cam?.rot||0;
-      gain=Math.max(0,1-d/950)**1.5;pan=Math.max(-.9,Math.min(.9,(dx*Math.cos(rot)-dy*Math.sin(rot))/430));
+      soundPosition(listener,x,y,950,position);gain=position.gain;pan=position.pan;
     }
     return contactSound({...event,gain,pan});
   };
@@ -130,14 +143,14 @@ export function createAudio() {
     tone(48, 0.9, "sine", 0.8, -26);
     duck(0.25, 0.8);
   };
-  A.horn = (pan = 0) => { if (!ctx) return; const t = now(); for (const f of [392, 494]) tone(f, 0.28, "sawtooth", 0.035, 0, sfx, t); };
+  A.horn = (pan = 0) => cue('horn',.20,.5,pan);
   A.yelp = () => {
     oneShot((t) => {
       const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
       const base = 320 + Math.random() * 260;
       o.type = "sawtooth"; o.frequency.setValueAtTime(base, t); o.frequency.exponentialRampToValueAtTime(base * 1.6, t + 0.08); o.frequency.exponentialRampToValueAtTime(base * 0.8, t + 0.28);
       f.type = "bandpass"; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(1600, t + 0.2); f.Q.value = 5;
-      env(g, t, 0.02, 0.06, 0.28); o.connect(f); f.connect(g); g.connect(sfx); o.start(t); o.stop(t + 0.35);
+      env(g, t, 0.02, 0.06, 0.28); o.connect(f); f.connect(g); g.connect(sfx);o.onended=()=>{o.disconnect();f.disconnect();g.disconnect();};o.start(t); o.stop(t + 0.35);
     }, 0.35);
   };
   A.skid = () => { A._skid = Math.min(1, A._skid + 0.5); };
@@ -149,15 +162,15 @@ export function createAudio() {
   };
   A.stinger = (st = 0) => { if (!ctx) return; const t = now(); const sets = [[69, 76, 81], [72, 79, 84], [65, 72, 77]]; (sets[st % 3]).forEach((m, i) => tone(mtof(m), 0.25, "triangle", 0.05, 0, sfx, t + i * 0.09)); };
   A.chaseSwell = () => { if (!ctx) return; noiseHit({ dur: 1.4, vol: 0.18, type: "bandpass", f: 300, f2: 3000, q: 2, a: 1.2 }); };
-  A.step = (surf) => noiseHit({ dur: 0.045, vol: surf === "grass" || surf === "sand" ? 0.07 : 0.11, type: "bandpass", f: surf === "grass" ? 900 : surf === "sand" ? 1400 : 2000 + Math.random() * 600, q: 1.5, rate: 0.8 + Math.random() * 0.4 });
+  A.step=surf=>fx(surf==='pier'?'stepWood':['grass','sand','dirt'].includes(surf)?'stepLoose':'stepHard',surf==='grass'||surf==='sand'?.12:.17);
 
   /* -------------- continuous loops: engine, tyres, siren, ambience, rain -------------- */
   const L = {};
-  function loopNoise(buf, type, f, q, out, vol = 0) {
+  function loopNoise(buf, type, f, q, out, vol = 0,spatial=false) {
     const s = noiseSrc(buf, true), fl = ctx.createBiquadFilter(), g = ctx.createGain();
     fl.type = type; fl.frequency.value = f; fl.Q.value = q; g.gain.value = vol;
-    s.connect(fl); fl.connect(g); g.connect(out); s.start();
-    return { s, f: fl, g };
+    const p=spatial?panNode(0):null;s.connect(fl);fl.connect(g);if(p){g.connect(p);p.connect(out);}else g.connect(out);s.start();
+    return { s, f: fl, g,p };
   }
   function buildLoops() {
     // engine: 2 detuned saws + sub square -> lowpass (+ waveshaper growl)
@@ -167,13 +180,19 @@ export function createAudio() {
     const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), o3 = ctx.createOscillator();
     o1.type = "sawtooth"; o2.type = "sawtooth"; o3.type = "square"; o2.detune.value = 14;
     const sub = ctx.createGain(); sub.gain.value = 0.5;
-    o1.connect(ws); o2.connect(ws); o3.connect(sub); sub.connect(ws); ws.connect(ef); ef.connect(eg); eg.connect(sfx);
+    const blade=ctx.createGain();blade.gain.value=1;
+    const bladeOsc=ctx.createOscillator(),bladeDepth=ctx.createGain();bladeOsc.type='sine';bladeOsc.frequency.value=14;bladeDepth.gain.value=0;bladeOsc.connect(bladeDepth);bladeDepth.connect(blade.gain);bladeOsc.start();
+    o1.connect(ws); o2.connect(ws); o3.connect(sub); sub.connect(ws); ws.connect(ef); ef.connect(eg);eg.connect(blade);blade.connect(sfx);
     for (const o of [o1, o2, o3]) { o.frequency.value = 40; o.start(); }
     const rumble = loopNoise(brownBuf, "lowpass", 180, 1, sfx, 0);
-    L.engine = { o1, o2, o3, f: ef, g: eg, rumble };
+    L.engine = { o1, o2, o3, f: ef, g: eg, rumble,blade,bladeOsc,bladeDepth };
     L.tyre = loopNoise(noiseBuf, "bandpass", 1900, 6, sfx, 0);
     L.road=loopNoise(brownBuf,'bandpass',650,.65,sfx,0);
     L.wake=loopNoise(noiseBuf,'lowpass',1200,.5,sfx,0);
+    const reverse=ctx.createOscillator(),reverseGain=ctx.createGain();reverse.type='triangle';reverse.frequency.value=150;reverseGain.gain.value=0;reverse.connect(reverseGain);reverseGain.connect(sfx);reverse.start();L.reverse={o:reverse,g:reverseGain};
+    const railPulse=ctx.createGain(),railOsc=ctx.createOscillator(),railDepth=ctx.createGain(),railPan=panNode(0);
+    railPulse.gain.value=.75;railOsc.frequency.value=3;railDepth.gain.value=.25;railOsc.connect(railDepth);railDepth.connect(railPulse.gain);railOsc.start();railPulse.connect(railPan);railPan.connect(amb);
+    L.rail={...loopNoise(brownBuf,'bandpass',280,.6,railPulse,0),osc:railOsc,p:railPan};
     // siren: square through bandpass, pitch LFO handled in update for wail/yelp patterns
     const so = ctx.createOscillator(); so.type = "square"; so.frequency.value = 700;
     const sf = ctx.createBiquadFilter(); sf.type = "bandpass"; sf.frequency.value = 1100; sf.Q.value = 1.2;
@@ -181,14 +200,14 @@ export function createAudio() {
     so.connect(sf); sf.connect(sg); sg.connect(sp); sp.connect(sfx); so.start();
     L.siren = { o: so, g: sg, p: sp, ph: 0 };
     // ambience beds
-    L.traffic = loopNoise(brownBuf, "lowpass", 420, 0.7, amb, 0);
+    L.traffic = loopNoise(brownBuf, "lowpass", 420, 0.7, amb, 0,true);
     L.crowd = loopNoise(noiseBuf, "bandpass", 700, 2.5, amb, 0);
     L.surf = loopNoise(brownBuf, "lowpass", 900, 0.5, amb, 0);
     L.wind = loopNoise(noiseBuf, "highpass", 3000, 0.4, amb, 0);
     L.rain = loopNoise(noiseBuf, "highpass", 2400, 0.6, amb, 0);
   }
   // only touch an AudioParam when the value really changes (keeps the automation timeline tiny)
-  const set = (p, v, tc = 0.08) => { if (p._v !== undefined && Math.abs(p._v - v) < Math.max(0.002, Math.abs(v) * 0.01)) return; p._v = v; p.cancelScheduledValues(now()); p.setTargetAtTime(v, now(), tc); };
+  const set = (p, v, tc = 0.08) => { if (p._v === v || v!==0&&p._v!==undefined&&Math.abs(p._v-v)<Math.max(.002,Math.abs(v)*.01)) return; p._v = v; p.cancelScheduledValues(now()); p.setTargetAtTime(v, now(), tc); };
   // per-class engine character: base pitch, top pitch, filter openness, growl
   const ENG = { hyper: [55, 230, 3800, 0.6], muscle: [32, 150, 1900, 0.9], sports: [48, 210, 3200, 0.6], sedan: [40, 140, 1500, 0.5], police: [40, 165, 2000, 0.6], bike: [62, 260, 3600, 0.4], boat: [30, 110, 900, 0.7] };
   A.setEngine = (on, rpm = 0.3) => { A._eng = on; A._rpm = rpm; };
@@ -202,7 +221,6 @@ export function createAudio() {
     const d = ctx.createDelay(1); d.delayTime.value = 0.28; const fb = ctx.createGain(); fb.gain.value = 0.32; const dl = ctx.createBiquadFilter(); dl.type = "lowpass"; dl.frequency.value = 2400;
     d.connect(dl); dl.connect(fb); fb.connect(d); dl.connect(mus);
     stems.delay = d;
-    stems.pad.connect(verbSend);
   }
   // stem levels for intensity 0..3
   const MIX = [
@@ -263,10 +281,11 @@ export function createAudio() {
     o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(out); if (send) g.connect(send);
     o.start(t); o2.start(t); o.stop(t + dur + rel + 0.05); o2.stop(t + dur + rel + 0.05);o2.onended=()=>{o.disconnect();o2.disconnect();fl.disconnect();g.disconnect();};
   }
-  function kick(t) { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(g); g.connect(stems.kick); o.start(t); o.stop(t + 0.32); }
-  function snare(t, soft) { const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = "highpass"; f.frequency.value = soft ? 1200 : 1800; g.gain.setValueAtTime(soft ? 0.25 : 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (soft ? 0.12 : 0.18)); s.connect(f); f.connect(g); g.connect(stems.snare); g.connect(verbSend); s.start(t); s.stop(t + 0.2);
-    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.value = 190; og.gain.setValueAtTime(0.3, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.08); o.connect(og); og.connect(stems.snare); o.start(t); o.stop(t + 0.1); }
-  function hat(t, v) { const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = "highpass"; f.frequency.value = 7000; g.gain.setValueAtTime(0.25 * v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04); s.connect(f); f.connect(g); g.connect(stems.hat); s.start(t); s.stop(t + 0.06); }
+  function kick(t) { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(g); g.connect(stems.kick);o.onended=()=>{o.disconnect();g.disconnect();};o.start(t); o.stop(t + 0.32); }
+  function snare(t, soft) { const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = "highpass"; f.frequency.value = soft ? 1200 : 1800; g.gain.setValueAtTime(soft ? 0.25 : 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (soft ? 0.12 : 0.18)); s.connect(f); f.connect(g); g.connect(stems.snare); s.start(t); s.stop(t + 0.2);
+    s.onended=()=>{s.disconnect();f.disconnect();g.disconnect();};
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.value = 190; og.gain.setValueAtTime(0.3, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.08); o.connect(og); og.connect(stems.snare);o.onended=()=>{o.disconnect();og.disconnect();};o.start(t); o.stop(t + 0.1); }
+  function hat(t, v) { const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = "highpass"; f.frequency.value = 7000; g.gain.setValueAtTime(0.25 * v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04); s.connect(f); f.connect(g); g.connect(stems.hat);s.onended=()=>{s.disconnect();f.disconnect();g.disconnect();};s.start(t); s.stop(t + 0.06); }
   function wantStyle(sty) {
     if (sty === nextStyle) return;
     nextStyle = sty;
@@ -281,12 +300,24 @@ export function createAudio() {
   A.currentStation = () => A.stations[A.station % A.stations.length].name;
 
   /* ---------------- per-tick update (cheap: a handful of param ramps) ---------------- */
-  let stepDist = 0, gullT = 3, dingT = 2, railT=0;
+  let stepDist=0,gullT=3,dingT=2,railT=0,scanT=0,scanX=Infinity,scanY=Infinity,lastScene='',lastAudible=false,spatialQueries=0;
+  const railWorld={motion:0,gain:0,pan:0},platformDoors=[false,false];
   A.update = (G, dt) => {
     if (!ctx || ctx.state !== "running") return;
     listener=G;
-    const P = G.player, play = G.scene === "play";
-    if(G.scene==='train'&&(railT-=dt)<0){railT=.68;A.transit('rail');}
+    const P=G.player,play=G.scene==='play',casino=G.scene==='casino',audible=A.sfxVol>.001&&A.masterVol>.001;
+    if(!P)return;
+    scanT-=dt;
+    if(scanT<=0||lastScene!==G.scene||lastAudible!==audible||Math.abs(P.x-scanX)+Math.abs(P.y-scanY)>140){
+      scanT=.35;scanX=P.x;scanY=P.y;lastScene=G.scene;lastAudible=audible;
+      sceneAcoustics(audible?G:{scene:'silent'},acoustics);spatialQueries++;
+      railWorld.motion=railWorld.gain=railWorld.pan=0;
+      if(audible&&play&&G.transit&&Math.abs(P.x-10320)<1000)for(let i=0;i<2;i++){
+        const train=regionalTrainAt(G.transit.clock,i*99);soundPosition(G,train.x,train.y,1000,position);
+        if(position.gain>railWorld.gain){railWorld.motion=Math.min(1,train.speed/240);railWorld.gain=position.gain;railWorld.pan=position.pan;}
+        const opening=train.doors>.2;if(opening&&!platformDoors[i]&&position.gain>.2)A.transit('platform',.10*position.gain,position.pan);platformDoors[i]=opening;
+      }
+    }
     // intensity: 0 calm, 1 mission/active, 2 wanted 1-2, 3 chase (3+ or seen)
     let target = play ? (G.wanted >= 3 ? 3 : G.wanted > 0 ? 2.2 : (G._flow ? 1 : 0.4)) : G.scene === "title" ? 0.9 : 0.3;
     if (G.scene === "vn" || G.scene === "brief") target = 0.2;
@@ -295,19 +326,23 @@ export function createAudio() {
     A.activeStreams=soundtrack?.activeStreams||0;
     A.trackTitle=soundtrack?.title||'CROWN CITY / LIVE SCORE';
     if(A.recordedMusic){for(const s of Object.keys(MIX[0]))set(stems[s].gain,0,.35);}else applyMix(A._int);
-    const inCar = play && P.type === "veh";
-    if(!A.recordedMusic)wantStyle(G.wanted >= 3 ? "chase" : inCar && A.radio ? A.stations[A.station].style : "score");
-    musLevel = G.scene === "title" ? 0.85 : 1;
+    const driving=play&&P.type==='veh',inCar=driving&&audible;
+    if(!A.recordedMusic)wantStyle(G.wanted >= 3 ? "chase" : driving && A.radio ? A.stations[A.station].style : "score");
+    musLevel=G.scene==='title'?.85:casino?.78:1;set(mus.gain,A.musVol*musLevel,.3);
     // engine
     const E = L.engine;
     if(inCar&&P.def.aircraft&&A._eng!==false&&!P.dead){
       // A continuous turbine / propeller pitch with blade pulses, without car gear changes.
-      const heli=P.def.helicopter,rpm=heli?Math.max(.35,P.rotor||0):.3+.7*Math.min(1,(P.airspeed||0)/P.def.max),pulse=.73+.27*Math.sin(now()*Math.PI*2*(heli?11+rpm*6:25+rpm*13));
+      const heli=P.def.helicopter,rpm=heli?Math.max(.35,P.rotor||0):.3+.7*Math.min(1,(P.airspeed||0)/P.def.max);
       const f=heli?76+rpm*59:66+rpm*132;
       set(E.o1.frequency,f,.14);set(E.o2.frequency,f*(heli?1.018:1.009),.14);set(E.o3.frequency,f*.5,.14);
-      set(E.f.frequency,heli?520:760+rpm*700,.12);set(E.g.gain,(heli?.075:.065)*rpm*pulse,.018);
-      set(E.rumble.g.gain,(heli?.19:.11)*rpm*pulse,.018);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
+      // Blade modulation runs at audio rate. Sampling a 17–38Hz rotor pulse
+      // in this 15Hz control loop produced false, low-frequency flutter.
+      set(E.blade.gain,heli?.74:.86,.2);set(E.bladeDepth.gain,heli?.26:.14,.2);set(E.bladeOsc.frequency,heli?11+rpm*6:25+rpm*13,.25);
+      set(E.f.frequency,heli?520:760+rpm*700,.12);set(E.g.gain,(heli?.075:.065)*rpm,.12);
+      set(E.rumble.g.gain,(heli?.15:.095)*rpm,.12);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
     } else if (inCar && A._eng !== false && !P.dead) {
+      set(E.blade.gain,1,.15);set(E.bladeDepth.gain,0,.15);
       const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind] || ENG.sedan;
       const spd = Math.hypot(P.vx, P.vy), top = P.def.max || 300;
       const gearN = 4, k = Math.min(1, spd / top), gear = Math.min(gearN - 1, (k * gearN) | 0), inG = (k * gearN) - gear;
@@ -318,7 +353,9 @@ export function createAudio() {
       set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
       set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
       set(E.g.gain, 0.05 + 0.07 * rpm, 0.08); set(E.rumble.g.gain, 0.12 * c[3], 0.1); set(E.rumble.f.frequency, 120 + 200 * rpm, 0.1);
-    } else { set(E.g.gain, 0, 0.15); set(E.rumble.g.gain, 0, 0.2); set(L.tyre.g.gain, 0, 0.05); }
+    } else {set(E.bladeDepth.gain,0,.15);set(E.g.gain,0,.15);set(E.rumble.g.gain,0,.2);set(L.tyre.g.gain,0,.05);}
+    const backwards=inCar&&!P.dead&&!P.def.boat&&!P.def.aircraft&&!P.def.bike?Math.max(0,-((P.vx||0)*Math.sin(P.rot)-(P.vy||0)*Math.cos(P.rot))-4):0,reverseMix=Math.min(1,backwards/90);
+    set(L.reverse.g.gain,.023*reverseMix,.12);set(L.reverse.o.frequency,160+reverseMix*160,.12);
     const surface=inCar?(G.surfaceAt?.(P.x,P.y)||'road'):'walk';surfaceMotion(inCar?P:{type:'foot'},surface,G.wet||0,rollingMix);
     const skid=inCar&&!P.def.boat&&!P.def.aircraft&&['road','walk','lot','track'].includes(surface)?A._skid*.18:0;
     set(L.tyre.g.gain,Math.max(skid,rollingMix.tyre),.07);set(L.tyre.f.frequency,1400+rollingMix.tyre*4500,.15);
@@ -326,46 +363,48 @@ export function createAudio() {
     set(L.wake.g.gain,rollingMix.wake,.22);set(L.wake.f.frequency,rollingMix.frequency,.2);
     A._skid = Math.max(0, A._skid - dt * 2.5);
     // nearest siren with pan + doppler
-    let best = null, bd = 1400;
-    if (play) for (const v of G.vehicles) if (v.siren && !v.dead && v !== P) { const d = Math.hypot(v.x - P.x, v.y - P.y); if (d < bd) { bd = d; best = v; } }
+    const best=play&&audible&&!acoustics.siren?.dead?acoustics.siren:null,bd=best?Math.hypot(best.x-P.x,best.y-P.y):1400;
     const S = L.siren;
     if (best) {
       S.ph += dt;
       const wail = G.wanted >= 3 ? 0.5 + 0.5 * Math.sign(Math.sin(S.ph * 9)) : 0.5 + 0.5 * Math.sin(S.ph * 2.2); // yelp at 3+, wail below
       const rx = (best.x - P.x) / (bd || 1), ry = (best.y - P.y) / (bd || 1);
-      const rel = ((best.vx - (P.vx || 0)) * rx + (best.vy - (P.vy || 0)) * ry); // + moving away
+      const rel = (((best.vx||0) - (P.vx || 0)) * rx + ((best.vy||0) - (P.vy || 0)) * ry); // + moving away
       const dop = Math.max(0.85, Math.min(1.15, 1 - rel / 1200));
       set(S.o.frequency, (620 + 520 * wail) * dop, 0.03);
-      set(S.g.gain, 0.09 * Math.pow(1 - bd / 1400, 1.6), 0.08);
+      set(S.g.gain, 0.09 * Math.pow(Math.max(0,1-bd/1400),1.6), 0.08);
       if(S.p.pan){const rot=G.cam.rot||0,screenX=(best.x-P.x)*Math.cos(rot)-(best.y-P.y)*Math.sin(rot);set(S.p.pan,Math.max(-.9,Math.min(.9,screenX/600)),.1);}
     } else set(S.g.gain, 0, 0.2);
-    // ambience by district / place
+    let railSpeed=0,railGain=0,railPan=0;
+    if(audible&&G.scene==='train'&&G.transit?.ride){const phase=ridePhase(G.transit.ride);railSpeed=railMotion(phase.id,phase.p);railGain=.13;
+      if(railSpeed>.12&&(railT-=dt)<0){railT=1.05-.6*railSpeed;A.transit('rail',.07+.08*railSpeed);}else if(railSpeed<=.12)railT=.18;
+    }else if(audible&&play){railSpeed=railWorld.motion;railGain=railWorld.gain*.09;railPan=railWorld.pan;}
+    set(L.rail.g.gain,railGain*railSpeed,.2);set(L.rail.f.frequency,150+railSpeed*460,.3);set(L.rail.osc.frequency,2+railSpeed*8,.3);if(L.rail.p.pan)set(L.rail.p.pan,railPan,.2);
+    // Ambience follows actual nearby people/vehicles and every canal direction.
     const dist = (G.district || "").toUpperCase();
     const strip = P.x > 1650 && P.x < 2300 && P.y > 800 && P.y < 3800 || dist.includes("METAWIN");
-    const water = G.surfaceAt && (["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y - 260)) || ["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y + 260)) || P.y < 1000);
+    const water=acoustics.water||0,canal=acoustics.canal||0;
     const night = G.time > 20 || G.time < 6;
-    let nearbyTraffic=0;if(play)for(const v of G.vehicles)if(v.traffic&&!v.dead&&Math.abs(v.x-P.x)<700&&Math.abs(v.y-P.y)<700)nearbyTraffic++;
-    const busy=Math.min(1,nearbyTraffic/8);
-    set(L.traffic.g.gain, play ? .025+.16*busy : 0, 0.6);
-    set(L.crowd.g.gain, play ? (strip ? 0.11 : dist.includes("MIDTOWN") || dist.includes("DOWNTOWN") ? 0.05 : 0.015) * (night && strip ? 1.3 : 1) : 0, 0.8);
+    const busy=acoustics.traffic||0,airHeight=P.def?.aircraft?Math.max(0,P.altitude||0):0,ground=Math.max(.12,1-airHeight/360);
+    set(L.traffic.g.gain,play&&audible?.16*busy*ground:0,.6);if(L.traffic.p.pan)set(L.traffic.p.pan,acoustics.trafficPan||0,.3);
+    set(L.crowd.g.gain,audible&&(play||casino)?(casino?.045:strip?.10:.055)*(acoustics.crowd||0)*(night&&strip?1.15:1)*ground:0,.8);
     set(L.crowd.f.frequency, 600 + 300 * Math.sin(now() * 0.7), 0.4);
-    set(L.surf.g.gain, play && water ? 0.16 + 0.08 * Math.sin(now() * 0.5) : 0, 0.8);
-    set(L.wind.g.gain,play?(P.def?.aircraft ? .10+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.055:dist.includes("FOREST")?.035:.015):.01,1);
-    set(L.rain.g.gain, (A._rain || 0) * 0.2, 0.5);
-    if (play && water && (gullT -= dt) < 0 && !night) { gullT = 3 + Math.random() * 6; gull(); }
-    if (play && strip && (dingT -= dt) < 0) { dingT = 1.2 + Math.random() * 3; ding(); }
+    set(L.surf.g.gain,play&&audible?water*(canal?.075:.14)*(1+.18*Math.sin(now()*.5))*ground:0,.8);set(L.surf.f.frequency,canal?470:900,.8);
+    set(L.wind.g.gain,play&&audible?(airHeight>10?.06+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.045:dist.includes('FOREST')?.028:.008):0,.6);
+    set(L.rain.g.gain,play&&audible?(A._rain||0)*.2:0,.3);
+    if(play&&audible&&water&&(gullT-=dt)<0&&!night){gullT=5+Math.random()*8;fx('gull',.055*water,Math.random()*1.6-.8);}
+    if(play&&audible&&strip&&(dingT-=dt)<0){dingT=3+Math.random()*5;fx('casinoPush',.035,Math.random()*1.6-.8);}
     // footsteps
-    if (play && P.type === "foot" && (P.speed || 0) > 20) {
+    if (play&&audible&&P.type==='foot'&&(P.speed||0)>20) {
       stepDist += (P.speed || 0) * dt;
       if (stepDist > ((P.speed || 0) > 150 ? 34 : 26)) { stepDist = 0; A.step(G.surfaceAt ? G.surfaceAt(P.x, P.y) : "walk"); }
-    }
+    }else stepDist=0;
   };
-  function gull() { oneShot((t) => { for (let k = 0; k < 2 + (Math.random() * 2 | 0); k++) { const o = ctx.createOscillator(), g = ctx.createGain(), tt = t + k * 0.22; o.type = "triangle"; const b = 1400 + Math.random() * 500; o.frequency.setValueAtTime(b, tt); o.frequency.exponentialRampToValueAtTime(b * 1.5, tt + 0.06); o.frequency.exponentialRampToValueAtTime(b * 0.7, tt + 0.18); env(g, tt, 0.01, 0.025, 0.18); const p = panNode(Math.random() * 2 - 1); o.connect(g); g.connect(p); p.connect(amb); o.start(tt); o.stop(tt + 0.22); } }, 0.9); }
-  function ding() { oneShot((t) => { const f = [1568, 2093, 2637][Math.random() * 3 | 0]; const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; env(g, t, 0.003, 0.02, 0.6); const p = panNode(Math.random() * 1.6 - 0.8); o.connect(g); g.connect(p); p.connect(amb); g.connect(verbSend); o.start(t); o.stop(t + 0.65); }, 0.7); }
   A.duck = duck;
   // low tier: drop the convolution reverb (the costliest node on weak phones)
   let lite = false;
-  A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if (!lite) verbSend.connect(verb); };
+  A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if(!lite)verbSend.connect(reverb()); };
+  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?17:0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
   // capture tap for recording demos (tests only)
   A.tap = () => { ensure(); const d = ctx.createMediaStreamDestination(); master.connect(d); return d.stream; };
   return A;

@@ -1,6 +1,7 @@
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
 import {loadImage} from './assets.js';
+import {projectedRoofBounds} from './render_world.js';
 const TAU=Math.PI*2;
 const colors=['#ac4540','#2c6663','#d0b47b','#304f68','#736047'];
 const within=(p,r,m=120)=>p.x>r.x0-m&&p.x<r.x1+m&&p.y>r.y0-m&&p.y<r.y1+m;
@@ -110,14 +111,14 @@ export function drawStreetScene(G,r){
 }
 export function drawRoofDetail(G,r){
  if(G.settings.quality==='low')return;
- const c=G.ctx,D=980/Math.max(.45,G.cam.scale),t=G.settings.reducedMotion?0:G.ticks/60;
+ const c=G.ctx,roof={},t=G.settings.reducedMotion?0:G.ticks/60;
  for(const b of G.bld.inView(r)){
   if(b.w<80||b.h<70||b.core&&b.kind==='casino')continue; // Preserve painted pools, signs and helipads.
-  const seed=hash(b.x*.13+b.y),k=(b.core?0:b.hgt)/D;
-  const x=b.x+(b.x-G.cam.x)*k,y=b.y+(b.y-G.cam.y)*k,w=b.w*(1+k),h=b.h*(1+k);
+  const seed=hash(b.x*.13+b.y);
+  projectedRoofBounds(b,G.cam,roof);const {x,y,w,h}=roof;
   c.save();
   if(!b.core&&G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;
-  c.translate(x,y);c.scale(1+k,1+k);
+  c.translate(x,y);c.scale(w/b.w,h/b.h);
   // Parapet with inset lighting and weathered edge.
   c.strokeStyle='rgba(218,204,174,.22)';c.lineWidth=2;c.strokeRect(5,5,b.w-10,b.h-10);
   if(seed>.35&&b.w>120){
