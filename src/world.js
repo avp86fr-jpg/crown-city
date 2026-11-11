@@ -200,6 +200,12 @@ export function buildWorld(meta, coreMask, coreMS) {
     const d = dOf(b.x + b.w / 2, b.y + b.h / 2);
     b.d = d;
     const big = b.w * b.h;
+    // street trees on the sidewalk edge (not in the industrial/airfield zones)
+    if (d === "eastside" || d === "oldtown" || d === "suburb" || d === "downtown" || d === "port") {
+      const step = d === "downtown" ? 170 : 140;
+      for (let x = b.x + 50; x < b.x + b.w - 40; x += step) { if (rnd() < 0.8) W.trees.push({ x, y: b.y - SW * 0.45, r: R(10, 13), t: (rnd() * 3) | 0, street: true }); if (rnd() < 0.8) W.trees.push({ x: x + step / 2, y: b.y + b.h + SW * 0.45, r: R(10, 13), t: (rnd() * 3) | 0, street: true }); }
+      for (let y = b.y + 50; y < b.y + b.h - 40; y += step) { if (rnd() < 0.8) W.trees.push({ x: b.x - SW * 0.45, y, r: R(10, 13), t: (rnd() * 3) | 0, street: true }); if (rnd() < 0.8) W.trees.push({ x: b.x + b.w + SW * 0.45, y: y + step / 2, r: R(10, 13), t: (rnd() * 3) | 0, street: true }); }
+    }
     if (d === "downtown") {
       if (rnd() < 0.16 && big < 600000) { // plaza
         fill(b.x, b.y, b.w, b.h, CODE.walk); W.features.push({ k: "plaza", x: b.x, y: b.y, w: b.w, h: b.h });

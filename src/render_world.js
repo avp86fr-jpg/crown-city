@@ -368,7 +368,7 @@ export function makeBuildings(W, tex, coreRoofs) {
   return {
     all, inView: (r) => inView(r, bins),
     draw(ctx, cam, r, frame, sun, opts) {
-      const D = 1250 / Math.max(0.45, cam.scale);
+      const D = 980 / Math.max(0.45, cam.scale);
       const list = [...inView(r, bins)];
       // far-from-camera first so near walls overlap correctly
       list.sort((p, q) => (Math.hypot(q.x + q.w / 2 - cam.x, q.y + q.h / 2 - cam.y) - Math.hypot(p.x + p.w / 2 - cam.x, p.y + p.h / 2 - cam.y)));
@@ -398,8 +398,15 @@ export function makeBuildings(W, tex, coreRoofs) {
           } else {
             const p = pat[b.roof] || pat.gravel;
             const k = 1 + h / D;
-            p.setTransform(new DOMMatrix([k, 0, 0, k, cam.x * (1 - k), cam.y * (1 - k)]));
+            const ts = (b.roof === "terra" || b.roof === "terra2") ? 0.42 : b.roof === "glass" ? 1 : 0.65;
+            p.setTransform(new DOMMatrix([k * ts, 0, 0, k * ts, cam.x * (1 - k) + (b.seed % 64), cam.y * (1 - k) + (b.seed % 48)]));
             ctx.fillStyle = p; ctx.fillRect(rx, ry, rw, rh);
+            // per-building tint + soft sun gradient so neighbouring roofs never read as one sheet
+            const TINTS = ["rgba(255,220,180,0.10)", "rgba(120,140,170,0.12)", "rgba(0,0,0,0.16)", "rgba(255,255,255,0.06)", "rgba(90,60,40,0.12)"];
+            ctx.fillStyle = TINTS[b.seed % TINTS.length]; ctx.fillRect(rx, ry, rw, rh);
+            const gg = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh);
+            gg.addColorStop(0, "rgba(255,255,255,0.08)"); gg.addColorStop(1, "rgba(0,0,0,0.14)");
+            ctx.fillStyle = gg; ctx.fillRect(rx, ry, rw, rh);
           }
           // parapet + roof details
           if (b.kind !== "container") {
@@ -413,7 +420,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     },
     drawLit(ctx, cam, r, night) {
       // lit windows pass (additive, after the light map)
-      const D = 1250 / Math.max(0.45, cam.scale);
+      const D = 980 / Math.max(0.45, cam.scale);
       for (const b of inView(r, bins)) {
         if (b.kind === "container" || b.kind === "hangar") continue;
         const h = b.core ? Math.min(70, (b.hgt || 24)) : b.hgt;
@@ -450,7 +457,7 @@ export function makeBuildings(W, tex, coreRoofs) {
       }
     },
     trees(ctx, cam, r, opts) {
-      const D = 1250 / Math.max(0.45, cam.scale);
+      const D = 980 / Math.max(0.45, cam.scale);
       for (const t of inViewTrees(r)) {
         const k = 28 / D;
         const x = t.x + (t.x - cam.x) * k, y = t.y + (t.y - cam.y) * k;
