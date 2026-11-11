@@ -1,3 +1,4 @@
+import {pedestrianClear,stepPedestrian} from './pedestrian_motion.js';
 /* Living streets: local decisions run at 8 Hz; movement remains frame-rate independent.
  * begin(dt) before traffic.tick(), steerPed(p,dt) after existing hurt/flee handling,
  * trafficSpeed(v,want) before traffic integrates speed. No rendering dependency.
@@ -13,10 +14,10 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 export function createStreetIndex(size = 160) {
   const cells = new Map(), rows = [], buckets = [];
   return {
-    rebuild(items) {
+    rebuild(items,includeDead=false) {
       for(const row of cells.values()){for(const bucket of row.values()){bucket.length=0;buckets.push(bucket);}row.clear();rows.push(row);}cells.clear();
       for (const item of items) {
-        if (item.dead || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
+        if (item.dead&&!includeDead || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
         const ix=Math.floor(item.x/size),iy=Math.floor(item.y/size);
         let row=cells.get(ix);if(!row){row=rows.pop()||new Map();cells.set(ix,row);}
         let bucket=row.get(iy);if(!bucket){bucket=buckets.pop()||[];row.set(iy,bucket);}bucket.push(item);
@@ -60,7 +61,7 @@ export function createCityAI(G) {
     return b;
   }
   function safe(x, y, radius = 7) {
-    if (!SAFE.has(G.surfaceAt(x, y))) return false;
+    if (!SAFE.has(G.surfaceAt(x, y))||!pedestrianClear(G,x,y,radius)) return false;
     if (!G.solidAt) return true;
     return !G.solidAt(x, y) && !G.solidAt(x - radius, y) && !G.solidAt(x + radius, y)
       && !G.solidAt(x, y - radius) && !G.solidAt(x, y + radius);
@@ -176,6 +177,7 @@ export function createCityAI(G) {
   const api = {
     stats,
     nearTraffic(x,y,radius,visit){cars.query(x,y,radius,visit);},
+    nearPeople(x,y,radius,visit){people.query(x,y,radius,visit);},
     reset() {
       // Reservations and conversation partners must not survive an actor reset.
       for(const p of G.peds||[]){p.cityState=null;p.cityActivity=null;p.cityBoarded=false;p.flee=0;p.dive=0;p.threatX=p.threatY=undefined;}
@@ -202,7 +204,7 @@ export function createCityAI(G) {
       local.length=0;for(const p of G.peds||[])if(!p.dead&&Math.abs(p.x-focus.x)<1550&&Math.abs(p.y-focus.y)<1300)local.push(p);
       people.rebuild(local);
       localCars.length=0;for(const v of G.vehicles||[])if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&Math.abs(v.x-focus.x)<1750&&Math.abs(v.y-focus.y)<1500)localCars.push(v);
-      if(G.player?.type==='veh'&&!G.vehicles?.includes(G.player))localCars.push(G.player);cars.rebuild(localCars);
+      if(G.player?.type==='veh'&&!G.vehicles?.includes(G.player))localCars.push(G.player);cars.rebuild(localCars,true);
       if (fixtureSource !== G.street?.fixtures) { fixtureSource = G.street?.fixtures; places.rebuild(fixtureSource || []); }
       stats.indexBuilds++;
       for (const p of local) react(p);
@@ -223,6 +225,21 @@ export function createCityAI(G) {
     steerPed(p, dt) {
       if (p.dead || p.copPed || p.mission || p.flee > 0 || p.dive > 0) return false;
       const b = brain(p);
+      // Painted crossings can be tagged as sidewalk in the core mask. A person
+      // waiting directly in a stopped driver's path must step aside instead of
+      // waiting for that same car to pass forever.
+      let yieldCar=null;
+      if(!p.crossing&&(p.speed||0)<2)cars.query(p.x,p.y,145,v=>{
+        if(yieldCar||!v.traffic&&!v.cop||Math.hypot(v.vx||0,v.vy||0)>8)return;
+        const dx=p.x-v.x,dy=p.y-v.y,hx=Math.sin(v.rot),hy=-Math.cos(v.rot),b=bodySize(v),ahead=dx*hx+dy*hy;
+        if(ahead>b.l-5&&ahead<b.l+65&&Math.abs(dx*hy-dy*hx)<b.w+15)yieldCar=v;
+      });
+      if(yieldCar){
+        const rx=Math.cos(yieldCar.rot),ry=Math.sin(yieldCar.rot),side=(p.x-yieldCar.x)*rx+(p.y-yieldCar.y)*ry>=0?1:-1;
+        for(const sign of [side,-side])if(stepPedestrian(G,p,Math.atan2(rx*sign,-ry*sign),p.walk||32,dt,{road:true})){
+          if(b.mode!=='walk')release(p,b);p.hx=Math.round(rx*sign);p.hy=Math.round(ry*sign);p.onRoad=G.surfaceAt(p.x,p.y)==='road';p.cityActivity='yielding';return true;
+        }
+      }
       // Displaced residents must clear the live carriageway before resuming a
       // conversation or venue visit. The ambient walker handles the safe exit.
       if(G.surfaceAt(p.x,p.y)==='road'){
@@ -243,14 +260,8 @@ export function createCityAI(G) {
         p.speed = 0; return true;
       }
       const wanted = Math.atan2(b.goal.x - p.x, -(b.goal.y - p.y)), speed = p.walk || 32;
-      let moved = false;
-      for (const turn of [0, 0.5, -0.5, 1, -1]) {
-        const rot = wanted + turn, step = Math.min(speed * Math.min(dt, 0.1), distance(p, b.goal));
-        const x = p.x + Math.sin(rot) * step, y = p.y - Math.cos(rot) * step;
-        if (!safe(x, y) || !safe(p.x + Math.sin(rot) * 16, p.y - Math.cos(rot) * 16)) continue;
-        p.x = x; p.y = y; p.rot += angle(rot - p.rot) * Math.min(1, dt * 9);
-        p.speed = speed; p.dist = (p.dist || 0) + step; p.onRoad = false; moved = true; break;
-      }
+      const moved=stepPedestrian(G,p,wanted,Math.min(speed,distance(p,b.goal)/Math.max(.001,dt)),dt);
+      p.onRoad=false;
       b.blocked = moved ? 0 : b.blocked + dt;
       if (!moved) p.speed = 0;
       if (b.blocked > 1.2) { b.lastFixture = b.fixture; release(p, b); b.next = clock + 4; }

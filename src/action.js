@@ -84,7 +84,7 @@ export function tickAction(G,dt,hooks) {
  if(I.weaponP){A.weapon=(A.weapon+1)%WEAPONS.length;A.reloadT=0;G.audio?.cock?.();}
  if(I.reloadP)reload(G);
  if(I.crewP){G.scene='crew';G.menuSel=0;G.pausedFrom='play';return;}
- const running=P.type==='foot'&&Math.hypot(I.x,I.y)>.15&&(I.sprint||I.touchJoy?.active&&Math.hypot(I.x,I.y)>.92);
+ const running=P.type==='foot'&&Math.hypot(I.x,I.y)>.15&&I.sprint;
  A.stamina=clamp(A.stamina+dt*(running?-15:22),0,100);
  A.exhausted=A.stamina<5||A.exhausted&&A.stamina<28;
  A.cover=false;

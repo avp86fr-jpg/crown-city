@@ -1,0 +1,37 @@
+/* A shared, bounded local planner for walkers and venue visitors. */
+import {circleBody} from './collision.js';
+export function pedestrianClear(G,x,y,r=6,vehicles=null){
+ const pass=(x,y)=>!['build','water','canal'].includes(G.surfaceAt(x,y));
+ if(!pass(x,y)||!pass(x-r,y)||!pass(x+r,y)||!pass(x,y-r)||!pass(x,y+r))return false;
+ let blocked=false;
+ const check=v=>{if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&circleBody(v,x,y,r))blocked=true;};
+ if(vehicles){for(const v of vehicles)check(v);}else if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(x,y,180,check);else for(const v of G.vehicles||[])if(Math.abs(v.x-x)<180&&Math.abs(v.y-y)<180)check(v);
+ return !blocked;
+}
+export function stepPedestrian(G,p,heading,speed,dt,{road=false}={}){
+ const step=speed*Math.min(dt,.1),side=p._walkSide||1;
+ // Query broad-phase buckets once per walking step, reuse candidates for all
+ // steering probes. Corner avoidance otherwise repeated both queries 14 times.
+ const cars=p._walkCars||(p._walkCars=[]),people=p._walkPeople||(p._walkPeople=[]);cars.length=people.length=0;
+ if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(p.x,p.y,210,v=>cars.push(v));
+ else for(const v of G.vehicles||[])if(Math.abs(v.x-p.x)<210&&Math.abs(v.y-p.y)<210)cars.push(v);
+ G.cityAI?.nearPeople?.(p.x,p.y,48,other=>people.push(other));
+ const safe=(x,y)=>{
+  if(!pedestrianClear(G,x,y,6,cars)||!road&&G.surfaceAt(x,y)==='road')return false;
+  let clear=true;for(const other of people){
+   if(other===p||other.dead||other.dive>0)continue;
+   const next=(other.x-x)**2+(other.y-y)**2,current=(other.x-p.x)**2+(other.y-p.y)**2;
+   if(next<14**2&&next<current)clear=false;
+  }return clear;
+ };
+ // Retain the chosen side around a parked body, rather than changing sides
+ // every frame. Look farther than one step so the turn begins before contact.
+ for(const turn of [0,.55*side,1.05*side,1.55*side,-.55*side,-1.05*side,-1.55*side]){
+  const a=heading+turn,hx=Math.sin(a),hy=-Math.cos(a),x=p.x+hx*step,y=p.y+hy*step;
+  if(!safe(x,y)||!safe(p.x+hx*Math.max(16,step),p.y+hy*Math.max(16,step)))continue;
+  if(turn)p._walkSide=Math.sign(turn);
+  p.x=x;p.y=y;p.rot+=Math.atan2(Math.sin(a-p.rot),Math.cos(a-p.rot))*Math.min(1,dt*9);
+  p.speed=speed;p.vx=hx*speed;p.vy=hy*speed;p.dist=(p.dist||0)+step;return true;
+ }
+ p.speed=p.vx=p.vy=0;return false;
+}

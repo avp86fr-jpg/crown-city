@@ -152,3 +152,15 @@ test('spatial rebuilding is throttled while movement stays smooth, with a lower 
     assert.ok(ai.stats.indexBuilds <= max); assert.equal(distant.cityState, undefined);
   }
 });
+
+test('a resident on a painted crossing steps out of a stopped driver’s path instead of mutually waiting',()=>{
+ const p=ped(68,2,{hx:-1,hy:0,rot:-Math.PI/2}),v=car(0,0,{def:{},kind:'fare'}),{G,ai}=city({peds:[p],vehicles:[v]});G.cityAI=ai;
+ for(let i=0;i<180;i++){ai.begin(1/60);if(!ai.steerPed(p,1/60)){p.speed=0;} }
+ assert.ok(Math.abs(p.y)>39,`resident still blocks the bumper at ${p.x},${p.y}`);assert.ok(ai.trafficSpeed(v,60)>0);
+});
+
+test('wrecks remain pedestrian obstacles without provoking a threat reaction',()=>{
+ const p=ped(-80,0,{rot:Math.PI/2,hx:1,hy:0,gather:{x:80,y:0}}),v=car(0,0,{def:{},kind:'fare',dead:true});const {G,ai}=city({peds:[p],vehicles:[v]});G.cityAI=ai;
+ ai.begin(.1);let seen=false;ai.nearTraffic(0,0,30,other=>{if(other===v)seen=true;});assert.equal(seen,true);assert.equal(p.flee,0);
+ for(let i=0;i<120;i++){ai.begin(1/60);ai.steerPed(p,1/60);assert.ok(!(Math.abs(p.x)<52&&Math.abs(p.y)<24));}
+});

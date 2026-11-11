@@ -1,3 +1,4 @@
+import {initSlots,slotsSave,nearSlots,tickSlots,finishSlots,drawSlots,drawSlotsWorld} from './slots.js';
 /* MetaWin's playable terrace table. All stakes are Crown City game chips.
    The wager, shuffled deck and settlement travel in the same game snapshot. */
 import {message} from './action.js';
@@ -30,19 +31,20 @@ function validRound(r){
  return true;
 }
 export function initCasino(G,saved={}){
+ initSlots(G,saved?.slots);
  G.casino={stake:CASINO_STAKES.includes(saved?.stake)?saved.stake:20,round:validRound(saved?.round)?copyRound(saved.round):null,
   played:clamp(Math.floor(Number(saved?.played)||0),0,1e9),won:clamp(Math.floor(Number(saved?.won)||0),0,1e9),net:clamp(Math.floor(Number(saved?.net)||0),-1e9,1e9),near:null,delay:0,anim:0};
 }
 export function casinoSave(G){
- const s=G.casino;if(!s)return null;return {v:1,stake:s.stake,played:s.played,won:s.won,net:s.net,round:copyRound(s.round)};
+ const s=G.casino;if(!s)return null;return {v:1,slots:slotsSave(G),stake:s.stake,played:s.played,won:s.won,net:s.net,round:copyRound(s.round)};
 }
 export function nearCasino(G){
- const p=G.player,t=CASINO_TABLE;return p?.type==='foot'&&!G.jack&&Math.hypot(p.x-t.entryX,p.y-t.entryY)<t.radius?t:null;
+ const p=G.player,t=CASINO_TABLE;return p?.type==='foot'&&!G.jack&&Math.hypot(p.x-t.entryX,p.y-t.entryY)<t.radius?t:nearSlots(G);
 }
 export function interactCasino(G){
  if(!nearCasino(G))return false;if(!G.casino)initCasino(G);
- if(G.wanted>0){message(G,'METAWIN','The dealer is holding the table. Lose your wanted level first.','#dfc496');return true;}
- G.scene='casino';G.menuSel=0;sound(G,'open');G.casino.delay=.25;G.casino.anim=0;
+ if(G.wanted>0){message(G,'METAWIN','Security is watching the terrace. Lose your wanted level first.','#dfc496');return true;}
+ G.casino.mode=nearSlots(G)?'slots':'blackjack';G.scene='casino';G.menuSel=0;sound(G,'open');G.casino.delay=.25;G.casino.anim=0;
  if(G.input){G.input.fire=G.input.fireP=G.input.enterP=false;}
  if(G.player){G.player.vx=0;G.player.vy=0;}
  return true;
@@ -81,7 +83,8 @@ export function casinoAction(G,action,H={}){
  persist(G,H);return true;
 }
 export function tickCasino(G,dt,H={}){
- if(!G.casino)initCasino(G);const s=G.casino;s.near=nearCasino(G);
+ if(!G.casino)initCasino(G);tickSlots(G,dt,H);const s=G.casino;s.near=nearCasino(G);
+ if(s.mode==='slots')return;
  if(G.scene!=='casino')return;dt=clamp(Number(dt)||0,0,.25);s.delay=Math.max(0,s.delay-dt);s.anim+=dt;
  const r=s.round;if(r?.phase!=='dealer'||s.delay>0)return;
  if(handValue(r.dealer).total<17){take(r,r.dealer);sound(G,'card');s.delay=G.settings?.reducedMotion ? .15 : .6;s.anim=0;}
@@ -89,6 +92,7 @@ export function tickCasino(G,dt,H={}){
  persist(G,H);
 }
 export function leaveCasino(G,H={}){
+ finishSlots(G,H);
  const r=G.casino?.round;
  // Leaving means standing; there is no refundable peek at the opening cards.
  if(r&&r.phase!=='result'){
@@ -113,7 +117,7 @@ function hand(c,cards,cx,y,maxW,hidden,u,motion){
 }
 function valueLabel(cards){const v=handValue(cards);return v.blackjack?'BLACKJACK':v.bust?`BUST · ${v.total}`:`${v.total}${v.soft?' · SOFT':''}`;}
 export function drawCasino(G,{button,save}={}){
- if(G.scene!=='casino')return;const c=G.ctx,W=G.canvas.width,H=G.canvas.height,d=G.dpr||1,s=G.casino,r=s.round;
+ if(G.scene!=='casino')return;if(G.casino.mode==='slots'){drawSlots(G,{button,save});return;}const c=G.ctx,W=G.canvas.width,H=G.canvas.height,d=G.dpr||1,s=G.casino,r=s.round;
  // Layout units fit both narrow phones and landscape browser chrome; safe insets
  // are included before fitting, so buttons stay above the gesture/home bar.
  const safe=G.safe||{},areaW=W-(safe.l||0)-(safe.r||0),areaH=H-(safe.t||0)-(safe.b||0),portrait=areaH>areaW;
@@ -159,7 +163,8 @@ export function drawCasino(G,{button,save}={}){
  c.restore();
 }
 export function drawCasinoWorld(G,r){
+ drawSlotsWorld(G,r);
  const t=CASINO_TABLE;if(t.x<r.x0-100||t.x>r.x1+100||t.y<r.y0-100||t.y>r.y1+100)return;
- const c=G.ctx,near=nearCasino(G);c.save();c.strokeStyle=near?'#f1cf85':'#ab9e6d';c.lineWidth=1.5;c.beginPath();c.ellipse(t.entryX,t.entryY,18,8,0,0,Math.PI*2);c.stroke();
+ const c=G.ctx,near=nearCasino(G)===t;c.save();c.strokeStyle=near?'#f1cf85':'#ab9e6d';c.lineWidth=1.5;c.beginPath();c.ellipse(t.entryX,t.entryY,18,8,0,0,Math.PI*2);c.stroke();
  text(c,'BLACKJACK',t.x,t.y-34,9,'#eed49b');text(c,near?(G.touch?'TAP PLAY':'E / PLAY'):'20 / 50 / 100 CHIPS',t.entryX,t.entryY+24,near?10:8,near?'#ffe2a3':'#dbc99c');c.restore();
 }
