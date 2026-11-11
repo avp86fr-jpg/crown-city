@@ -2,6 +2,7 @@
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+export const hourOfDay=t=>Number.isFinite(t)?((t%24)+24)%24:12;
 
 // key frames: hour -> ambient rgb (multiply), sun elevation handled separately
 const AMB = [
@@ -10,6 +11,7 @@ const AMB = [
   [20.2, [75, 85, 130]], [21, [71, 84, 124]], [24, [71, 84, 124]],
 ];
 export function ambientAt(t) {
+  t=hourOfDay(t);
   for (let i = 0; i < AMB.length - 1; i++) {
     const [h0, c0] = AMB[i], [h1, c1] = AMB[i + 1];
     if (t >= h0 && t <= h1) {
@@ -26,6 +28,7 @@ export function darkness(t) {
 }
 // sun direction (unit vector pointing FROM sun along ground) and shadow length factor
 export function sunAt(t) {
+  t=hourOfDay(t);
   const day = clamp((t - 6) / 13, 0, 1); // 6:00 -> 19:00
   const up = Math.sin(day * Math.PI);
   const az = lerp(-Math.PI * 0.5, Math.PI * 0.5, day); // east -> west
@@ -36,10 +39,14 @@ export function sunAt(t) {
   return { x: sx / L, y: sy / L, len: alive ? clamp(0.25 / Math.max(0.18, up), 0.25, 1.4) : 0, alpha: alive ? clamp(up * 1.6, 0, 1) * 0.34 : 0, up };
 }
 export function timeLabel(t) {
+  t=hourOfDay(t);
   const h = t | 0, m = ((t % 1) * 60) | 0;
   const phase = t < 5.5 ? "NIGHT" : t < 7.5 ? "DAWN" : t < 17 ? "DAY" : t < 19.8 ? "DUSK" : "NIGHT";
   return { text: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`, phase };
 }
+// Continuous crossfade for baked mobile light layers, rather than a Boolean night switch.
+export function nightMix(t){const v=clamp((darkness(t)-.12)/.42,0,1);return v*v*(3-2*v);}
+export function mobileTint(t){const rgb=ambientAt(t),n=nightMix(t);return {night:n,alpha:.025+n*.145,warm:Math.max(0,(rgb[0]-rgb[2])/255)*.12};}
 
 const sprites = new Map();
 function radial(color, size = 128) {

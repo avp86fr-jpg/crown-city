@@ -197,7 +197,7 @@ export function createCityAI(G) {
       }
       const local = (G.peds || []).filter(p => Math.abs(p.x - focus.x) < 1550 && Math.abs(p.y - focus.y) < 1300);
       people.rebuild(local);
-      cars.rebuild((G.vehicles || []).concat(G.player?.type === 'veh' && !G.vehicles?.includes(G.player) ? [G.player] : []).filter(v=>!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)));
+      cars.rebuild((G.vehicles || []).concat(G.player?.type === 'veh' && !G.vehicles?.includes(G.player) ? [G.player] : []).filter(v=>!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&Math.abs(v.x-focus.x)<1750&&Math.abs(v.y-focus.y)<1500));
       if (fixtureSource !== G.street?.fixtures) { fixtureSource = G.street?.fixtures; places.rebuild(fixtureSource || []); }
       stats.indexBuilds++;
       for (const p of local) react(p);

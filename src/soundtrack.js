@@ -4,6 +4,7 @@ export const TRACKS=[
  {file:'chip-sidewalk.ogg',title:'SIDEWALK STORIES / SOUTHBOUND',station:'CHIP RADIO 104.2'},
  {file:'nightshift-escape.ogg',title:'NO CLEAN EXIT / THE NIGHT SHIFT',station:'NIGHT SHIFT 107.7'},
  {file:'crown-midnight.ogg',title:'MIDNIGHT RECEIPTS / THE CROWN SESSIONS',station:'CITY SCORE'},
+ {file:'last-train.ogg',title:'LAST TRAIN HOME / THE CROWN SESSIONS',station:'CROWN TRANSIT'},
 ];
 export function createSoundtrack(ctx,bus){
  const channels=[];let started=false,selected=3,previous=-1,lastScene='title';
@@ -22,12 +23,12 @@ export function createSoundtrack(ctx,bus){
  function fade(c,value,seconds=.45){if(c.level===value)return;c.level=value;c.gain.gain.cancelScheduledValues(ctx.currentTime);c.gain.gain.setTargetAtTime(value,ctx.currentTime,seconds/3);}
  function update(G,station){
   if(!started)return false;lastScene=G.scene;
-  const wanted=G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player?.type==='veh'?station%3:3;
+  const wanted=G.scene==='train'?4:G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player?.type==='veh'?station%3:3;
   if(wanted!==selected){previous=selected;selected=wanted;for(let i=0;i<channels.length;i++)if(channels[i]&&i!==selected&&i!==previous){fade(channels[i],0,.06);channels[i].el.pause();}}
   if(document.hidden)return false;
   const current=channel(selected);play(current);
   const ready=current.ready&&!current.el.paused&&!current.error;
-  const level=['pause','map','settings','crew','garage','dossier'].includes(G.scene)?.13:G.scene==='vn'?.22:G.scene==='brief'?.3:G.player?.type==='foot'?.45:.72;
+  const level=['pause','map','settings','crew','garage','dossier','transit'].includes(G.scene)?.13:G.scene==='train'?.4:G.scene==='vn'?.22:G.scene==='brief'?.3:G.contactTalk||G.action?.messageT>0?.3:G.player?.type==='foot'?.45:.66;
   if(ready){fade(current,level);current.stopAt=Infinity;
    channels.forEach((c,i)=>{if(i===selected)return;fade(c,0);if(c.stopAt===Infinity)c.stopAt=ctx.currentTime+.65;if(ctx.currentTime>=c.stopAt&&!c.el.paused){c.el.pause();c.ready=false;}});
   }

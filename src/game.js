@@ -1,4 +1,8 @@
+import {initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
+import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
+import {drawLocalAtmosphere} from './world_effects.js';
 import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
+import { vehicleCondition, recordVehicleDamage, damageSnapshot, restoreDamage, drawVehicleDamage } from './vehicle_dynamics.js';
 import { AIRCRAFT_DEFS, airborne, spawnAircraft, tickAircraft, aircraftSnapshot, restoreAircraft, drawAircraft, aviationHint, canExitAircraft } from './aviation.js';
 import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, drawExpansionHUD } from './expansion.js';
 import { drawExpansionOverhead } from './expansion_world.js';
@@ -10,7 +14,7 @@ import { createAudio } from "./audio.js";
 import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
-import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen } from "./traffic.js";
+import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
 import { createLighting, ambientAt, darkness, sunAt, timeLabel, LIGHT } from "./lighting.js";
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
@@ -79,6 +83,7 @@ function charScale(sprite, spr) {
 
 const SURFACE = { 0: "road", 1: "walk", 2: "build", 3: "water", 4: "sand", 5: "grass", 6: "track", 7: "pier", 8: "canal", 9: "lot", 10: "dirt" };
 const GRIP = { road: 1, walk: 0.8, build: 0.2, water: 0.15, sand: 0.5, grass: 0.6, track: 1.05, pier: 0.75, canal: 0.15, lot: 0.95, dirt: 0.62 };
+const FOOT_PROBES=[[1,0],[.70710678,.70710678],[0,1],[-.70710678,.70710678],[-1,0],[-.70710678,-.70710678],[0,-1],[.70710678,-.70710678]];
 const FOOT_OK = new Set(["road", "walk", "sand", "grass", "track", "pier", "lot", "dirt"]);
 
 
@@ -209,7 +214,7 @@ export async function boot() {
   servicePoints(G); buildStreetScene(G);
   G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
-  initExpansion(G);
+  initExpansion(G);initTransit(G);initWildlife(G);
   seedPickups(G);
   // Warm the first city tiles without running the city behind the static title.
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
@@ -296,12 +301,13 @@ function makeVeh(kind, x, y, rot, extra = {}) {
   };
 }
 
+const CLEAR_DIRS=Array.from({length:8},(_,i)=>[Math.cos(i*Math.PI/4),Math.sin(i*Math.PI/4)]);
 function clearAt(G, x, y, r, foot = true) {
   const ok = (s) => foot ? FOOT_OK.has(s) : (s !== "build" && s !== "water" && s !== "canal");
   if (!ok(G.surfaceAt(x, y))) return false;
   for (let a = 0; a < 8; a++) {
-    const ang = a * Math.PI / 4;
-    if (!ok(G.surfaceAt(x + Math.cos(ang) * r, y + Math.sin(ang) * r))) return false;
+    const [dx,dy]=CLEAR_DIRS[a];
+    if (!ok(G.surfaceAt(x + dx * r, y + dy * r))) return false;
   }
   return true;
 }
@@ -621,10 +627,10 @@ function setupTouch(G) {
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 104);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
-      const lbl = G.contactNear&&!drive ? "TALK" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
+      const lbl = G.contactNear&&!drive ? "TALK" : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
       if (enterL.textContent !== lbl) enterL.textContent = lbl;
-      enterB.classList.toggle("ready", (!!near || !!G.contactNear || !!nearbyInteraction(G)) && !G.jack);
-      enterB.style.opacity = drive || near || G.contactNear || nearbyInteraction(G) ? 1 : 0.45;
+      enterB.classList.toggle("ready", (!!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
+      enterB.style.opacity = drive || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
       boostB.classList.toggle("off", !(drive && (G.player.def.sprite === "nyx" || G.player.def.aircraft)));
       const flying=drive&&G.player.def.aircraft;
       for(const [id,text] of [["tBoost",flying?"UP":"BOOST"],["tBrake",flying?"DOWN":"BRAKE"],["tHand",flying?"LAND":"DRIFT"]]){const el=document.getElementById(id),label=el?.querySelector("span:last-child");if(label&&label.textContent!==text)label.textContent=text;}
@@ -681,7 +687,9 @@ function snapshot(G) {
     health: G.health, vehicleHealth: G.player.type === 'veh' ? G.player.health : null,
     vehiclePaint: G.player.type === 'veh' ? G.player.paint || 0 : 0,
     aircraft: aircraftSnapshot(G.player),
+    vehicleDamage: damageSnapshot(G.player),
     expansion: {...G.expansionState,visited:[...(G.expansionState?.visited||[])]},
+    transit:{clock:G.transit?.clock||0,completed:G.transit?.completed||0},
     missionState: { ...G.missionState }, ended: G.ended, needsBegin: G.needsBegin,
     scene: G.scene, vnId: G.scene === 'vn' ? G.vn.id : null, vnQueue: [...(G.vnQueue || [])],
     race: G.race ? { i: G.race.i, rivalI: G.race.rivalI, t: G.race.t, countdown: G.race.countdown,
@@ -738,6 +746,7 @@ function restoreState(G, d) {
     if(v.def.boat){const at=waterBerth(G,v,v.x,v.y);if(at)Object.assign(v,at);}
     finishEnter(G, v); v.health = finite(d.vehicleHealth, 100, 15, 100); v.wrecked = v.health < 35;
     v.paint = Math.floor(finite(d.vehiclePaint,0,0,100));
+    restoreDamage(v,d.vehicleDamage);
     if(v.def.aircraft) restoreAircraft(v,d.aircraft);
   } else { const spot = findSafe(G, x, y, 8, true); G.player = makeFoot(G, spot.x, spot.y, rot); }
   if (G._flow && G._flow.onStart && G._flow.onStart.spawnVan) {
@@ -767,7 +776,7 @@ function restoreState(G, d) {
   else if (G.needsBegin && !G.ended) beginMission(G, G.missionIndex);
   else G.scene = G.ended && !G.freeRoam ? 'end' : 'play';
   setHint(G);
-  initExpansion(G,d.expansion);
+  initExpansion(G,d.expansion);initTransit(G,d.transit);initWildlife(G);
   beginJob(G);
   return true;
 }
@@ -845,6 +854,8 @@ function tick(G, dt) {
   else if (G.scene === "settings") tickSettings(G, dt);
   else if (G.scene === "vn") tickVN(G, dt);
   else if (G.scene === "end") tickEnd(G, dt);
+  else if (G.scene === "train") {tickJourney(G,dt,{makeFoot,save});menuKeys(G);}
+  else if (G.scene === "transit") {if(G.input.pauseP)cancelTransit(G);else menuKeys(G);}
   else if (['pause','map','crew','garage','dossier'].includes(G.scene)) tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
   else tickPlay(G, dt);
@@ -897,7 +908,7 @@ function startNew(G) {
   G.cityAI=createCityAI(G);
   const s = G.meta.spawns.player;
   G.player = makeFoot(G, s[0], s[1], 0);
-  initExpansion(G,{});
+  initExpansion(G,{});initTransit(G);initWildlife(G);
   G.cam.x = s[0]; G.cam.y = s[1];
   G.needsBegin = true;
   G.weatherT = 90;
@@ -1167,7 +1178,9 @@ function tickPlay(G, dt) {
   const speed = [0, 1, 0.5, 0.25][G.settings.timeSpeed ?? 1] ?? 1;
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
   tickWeather(G, dt);
+  tickTransit(G,dt);
   if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
+  if(G.input.enterP&&interactTransit(G)){G.input.enterP=false;return;}
   if (G.input.enterP && nearbyInteraction(G)) {
     G.interactP = true; G.input.enterP = false;
   }
@@ -1201,7 +1214,7 @@ function tickPlay(G, dt) {
   const guidance=tickDirector(G,dt);
   if(guidance)message(G,guidance.name,guidance.text);
   tickMission(G, dt);
-  tickExpansion(G,dt);
+  tickExpansion(G,dt);tickWildlife(G,dt);
   G.interactP = false;
   tickTips(G, dt);
   G.district = districtAt(G.player.x, G.player.y);
@@ -1310,8 +1323,10 @@ function tickPlayer(G, dt) {
       // stick points behind a slow car: swing round in a tight forward U-turn (BRAKE = reverse)
       if (Math.abs(diff) > 2.3 && fwd < 60) { y = mag * 0.7; x = diff >= 0 ? 1 : -1; }
       else if (Math.abs(diff) > 1.6 && fwd > 90) y = mag * 0.3;
-      inp = { x, y, brake: I.brake, hand: I.hand, boost: I.boost, sprint: I.boost, fire: I.fire, enterP: I.enterP };
-    } else if (I.brake) inp = { ...I, y: Math.min(I.y, -1) };
+      if(v.def.airplane&&v.altitude>1)y=Math.max(.65,mag);
+      inp = { x, y, touchFlight:!!v.def.aircraft, brake: I.brake, hand: I.hand, boost: I.boost, sprint: I.boost, fire: I.fire, enterP: I.enterP };
+    } else if (I.brake&&!v.def.aircraft) inp = { ...I, y: Math.min(I.y, -1) };
+    if(v.def.aircraft&&G.touch)inp={...inp,touchFlight:true};
     if(v.def.aircraft){
       const flight=tickAircraft(G,v,inp,dt,{damage:(craft,amount)=>damageVeh(G,craft,amount),notice:s=>toast(G,s)});
       tickVehDamage(G,v,dt);
@@ -1344,13 +1359,15 @@ function tickPlayer(G, dt) {
 function footOK(G, x, y) { const s = G.surfaceAt(x, y); return FOOT_OK.has(s); }
 function footClear(G, x, y, r) {
   if (!footOK(G, x, y)) return false;
-  for (let a = 0; a < 8; a++) { const ang = a * Math.PI / 4; if (!footOK(G, x + Math.cos(ang) * r, y + Math.sin(ang) * r)) return false; }
+  for(let i=0;i<8;i++){const q=FOOT_PROBES[i];if(!footOK(G,x+q[0]*r,y+q[1]*r))return false;}
   return true;
 }
 function moveFoot(G,p,dx,dy){
   const x=p.x,y=p.y;moveFootMap(G,p,dx,dy);resolveFootVehicles(G,p,x,y);
 }
 function resolveFootVehicles(G,p,oldX=p.x,oldY=p.y){
+  const version=G.streetVehicleGeneration||0,current=G.streetVehicleSource===G.vehicles;
+  if(current&&p._bodyPass===version&&p._bodyX===p.x&&p._bodyY===p.y)return;
   for(const v of localStreetVehicles(G,p.x,p.y)){
     if(v.def.boat||airborne(v)||Math.abs(v.x-p.x)>90||Math.abs(v.y-p.y)>90||Math.hypot(v.vx||0,v.vy||0)>45)continue;
     if(!circleBody(v,p.x,p.y,8))continue;
@@ -1361,6 +1378,7 @@ function resolveFootVehicles(G,p,oldX=p.x,oldY=p.y){
     const nx=p.x+dx*c-dy*sn,ny=p.y+dx*sn+dy*c;
     if(footClear(G,nx,ny,7)){p.x=nx;p.y=ny;}else{p.x=oldX;p.y=oldY;}
   }
+  p._bodyPass=current?version:-1;p._bodyX=p.x;p._bodyY=p.y;
 }
 function moveFootMap(G, p, dx, dy) {
   const r = 7;
@@ -1387,9 +1405,14 @@ function moveFootMap(G, p, dx, dy) {
 function tickDrive(G, v, input, dt, isPlayer) {
   v.prevX=v.x;v.prevY=v.y;const oldRot=v.rot;
   if(isPlayer) applyTune(G,v);
-  const def = v.def;
+  const def = v.def,condition=vehicleCondition(v);
+  if(v.health>=99&&v.damage){v.damage=null;v.damageStage='GOOD';}
+  if(v.health<=0)input={...input,y:0,hand:true};
   const surf = v.def.boat ? G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x,v.y) : G.surfaceAt(v.x, v.y);
-  if (v.dead) { v.vx *= 0.95; v.vy *= 0.95; v.x += v.vx * dt; v.y += v.vy * dt; return; }
+  if (v.dead) {
+    const damping=Math.exp(-4*dt);v.vx*=damping;v.vy*=damping;
+    const nx=v.x+v.vx*dt,ny=v.y+v.vy*dt;if(!carHit(G,v,nx,ny)){v.x=nx;v.y=ny;}else v.vx=v.vy=0;return;
+  }
   if (!def.boat && (surf === "water" || surf === "canal")) {
     v.vx *= Math.exp(-3 * dt); v.vy *= Math.exp(-3 * dt);
     v.sinkT = (v.sinkT || 0) + dt;
@@ -1401,45 +1424,45 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  const throttle = Math.max(0, input.y || 0);
-  const reverse = Math.max(0, -(input.y || 0));
+  const throttle = def.boat&&input.brake?0:Math.max(0,input.y||0);
+  const reverse = Math.max(0,-(input.y||0),def.boat&&input.brake?1:0);
   const hand = !!(input.hand || input.brake && !reverse);
   const isNyx = def.sprite === "nyx" && isPlayer;
   const boosting = isNyx && (input.boost || input.sprint) && throttle > 0;
   v.boost = boosting ? 1 : 0;
-  const top = def.max * (boosting ? 1.25 : 1) * (v.health < 30 ? 0.7 : 1);
+  const top = def.max * (boosting ? 1.25 : 1) * condition.top;
   // power curve: strong low end, tapering near top speed
   const k = clamp(Math.abs(fwd) / top, 0, 1);
-  const torque = def.accel * (1.25 - 0.95 * k * k) * (isNyx ? 1 + 0.35 * Math.max(0, 1 - Math.abs(fwd) / 160) : 1) * (boosting ? 1.5 : 1);
+  const torque = def.accel * condition.power * (1.25 - 0.95 * k * k) * (isNyx ? 1 + 0.35 * Math.max(0, 1 - Math.abs(fwd) / 160) : 1) * (boosting ? 1.5 : 1);
   if (throttle > 0) {
-    if (fwd < -5) fwd += def.brake * throttle * dt; // braking out of reverse
+    if (fwd < -5) fwd += def.brake * condition.brake * throttle * dt; // braking out of reverse
     else fwd += torque * throttle * dt;
   }
   if (reverse > 0) {
-    if (fwd > 5) fwd -= def.brake * reverse * dt; // brake first
+    if (fwd > 5) fwd -= def.brake * condition.brake * reverse * dt; // brake first
     else fwd -= def.accel * 0.55 * reverse * dt;
   }
   if (hand) fwd *= Math.exp(-(def.bike ? 1.4 : 0.9) * dt);
   if(!def.boat){const cornerTop=top/(1+Math.abs(input.x||0)*.78);if(Math.abs(fwd)>cornerTop)fwd*=Math.exp(-Math.abs(input.x||0)*1.8*dt);}
   // surface grip
   const speed0 = Math.abs(fwd);
-  let grip = def.grip * (GRIP[surf] || 0.7) * (G.wet > 0.3 ? 0.8 : 1);
+  let grip = def.grip * condition.grip * (GRIP[surf] || 0.7) * (G.wet > 0.3 ? 0.8 : 1);
   if (def.boat) grip = onLand ? 0.2 : 0.62 + 0.25 * Math.max(0, 1 - speed0 / 160); // boats carve: more bite at low speed, slide when fast
   if (def.bike) grip = Math.max(grip, def.grip * 1.45 * (GRIP[surf] || 0.7));
   const speed = Math.abs(fwd);
   // steering: speed-sensitive, understeer at the top end, more bite on bikes
   const steerIn = clamp(input.x || 0, -1, 1);
-  const steerAuth = def.steer * Math.min(1, speed / (def.bike ? 28 : def.boat ? 22 : 55)) * (1 - (def.bike ? 0.25 : 0.35) * k) * (hand ? 1.35 : 1) * (def.boat ? 1.15 : 1);
+  const steerAuth = def.steer * Math.min(1, speed / (def.bike ? 28 : def.boat ? 40 : 55)+(def.boat?Math.abs(throttle-reverse)*.2:0)) * (1 - (def.bike ? 0.25 : 0.35) * k) * (hand&&!def.boat ? 1.35 : 1) * (def.boat ? .82 : 1);
   const yawRate = steerIn * steerAuth * Math.sign(fwd || 1) * 1.15;
   v.yaw = lerp(v.yaw || 0, yawRate, Math.min(1, (def.bike ? 12 : 8) * dt));
   v.rot += v.yaw * dt;
   // lateral slip: handbrake lets the rear step out
-  const slipGrip = hand ? 1.1 : (isNyx && Math.abs(steerIn) > 0.6 && speed > 150 ? 4.2 : 7.5);
+  const slipGrip = def.boat ? 10 : hand ? 1.1 : (isNyx && Math.abs(steerIn) > 0.6 && speed > 150 ? 4.2 : 7.5);
   lat *= Math.exp(-grip * slipGrip * dt * (def.boat ? 0.5 : 1));
-  if (hand && speed > 60) lat += -steerIn * speed * 0.9 * dt; // kick the tail out
-  v.drifting = Math.abs(lat) > 34 && speed > 60;
+  if (hand && !def.boat && speed > 60) lat += -steerIn * speed * 0.9 * dt; // kick the tail out
+  v.drifting = !def.boat && Math.abs(lat) > 34 && speed > 60;
   // rolling + aero drag
-  fwd *= Math.exp(-(0.12 + (onLand ? 3 : 0) + (surf === "grass" || surf === "sand" || surf === "dirt" ? 0.35 : 0)) * dt);
+  fwd *= Math.exp(-((def.boat&&!throttle?.38:.12) + (onLand ? 3 : 0) + (surf === "grass" || surf === "sand" || surf === "dirt" ? 0.35 : 0)) * dt);
   fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 0.0009 * fwd * fwd * dt * 60 * 0.02);
   if (def.boat && !onLand) fwd *= Math.exp(-Math.abs(v.yaw || 0) * 0.35 * dt); // turning bleeds speed into the wake
   fwd = clamp(fwd, -def.max * 0.42, top);
@@ -1467,12 +1490,12 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.vx = nh.x * fwd + nr.x * lat;
   v.vy = nh.y * fwd + nr.y * lat;
   // Sweep the complete hull in short steps, sliding along the first blocking surface.
-  if(carHit(G,v,v.x,v.y)){const rotated=v.rot;v.rot=oldRot;if(carHit(G,v,v.x,v.y))v.rot=rotated;}
-  const travel=Math.hypot(v.vx,v.vy)*dt,steps=Math.max(1,Math.ceil(travel/5));let impact=0;
+  if(carHit(G,v,v.x,v.y)){const rotated=v.rot;v.rot=oldRot;if(carHit(G,v,v.x,v.y))v.rot=rotated;else{v.yaw=0;const forward=headingVec(v.rot),right=rightVec(v.rot);v.vx=forward.x*fwd+right.x*lat;v.vy=forward.y*fwd+right.y*lat;}}
+  const travel=Math.hypot(v.vx,v.vy)*dt,steps=Math.max(1,Math.ceil(travel/5));let impact=0,impactPoint=null;
   for(let step=0;step<steps;step++){
     const dx=v.vx*dt/steps,dy=v.vy*dt/steps,nx=v.x+dx,ny=v.y+dy,hit=carHit(G,v,nx,ny);
     if(!hit){v.x=nx;v.y=ny;continue;}
-    const vn=v.vx*hit.nx+v.vy*hit.ny;impact=Math.max(impact,Math.abs(vn));
+    const vn=v.vx*hit.nx+v.vy*hit.ny;impact=Math.max(impact,Math.abs(vn));impactPoint={x:v.x-hit.nx*v.r,y:v.y-hit.ny*v.r};v.yaw*=.25;
     if(!carHit(G,v,nx,v.y))v.x=nx;
     else if(!carHit(G,v,v.x,ny))v.y=ny;
     if(vn<0){v.vx-=vn*1.12*hit.nx;v.vy-=vn*1.12*hit.ny;}v.vx*=.86;v.vy*=.86;
@@ -1480,7 +1503,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   }
   if(impact>70 && !(v.impactT>0)){
     v.impactT=.35;if(isPlayer){recordIncident(G,'collision');(v.def.boat?G.audio.splash||G.audio.crash:G.audio.crash)(impact/200);addShake(G,Math.min(9,impact/24));}
-    damageVeh(G,v,impact/(v.def.boat?18:12),isPlayer);
+    damageVeh(G,v,impact/(v.def.boat?18:12),isPlayer,impactPoint);
     for(let i=0;i<(G.settings.quality==='low'?3:8);i++)G.particles.push({kind:v.def.boat?'splash':'spark',x:v.x,y:v.y,vx:(Math.random()-.5)*160,vy:(Math.random()-.5)*160,life:.25});
   }
   v.impactT=Math.max(0,(v.impactT||0)-dt);
@@ -1498,14 +1521,16 @@ function carHit(G, v, x, y) {
   return worldBodyHit(G,v,x,y);
 }
 
-function damageVeh(G, v, amt, byPlayer=false) {
-  if (amt <= 0 || v.dead) return;
-  v.health = (v.health ?? 100) - amt;
+function damageVeh(G, v, amt, byPlayer=false,point=null) {
+  const hit=recordVehicleDamage(v,amt,point);if(!hit)return;
+  if(hit.previous!==hit.stage&&v===G.player&&v.health<65)toast(G,hit.stage==='CRITICAL'?'Critical damage — find a workshop.':hit.stage==='ENGINE FIRE'?'Engine fire — stop and get clear!':'Body damaged. Handling and power reduced.');
+  if(amt>13&&G.particles){for(let i=0;i<(G.settings.quality==='low'?3:6);i++)G.particles.push({kind:'panel',x:point?.x??v.x,y:point?.y??v.y,vx:(Math.random()-.5)*100,vy:(Math.random()-.5)*100,rot:Math.random()*TAU,spin:(Math.random()-.5)*9,col:i%2?'#9db9b5':'#36434a',life:1.1,maxLife:1.1});}
   if (v.health < 35 && !v.wrecked) { v.wrecked = true; }
   if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; v.playerIgnited=byPlayer; }
   if (v.cop && v === G.player) return;
 }
 function tickVehDamage(G, v, dt) {
+  if(v.dead)return;v.damagePulse=Math.max(0,(v.damagePulse||0)-dt);
   if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
   if (v.burning) {
     v.burnT -= dt;
@@ -1515,6 +1540,7 @@ function tickVehDamage(G, v, dt) {
   }
 }
 function explode(G, v) {
+  if(v.dead)return;
   v.burning = false; v.dead = true; v.wrecked = true; v.health = 0; v.vx *= 0.3; v.vy *= 0.3;
   G.particles.push({ kind: "boom", x: v.x, y: v.y, life: 0.6, frame: 0, big: true });
   for (let i = 0; i < 26; i++) G.particles.push({ kind: "spark", x: v.x, y: v.y, vx: (Math.random() - 0.5) * 520, vy: (Math.random() - 0.5) * 520, life: 0.3 + Math.random() * 0.3 });
@@ -1540,7 +1566,7 @@ function tickCollisions(G) {
   G.nearVehicles=near;
   const grid=G.streetVehicleGrid||new Map();grid.clear();
   for(const v of near){const key=Math.floor(v.x/160)*65536+Math.floor(v.y/160);if(!grid.has(key))grid.set(key,[]);grid.get(key).push(v);}
-  G.streetVehicleGrid=grid;G.streetVehicleSource=G.vehicles;
+  G.streetVehicleGrid=grid;G.streetVehicleSource=G.vehicles;G.streetVehicleGeneration=(G.streetVehicleGeneration||0)+1;
   if(G.streetVehicleQueries)G.streetVehicleQueries.clear();else G.streetVehicleQueries=new Map();
   G.movingVehicles=near.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
   for(const [a,b] of nearbyPairs(near)) {
@@ -1553,8 +1579,8 @@ function tickCollisions(G) {
       const ax = a.x - best.nx * best.pen * ta, ay = a.y - best.ny * best.pen * ta;
       const bx = b.x + best.nx * best.pen * tb, by = b.y + best.ny * best.pen * tb;
       const aBad = !!carHit(G, a, ax, ay), bBad = !!carHit(G, b, bx, by);
-      if (aBad && !bBad) { b.x += best.nx * best.pen; b.y += best.ny * best.pen; }
-      else if (bBad && !aBad) { a.x -= best.nx * best.pen; a.y -= best.ny * best.pen; }
+      if (aBad && !bBad) {const x=b.x+best.nx*best.pen,y=b.y+best.ny*best.pen,blocked=carHit(G,b,x,y);b.x=blocked?bx:x;b.y=blocked?by:y;}
+      else if (bBad && !aBad) {const x=a.x-best.nx*best.pen,y=a.y-best.ny*best.pen,blocked=carHit(G,a,x,y);a.x=blocked?ax:x;a.y=blocked?ay:y;}
       else if (!aBad) { a.x = ax; a.y = ay; b.x = bx; b.y = by; }
       else { // both pinned: slide them apart along the wall tangent
         const tx = -best.ny, ty = best.nx, sg = ((a.x - b.x) * tx + (a.y - b.y) * ty) >= 0 ? 1 : -1;
@@ -1578,7 +1604,7 @@ function tickCollisions(G) {
         if (imp > 50) {
           if(playerImpact>50 && playerImpact>otherImpact)recordIncident(G,'collision');
           const atFault=playerImpact>50&&playerImpact>otherImpact;
-          damageVeh(G, a, imp / 14,atFault); damageVeh(G, b, imp / 14,atFault);
+          damageVeh(G,a,imp/14,atFault,{x:a.x+best.nx*a.r,y:a.y+best.ny*a.r});damageVeh(G,b,imp/14,atFault,{x:b.x-best.nx*b.r,y:b.y-best.ny*b.r});
           if (a === P || b === P) { G.audio.crash(); addShake(G, Math.min(12, imp / 22)); }
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
           for (let k = 0; k < 8; k++) G.particles.push({ kind: "spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
@@ -1769,7 +1795,7 @@ function tickBullets(G, dt) {
     const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});continue;}
-    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend);G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
+    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
     if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-(b.damage||20);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
       if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
@@ -1797,6 +1823,7 @@ function busted(G) { endLife(G, "BUSTED", "Metro took your piece and some chips.
 // Recovery changes actors, not campaign receipts or the persistent city. Remove
 // chase ownership before clearing arrays so no detached unit can resume its AI.
 function clearRecoveryState(G) {
+  cancelTransit(G);
   G.recoverySerial=(G.recoverySerial||0)+1;
   G.releaseControls?.(); resetInput(G.input);
   const old=G.player, units=new Set(G.cops||[]), rival=G.race?.rival;
@@ -2001,6 +2028,7 @@ function tickVehicles(G, dt) {
       continue;
     }
     if (v.role === "boat" && v.def && v.def.boat) {
+      if(Math.abs(v.x-G.cam.x)>1500||Math.abs(v.y-G.cam.y)>1200){if(v.burning)tickVehDamage(G,v,dt);v.vx=v.vy=0;continue;}
       if (v.loose) { tickDrive(G, v, { x: 0, y: 0 }, dt, false); continue; }
       v.cruise = (v.cruise || 0) + dt * 0.12;
       const hm = v.home || { x: 1920, y: 520 };
@@ -2023,6 +2051,7 @@ function tickVehicles(G, dt) {
       // knocked loose / abandoned: coast to a stop with physics
       tickDrive(G, v, { x: 0, y: 0, hand: false, brake: false }, dt, false);
       v.looseT = (v.looseT || 0) + dt;
+      if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;v.loose=false;v.parked=true;}
       continue;
     }
     if (v.burning || v.health < 45) tickVehDamage(G, v, dt);
@@ -2117,9 +2146,11 @@ function tickPeds(G, dt) {
     }
   }
   for (const b of G.bullets || []) if ((G.ticks & 3) === 0) scarePeds(G, b.x, b.y, 90);
+  const localView=G.touch&&G.settings.quality==='low'?streetViewport(G):null,co=Math.abs(Math.cos(G.cam.rot||0)),si=Math.abs(Math.sin(G.cam.rot||0));
+  const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
   for (const p of G.peds) {
     if (p.dead) { p.deadT = (p.deadT || 0) + dt; if(p.deadT<.75){const x=p.x+(p.vx||0)*dt,y=p.y+(p.vy||0)*dt;if(!G.solidAt(x,y)){p.x=x;p.y=y;}p.vx*=Math.exp(-5*dt);p.vy*=Math.exp(-5*dt);}continue; }
-    if (Math.abs(p.x - G.cam.x) > 1400 || Math.abs(p.y - G.cam.y) > 1200) continue;
+    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240) continue;
     const dx = p.x - pl.x, dy = p.y - pl.y;
     const dist = Math.hypot(dx, dy);
     // Impacts are resolved before a pedestrian's dodge; a dive is never invulnerability.
@@ -2183,18 +2214,27 @@ function tickPeds(G, dt) {
 
 // Local circles keep crowds from stacking without checking every person against the city.
 function separateCharacters(G){
-  const grid=new Map(),cell=24,people=G.peds.filter(p=>!p.dead&&Math.abs(p.x-G.cam.x)<1000&&Math.abs(p.y-G.cam.y)<900);
+  const grid=G.crowdGrid||(G.crowdGrid=new Map());grid.clear();
+  const cell=24,people=G.crowdActors||(G.crowdActors=[]);people.length=0;
+  const view=streetViewport(G),c=Math.abs(Math.cos(G.cam.rot||0)),s=Math.abs(Math.sin(G.cam.rot||0));
+  const halfW=view.halfW*c+view.halfH*s+160,halfH=view.halfH*c+view.halfW*s+160;
+  for(const p of G.peds)if(!p.dead&&Math.abs(p.x-G.cam.x)<halfW&&Math.abs(p.y-G.cam.y)<halfH)people.push(p);
   if(G.player.type==='foot')people.push(G.player);
   for(const p of people){
     const cx=Math.floor(p.x/cell),cy=Math.floor(p.y/cell);
-    for(let x=cx-1;x<=cx+1;x++)for(let y=cy-1;y<=cy+1;y++)for(const q of grid.get(x+':'+y)||[]){
-      let dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);if(d>=15)continue;
-      if(d<.01){dx=1;dy=0;d=1;}const push=(15-d)*.5,nx=dx/d*push,ny=dy/d*push;
-      if(footClear(G,p.x+nx,p.y+ny,7)){p.x+=nx;p.y+=ny;}
-      if(footClear(G,q.x-nx,q.y-ny,7)){q.x-=nx;q.y-=ny;}
+    for(let x=cx-1;x<=cx+1;x++)for(let y=cy-1;y<=cy+1;y++){
+      const neighbors=grid.get(x*65536+y);if(!neighbors)continue;
+      for(let i=0;i<neighbors.length;i++){
+        const q=neighbors[i];let dx=p.x-q.x,dy=p.y-q.y,d2=dx*dx+dy*dy;if(d2>=225)continue;
+        let d=Math.sqrt(d2);if(d<.01){dx=1;dy=0;d=1;}const push=(15-d)*.5,nx=dx/d*push,ny=dy/d*push;
+        if(footClear(G,p.x+nx,p.y+ny,7)){p.x+=nx;p.y+=ny;}
+        if(footClear(G,q.x-nx,q.y-ny,7)){q.x-=nx;q.y-=ny;}
+      }
     }
-    const key=cx+':'+cy,bucket=grid.get(key)||[];bucket.push(p);grid.set(key,bucket);resolveFootVehicles(G,p);
+    const key=Math.floor(p.x/cell)*65536+Math.floor(p.y/cell);let bucket=grid.get(key);if(!bucket){bucket=[];grid.set(key,bucket);}bucket.push(p);
   }
+  // A later neighbor can move an earlier person: resolve vehicles after the whole crowd pass.
+  for(const p of people)resolveFootVehicles(G,p);
 }
 
 function smashNear(G, x, y, r, speed) {
@@ -2357,7 +2397,7 @@ function render(G) {
   const { ctx, canvas } = G;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-  const cityScene=!['title','vn','end'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');
+  const cityScene=!['title','vn','end','train'].includes(G.scene)&&!(G.scene==='settings'&&G.pausedFrom==='title');
   if(G.worldCanvas?.style)G.worldCanvas.style.display=G.layered&&cityScene?'block':'none';
   if(G.layered&&cityScene)ctx.clearRect(0,0,canvas.width,canvas.height);
   else{ctx.fillStyle="#07060a";ctx.fillRect(0,0,canvas.width,canvas.height);}
@@ -2369,8 +2409,9 @@ function render(G) {
     if (G.scene === "settings") drawSettings(G);
   } else if (G.scene === "vn") { if (G.vn.pending) drawBoot(ctx, canvas, 0.9, "Loading scene art…"); else drawVN(G); }
   else if (G.scene === "end") drawEnd(G);
+  else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save});
   else {
-    const frozen = ['pause', 'map', 'settings','crew','garage','dossier'].includes(G.scene);
+    const frozen = ['pause', 'map', 'settings','crew','garage','dossier','transit'].includes(G.scene);
     if(frozen&&G.layered&&G.worldCanvas){/* Retain the compositor layer while menus are open. */}
     else if (frozen && G.frozenWorld && G.frozenWorld.width === canvas.width && G.frozenWorld.height === canvas.height) {
       ctx.drawImage(G.frozenWorld, 0, 0);
@@ -2385,9 +2426,10 @@ function render(G) {
     else { const _h = performance.now(); drawHUD(G); prof(G, "hud", performance.now() - _h); }
     if (G.scene === "pause") drawPause(G);
     if (G.scene === "map") drawMap(G);
+    if (G.scene === "transit")drawTransitMenu(G,{button:uiButton});
     if (G.scene === "settings") drawSettings(G);
     if (G.scene === 'crew') {
-      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask',right:'hunter'});ensureStoryAssets(G,{bg:'news',right:'vera'});ensureStoryAssets(G,{bg:'garage',left:'gold_mage'});}
+      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask',right:'hunter'});ensureStoryAssets(G,{bg:'news',right:'vera'});ensureStoryAssets(G,{bg:'garage',left:'gold_mage'});ensureStoryAssets(G,{bg:'garage',left:'chief',right:'ice'});ensureStoryAssets(G,{bg:'garage',left:'steampunk'});}
       drawCrew(G,{button:uiButton,panel:uiPanel,save});
     }
     if (G.scene === 'dossier') drawDossier(G,{button:uiButton,panel:uiPanel});
@@ -2792,7 +2834,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawExpansionOverhead(G,r);
+  drawExpansionOverhead(G,r);drawTransitWorld(G,r);
   // 6. actors
   const actors = [];
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -2800,7 +2842,7 @@ function renderWorldLayer(G) {
   if (G.player.type === "foot") actors.push(G.player);
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
   for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
-  drawExpansionPeople(G,r);
+  drawWildlife(G,r);drawExpansionPeople(G,r);
   drawParticles(G, r, false);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
@@ -2818,12 +2860,12 @@ function renderWorldLayer(G) {
     if (hidden) { ctx.save(); ctx.globalAlpha = .38; drawChar(G, G.player); ctx.restore(); }
   }
   if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
-  drawAirborne(G,r);
+  drawTransitWorld(G,r,true);drawAirborne(G,r);
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
   _ph('w_light');
-  drawArchitectureLights(G, r, nightFactor(G));
+  drawArchitectureLights(G, r, nightFactor(G));drawLocalAtmosphere(G,r);
   drawAtmosphere(G, r, nightFactor(G));
   drawParticles(G, r, true);
   worldXform(G, ctx, S, 1, ox, oy);
@@ -3022,6 +3064,7 @@ function drawParticles(G, r, top) {
     else if (p.kind === "flash") { ctx.fillStyle = "#fff6d8"; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, TAU); ctx.fill(); }
     else if (p.kind === "spray") { ctx.fillStyle = "rgba(120,180,220,0.5)"; ctx.fillRect(p.x, p.y, 2, 4); }
     else if (p.kind === "casing") { ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.life*8);ctx.fillStyle='#c6a46a';ctx.fillRect(-1,-2,2,4);ctx.restore(); }
+    else if(p.kind==='panel'){ctx.save();ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)+(p.spin||0)*(1.1-p.life));ctx.globalAlpha=Math.min(1,p.life*2);ctx.fillStyle=p.col;ctx.fillRect(-3,-2,6,4);ctx.restore();}
     else if (p.kind === "bits") { ctx.fillStyle = "rgba(80,70,60,0.8)"; ctx.fillRect(p.x, p.y, 3, 3); }
     else if (p.kind === "blood") { ctx.fillStyle = `rgba(150,10,20,${Math.max(0, p.life)})`; ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, TAU); ctx.fill(); }
     else if (p.kind === "splash") { ctx.fillStyle = `rgba(200,220,235,${Math.max(0, (p.a || 0.6) * p.life * 2)})`; ctx.beginPath(); ctx.ellipse(p.x, p.y, 5, 3, 0, 0, TAU); ctx.fill(); }
@@ -3095,21 +3138,17 @@ function drawVeh(G, v) {
   ctx.scale(1, pose.pitch);
   const sc = vehScale(v.def);
   let sprUse = spr;
-  if (v.wrecked) {
-    const wreck = G.assets.sprites["veh_" + (v.def.cop ? "metro_wreck" : "fare_wreck")];
-    if (wreck) sprUse = wreck;
-  }
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); const body=bodySize(v);ctx.ellipse(2,4,body.w,body.l*.86,0,0,TAU);ctx.fill();
   const fleetSlot={bus:0,ambulance:1,van:2,stitch:3,hog:4,wake:5}[v.kind];
   const atlas=fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas,slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
-  if(atlas && slot!=null && !v.wrecked) {
+  if(atlas && slot!=null) {
     const cw=atlas.width/3,ch=atlas.height/2;
-    if(v.paint)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
+    if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
     const length=v.kind==='bus'?150:v.def.bike?82:v.kind==='wake'?133:v.kind==='van'||v.kind==='ambulance'?128:116;
     ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
     ctx.filter='none';if(G.settings.quality!=='low'||v===G.player)drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
-    if(v.def.bike && (v===G.player||v.traffic)){
+    if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
       ctx.save();ctx.rotate((v.turnSign||0)*.08);ctx.fillStyle=v===G.player?'#513d5e':'#34434b';ctx.beginPath();ctx.ellipse(0,2,8,14,0,0,TAU);ctx.fill();
       ctx.fillStyle=v===G.player?'#d2c5ad':'#27343b';ctx.beginPath();ctx.ellipse(0,-12,6,7,0,0,TAU);ctx.fill();ctx.strokeStyle='#acb7a0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-6,-4);ctx.lineTo(-11,-11);ctx.moveTo(6,-4);ctx.lineTo(11,-11);ctx.stroke();ctx.restore();
     }
@@ -3117,6 +3156,7 @@ function drawVeh(G, v) {
     ctx.drawImage(sprUse, -sprUse.width * sc / 2, -sprUse.height * sc / 2, sprUse.width * sc, sprUse.height * sc);
     drawVehicleFinish(G, v, sprUse.width * sc, sprUse.height * sc, pose);
   }
+  drawVehicleDamage(ctx,v);
   const opening=G.jack?.v===v ? Math.sin((1-G.jack.t/G.jack.dur)*Math.PI/2) : Math.min(1,(v.doorT||0)*2);
   if(opening>0&&!v.def.bike&&!v.def.boat){
     ctx.save();ctx.translate(-24,-10);ctx.rotate(-opening*1.15);
@@ -3398,6 +3438,7 @@ function drawMinimap(G, x, y, size, span) {
     for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); }
     ctx.stroke();
   }
+  drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for (const c of G.cops) { const p = to(c.x, c.y); ctx.fillStyle = ((G.ticks / 8) | 0) % 2 ? "#ff3048" : "#3a6bff"; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5 * u, 0, TAU); ctx.fill(); }
   const at = currentObjectivePos(G);
@@ -3665,6 +3706,7 @@ function drawMap(G) {
   ctx.drawImage(M.c, mx, my, mw, mh);
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
   const to = (x, y) => [mx + x / M.S * k, my + y / M.S * k];
+  drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();ctx.font=uiFont(7*u,800);ctx.textAlign='left';ctx.fillText(contact.name,p[0]+5*u,p[1]+10*u);}
   for(const s of G.services||[]){const p=to(s.x,s.y);ctx.fillStyle='#83d7d0';ctx.fillRect(p[0]-3*u,p[1]-3*u,6*u,6*u);}
@@ -3680,7 +3722,7 @@ function drawMap(G) {
     ctx.beginPath(); ctx.arc(wp[0], wp[1], 9 * u, 0, TAU); ctx.stroke();
   }
   ctx.fillStyle = '#c5dbe6'; ctx.font = uiFont(11 * u, 800); ctx.textAlign = 'center';
-  ctx.fillText('MAP: WAYPOINT · GOLD: JOB · PINK: YOU · CYAN: SERVICES', W / 2, Math.min(H - 12 * u, my + mh + 22 * u),W-24*u);
+  ctx.fillText('MAP: WAYPOINT · GOLD: JOB · M/R: RAIL · PINK: YOU', W / 2, Math.min(H - 12 * u, my + mh + 22 * u),W-24*u);
   uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = G.action?.contract?streetJobTarget(G,G.action.contract):null; G.gps = null; updateGPS(G); }, {});
   const pp = to(G.player.x, G.player.y);
   ctx.fillStyle = "#ff2d9b"; ctx.beginPath(); ctx.arc(pp[0], pp[1], 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
@@ -3890,6 +3932,6 @@ export const testing = {
   clearRecoveryState, endLife, busted, wasted, tickPlay, drawAirborne,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,
   findSafe, footClear, clearAt, carHit, nearbyInteraction, ensureMissionCar, ensureGetawayBoat, updateGPS, worldToScreen,
-  tickWanted, tickCops, crime, damageVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
-  drawMap, drawSettings, drawPause, ensureStoryAssets, applyQuality,
+  tickWanted, tickCops, crime, damageVeh, tickVehDamage, drawVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
+  drawMap, drawSettings, drawPause, ensureStoryAssets, applyQuality, initTransit, tickTransit, tickWildlife,
 };

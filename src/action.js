@@ -12,7 +12,7 @@ export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6)}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
 export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}

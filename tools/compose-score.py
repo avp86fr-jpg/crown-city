@@ -7,7 +7,7 @@ import numpy as np
 from scipy import signal
 from scipy.io import wavfile
 import subprocess, tempfile
-SR=24000
+SR=44100
 rng=np.random.default_rng(86420)
 OUT=Path(__file__).resolve().parents[1]/'assets'/'music';OUT.mkdir(exist_ok=True)
 def hz(m):return 440*2**((m-69)/12)
@@ -61,7 +61,7 @@ def compose(name,bpm,root,style):
    for p in [1,3]:add(DR['snare'],start+p*beat,.33);add(DR['clap'],start+(p+.02)*beat,.17)
   for k in range(8 if style!='chase' else 16):
    pos=k/(2 if style!='chase' else 4);swing=.08 if style=='lofi' and k%2 else 0
-   add(DR['open'] if k%8==7 else DR['hat'],start+(pos+swing)*beat,.36 if k%2 else .24,(-1 if k%2 else 1)*.35)
+   add(DR['open'] if k%8==7 else DR['hat'],start+(pos+swing)*beat,(.34 if k%2 else .22)*(1+.12*np.sin(k*1.9+bar)),(-1 if k%2 else 1)*.35)
   # Syncopated Rhodes/guitar rhythm; the bridge removes the busier layer.
   if section!=2 or bar%2==0:
    for p in [.5,1.75,2.5,3.25]:
@@ -77,13 +77,15 @@ def compose(name,bpm,root,style):
  # Stereo delays and a short room tail wrap across the loop boundary.
  dry=mix.copy()
  for delay,gain in [(beat*.75,.15),(beat*1.5,.08),(.037,.08)]:mix+=np.roll(dry[:,::-1],int(SR*delay),axis=0)*gain
- mix=np.tanh(mix*1.3);mix*=.82/max(.1,np.max(np.abs(mix)))
+ mix=signal.sosfilt(signal.butter(2,32,fs=SR,btype='highpass',output='sos'),mix,axis=0)
+ # Gentle saturation preserves drum transients; stereo mastering has headroom for SFX.
+ mix=np.tanh(mix*1.12);mix*=.75/max(.1,np.max(np.abs(mix)))
  # Tiny edge ramp prevents a click without obscuring the bar-line transition.
  ramp=np.linspace(0,1,240,dtype=np.float32);mix[:240]*=ramp[:,None];mix[-240:]*=ramp[::-1,None]
  with tempfile.NamedTemporaryFile(suffix='.wav') as tmp:
   wavfile.write(tmp.name,SR,(mix*32767).astype(np.int16))
   subprocess.run(['ffmpeg','-y','-loglevel','error','-i',tmp.name,'-c:a','libvorbis','-q:a','4',str(OUT/(name+'.ogg'))],check=True)
- subprocess.run(['ffmpeg','-y','-loglevel','error','-i',str(OUT/(name+'.ogg')),'-c:a','libmp3lame','-b:a','128k',str(OUT/(name+'.mp3'))],check=True)
+ subprocess.run(['ffmpeg','-y','-loglevel','error','-i',str(OUT/(name+'.ogg')),'-c:a','libmp3lame','-b:a','160k',str(OUT/(name+'.mp3'))],check=True)
  print(name,round(length/SR,2),'seconds')
 if __name__=='__main__':
- for args in [('veil-afterhours',108,40,'night'),('chip-sidewalk',92,43,'lofi'),('nightshift-escape',132,38,'chase'),('crown-midnight',86,43,'noir')]:compose(*args)
+ for args in [('veil-afterhours',108,40,'night'),('chip-sidewalk',92,43,'lofi'),('nightshift-escape',132,38,'chase'),('crown-midnight',86,43,'noir'),('last-train',94,45,'lofi')]:compose(*args)

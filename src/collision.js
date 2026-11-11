@@ -1,12 +1,13 @@
 /* Shared world-space bodies for rendering, swept projectiles and vehicle contacts. */
+const BODIES=Object.freeze(Object.fromEntries(Object.entries({plane:{w:57,l:51},heli:{w:30,l:55},bike:{w:10,l:35},bus:{w:28,l:69},gulf:{w:29,l:62},boat:{w:20,l:57},van:{w:25,l:58},car:{w:24,l:52}}).map(([key,body])=>[key,Object.freeze(body)])));
 export function bodySize(v) {
-  if(v.def?.aircraft)return v.kind==='plane'?{w:57,l:51}:{w:30,l:55};
-  if(v.def?.bike)return {w:10,l:35};
-  if(v.kind==='bus')return {w:28,l:69};
-  if(v.kind==='gulf')return {w:29,l:62};
-  if(v.def?.boat)return {w:20,l:57};
-  if(v.kind==='van'||v.kind==='ambulance')return {w:25,l:58};
-  return {w:24,l:52};
+  if(v.def?.aircraft)return v.kind==='plane'?BODIES.plane:BODIES.heli;
+  if(v.def?.bike)return BODIES.bike;
+  if(v.kind==='bus')return BODIES.bus;
+  if(v.kind==='gulf')return BODIES.gulf;
+  if(v.def?.boat)return BODIES.boat;
+  if(v.kind==='van'||v.kind==='ambulance')return BODIES.van;
+  return BODIES.car;
 }
 export function localPoint(v,x,y) {
   const c=Math.cos(v.rot),s=Math.sin(v.rot),dx=x-v.x,dy=y-v.y;
@@ -60,7 +61,7 @@ export function nearbyPairs(vehicles) {
   vehicles.forEach((v,i)=>{
     const b=bodySize(v),extent=Math.hypot(b.w,b.l);
     for(let x=Math.floor((v.x-extent)/cell);x<=Math.floor((v.x+extent)/cell);x++)for(let y=Math.floor((v.y-extent)/cell);y<=Math.floor((v.y+extent)/cell);y++){
-      const key=x+':'+y,bucket=grid.get(key)||[];
+      const key=x*65536+y,bucket=grid.get(key)||[];
       for(const j of bucket){const code=j*vehicles.length+i;if(!seen.has(code)){seen.add(code);pairs.push([vehicles[j],v]);}}
       bucket.push(i);grid.set(key,bucket);
     }

@@ -67,7 +67,7 @@ export function createAudio() {
       t = t0 || t;
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = type; o.frequency.setValueAtTime(freq, t); if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + glide), t + dur);
-      env(g, t, 0.004, vol, dur); o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+      env(g, t, 0.004, vol, dur); o.connect(g); g.connect(out); o.onended=()=>{o.disconnect();g.disconnect();}; o.start(t); o.stop(t + dur + 0.05);
     }, dur);
   }
   function noiseHit({ dur = 0.2, vol = 0.3, type = "bandpass", f = 1200, q = 1, f2 = 0, pan = 0, out = sfx, a = 0.002, rate = 1 }) {
@@ -75,7 +75,7 @@ export function createAudio() {
       const s = noiseSrc(); s.playbackRate.value = rate; const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
       if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
       const g = ctx.createGain(); env(g, t, a, vol, dur); const p = panNode(pan);
-      s.connect(fl); fl.connect(g); g.connect(p); p.connect(out); s.start(t); s.stop(t + dur + 0.05);
+      s.connect(fl); fl.connect(g); g.connect(p); p.connect(out); s.onended=()=>{s.disconnect();fl.disconnect();g.disconnect();p.disconnect();}; s.start(t); s.stop(t + dur + 0.05);
     }, dur);
   }
   function duck(amount = 0.45, hold = 0.5) {
@@ -100,6 +100,8 @@ export function createAudio() {
   A.click = () => tone(1400, 0.025, "square", 0.025);
   A.type = () => {if(!lite)effects?.('ui',.025);};
   A.reload = () => effects?.('reload',.34);
+  A.transit = kind => effects?.(kind,.24);
+  A.wildlife = (kind,vol=.12,pan=0) => effects?.(kind,vol,pan);
   A.cock = () => noiseHit({dur:.055,vol:.16,type:'highpass',f:2800});
   A.dodge = () => noiseHit({dur:.23,vol:.17,type:'lowpass',f:1200,f2:280});
   A.radioChirp = () => {tone(1100,.04,'sine',.022);tone(1600,.05,'sine',.018,0,sfx,ctx&&now()+.06);};
@@ -246,7 +248,7 @@ export function createAudio() {
     fl.type = "lowpass"; fl.frequency.setValueAtTime(cut, t); fl.Q.value = 2;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + a); g.gain.setValueAtTime(vol, t + Math.max(a, dur - rel)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + rel);
     o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(out); if (send) g.connect(send);
-    o.start(t); o2.start(t); o.stop(t + dur + rel + 0.05); o2.stop(t + dur + rel + 0.05);
+    o.start(t); o2.start(t); o.stop(t + dur + rel + 0.05); o2.stop(t + dur + rel + 0.05);o2.onended=()=>{o.disconnect();o2.disconnect();fl.disconnect();g.disconnect();};
   }
   function kick(t) { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(g); g.connect(stems.kick); o.start(t); o.stop(t + 0.32); }
   function snare(t, soft) { const s = noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = "highpass"; f.frequency.value = soft ? 1200 : 1800; g.gain.setValueAtTime(soft ? 0.25 : 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (soft ? 0.12 : 0.18)); s.connect(f); f.connect(g); g.connect(stems.snare); g.connect(verbSend); s.start(t); s.stop(t + 0.2);
@@ -266,10 +268,11 @@ export function createAudio() {
   A.currentStation = () => A.stations[A.station % A.stations.length].name;
 
   /* ---------------- per-tick update (cheap: a handful of param ramps) ---------------- */
-  let stepDist = 0, gullT = 3, dingT = 2;
+  let stepDist = 0, gullT = 3, dingT = 2, railT=0;
   A.update = (G, dt) => {
     if (!ctx || ctx.state !== "running") return;
     const P = G.player, play = G.scene === "play";
+    if(G.scene==='train'&&(railT-=dt)<0){railT=.68;A.transit('rail');}
     // intensity: 0 calm, 1 mission/active, 2 wanted 1-2, 3 chase (3+ or seen)
     let target = play ? (G.wanted >= 3 ? 3 : G.wanted > 0 ? 2.2 : (G._flow ? 1 : 0.4)) : G.scene === "title" ? 0.9 : 0.3;
     if (G.scene === "vn" || G.scene === "brief") target = 0.2;
