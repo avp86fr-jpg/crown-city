@@ -258,7 +258,7 @@ async function dialogue(page, choices) {
     await check('arranged music streams, changes station and yields to the pursuit track',async()=>{
       await page.evaluate(()=>{const G=__CC.G;G.scene='play';G.wanted=0;G.audio.station=0;if(G.player.type!=='veh')T.enterVeh(G,G.vehicles.find(v=>!v.dead&&!v.def.boat),true);G.audio.unlock();G.audio.update(G,.1)});
       await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});
-      assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('AFTERHOURS')));
+      assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('NIGHT DIVIDEND')));
       await page.evaluate(()=>{const G=__CC.G;G.audio.nextStation();G.audio.update(G,.1)});
       await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('SIDEWALK')));
       await page.evaluate(()=>{const G=__CC.G;G.wanted=4;G.audio.update(G,.1)});await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('NO CLEAN EXIT')));

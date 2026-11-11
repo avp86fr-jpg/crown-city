@@ -75,6 +75,8 @@ export function makeGround(W, tex, codeAt) {
     ['forest','desert','mountain','casino','asphalt','paver','trail','water'].forEach((name,i)=>{
       const tile=document.createElement('canvas');tile.width=tile.height=256;
       tile.getContext('2d').drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
+      // Quiet limestone tones keep the casino's green felt and characters readable.
+      if(name==='casino'){const c=tile.getContext('2d');c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
       pats[name]=scratch.createPattern(tile,'repeat');
       const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'?.55:.8;
       pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
@@ -431,6 +433,20 @@ function facade(kind, lit) {
   return c;
 }
 export function makeBuildings(W, tex, coreRoofs) {
+  // Small shared canopy variants replace per-tree gradients and leaf paths.
+  // 3 palettes × 8 orientations × 2 detail tiers, at most 1.7 MiB of canvas art.
+  const treeArt=new Map();
+  function canopy(t,low){
+    const palette=Math.min(2,t.t||0),angle=((Math.round(t.x*8/TAU)%8)+8)%8,key=palette+':'+angle+':'+!!low;
+    if(treeArt.has(key))return treeArt.get(key);
+    const cv=document.createElement('canvas');cv.width=cv.height=96;const c=cv.getContext('2d'),r=48;
+    const colors=palette===0?['#2f5a26','#4d8a37','#6fb04a']:palette===1?['#2a4f2c','#3f7a3c','#5f9e52']:['#3c5a22','#5f8a2e','#86b04a'];
+    const gradient=c.createRadialGradient(r*.7,r*.65,1,r,r,r);gradient.addColorStop(0,colors[2]);gradient.addColorStop(.5,colors[1]);gradient.addColorStop(1,colors[0]);
+    c.fillStyle=gradient;c.beginPath();c.arc(r,r,r,0,TAU);c.fill();
+    if(!low){for(let i=0;i<6;i++){const a=i*TAU/6+angle*TAU/8;c.fillStyle=colors[i%2?1:0];c.globalAlpha=.35;c.beginPath();c.arc(r+Math.cos(a)*r*.48,r+Math.sin(a)*r*.48,r*.43,0,TAU);c.fill();}
+      c.globalAlpha=1;c.fillStyle=colors[2];c.beginPath();c.arc(r*.68,r*.66,r*.36,0,TAU);c.fill();}
+    treeArt.set(key,cv);return cv;
+  }
   const pat = {};
   const s = document.createElement("canvas").getContext("2d");
   for (const k of ["glass", "gravel", "gravel2", "tar", "concrete", "metal", "metal2", "terra", "terra2"]) {
@@ -548,7 +564,9 @@ export function makeBuildings(W, tex, coreRoofs) {
       for (const b of list) { const dx = b.x + b.w / 2 - cam.x, dy = b.y + b.h / 2 - cam.y; b._dk = dx * dx + dy * dy; }
       list.sort((p, q) => q._dk - p._dk);
       for (const b of list) {
-        const h = b.core ? Math.min(70, (b.hgt || 24) * 1.0) : b.hgt;
+        // Preserve the painted core's own perspective; a second extrusion
+        // doubles its edges and separates the roof from the lighting.
+        const h = b.core ? 0 : b.hgt;
         const x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
         const P = (px, py) => project(cam, D, px, py, h);
         const r00 = P(x0, y0), r10 = P(x1, y0), r11 = P(x1, y1), r01 = P(x0, y1);
@@ -557,10 +575,10 @@ export function makeBuildings(W, tex, coreRoofs) {
         ctx.save();if(covered)ctx.globalAlpha*=.24;
         const col = wallCol(b);
         const fp = !opts.low && b.kind !== "container" && b.kind !== "hangar" ? (b.wall === "glass" ? fac.glass : fac.day) : null;
-        if (cam.y > y1) wall(ctx, [x0, y1], [x1, y1], r01, r11, col[0], h, fp, sun, 0, 1);
-        if (cam.y < y0) wall(ctx, [x0, y0], [x1, y0], r00, r10, col[1], h, fp, sun, 0, -1);
-        if (cam.x < x0) wall(ctx, [x0, y0], [x0, y1], r00, r01, col[1], h, fp, sun, -1, 0);
-        if (cam.x > x1) wall(ctx, [x1, y0], [x1, y1], r10, r11, col[0], h, fp, sun, 1, 0);
+        if (h>0&&cam.y > y1) wall(ctx, [x0, y1], [x1, y1], r01, r11, col[0], h, fp, sun, 0, 1);
+        if (h>0&&cam.y < y0) wall(ctx, [x0, y0], [x1, y0], r00, r10, col[1], h, fp, sun, 0, -1);
+        if (h>0&&cam.x < x0) wall(ctx, [x0, y0], [x0, y1], r00, r01, col[1], h, fp, sun, -1, 0);
+        if (h>0&&cam.x > x1) wall(ctx, [x1, y0], [x1, y1], r10, r11, col[0], h, fp, sun, 1, 0);
         // roof
         const rx = r00[0], ry = r00[1], rw = r11[0] - r00[0], rh = r11[1] - r00[1];
         let drawn = false;
@@ -587,7 +605,7 @@ export function makeBuildings(W, tex, coreRoofs) {
       const D = 980 / Math.max(0.45, cam.scale);
       for (const b of inView(r, bins)) {
         if (b.kind === "container" || b.kind === "hangar") continue;
-        const h = b.core ? Math.min(70, (b.hgt || 24)) : b.hgt;
+        const h = b.core ? 0 : b.hgt;
         if (h < 18) continue;
         const x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
         const P = (px, py) => project(cam, D, px, py, h);
@@ -612,7 +630,8 @@ export function makeBuildings(W, tex, coreRoofs) {
       if (sun.len < 0.02) return;
       ctx.fillStyle = "#000";
       for (const b of inView(r, bins)) {
-        const h = b.core ? Math.min(70, (b.hgt || 24)) : b.hgt;
+        const h = b.core ? 0 : b.hgt;
+        if(!h)continue; // The illustrated core already includes ground shadows.
         const dx = -sun.x * h * sun.len, dy = -sun.y * h * sun.len;
         shadowHull(ctx, b.x, b.y, b.w, b.h, dx, dy);
       }
@@ -636,17 +655,7 @@ export function makeBuildings(W, tex, coreRoofs) {
           }continue;
         }
         ctx.fillStyle = "#4a3422"; ctx.fillRect(t.x - 2, t.y - 2, 4, 4);
-        const g = t.t === 0 ? ["#2f5a26", "#4d8a37", "#6fb04a"] : t.t === 1 ? ["#2a4f2c", "#3f7a3c", "#5f9e52"] : ["#3c5a22", "#5f8a2e", "#86b04a"];
-        const crown = ctx.createRadialGradient(x - t.r * .3, y - t.r * .35, 1, x, y, t.r);
-        crown.addColorStop(0, g[2]); crown.addColorStop(.5, g[1]); crown.addColorStop(1, g[0]);
-        ctx.fillStyle = crown; ctx.beginPath(); ctx.arc(x, y, t.r, 0, TAU); ctx.fill();
-        if (!opts.low) for (let i = 0; i < 6; i++) {
-          const a = i * TAU / 6 + t.x, radius = t.r * .48;
-          ctx.fillStyle = i % 2 ? g[1] : g[0]; ctx.globalAlpha = .35;
-          ctx.beginPath(); ctx.arc(x + Math.cos(a) * radius, y + Math.sin(a) * radius, t.r * .43, 0, TAU); ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        if (!opts.low) { ctx.fillStyle = g[2]; ctx.beginPath(); ctx.arc(x - t.r * 0.32, y - t.r * 0.34, t.r * 0.36, 0, TAU); ctx.fill(); }
+        ctx.drawImage(canopy(t,opts.low),x-t.r,y-t.r,t.r*2,t.r*2);
       }
     },
   };
