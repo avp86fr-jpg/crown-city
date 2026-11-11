@@ -208,10 +208,11 @@ export async function boot() {
     }
     if (acc > STEP * 6) acc = 0;
     const _t1 = performance.now();
+    // Resizing clears the canvas; adapt before drawing to avoid a black frame.
+    adaptRes(G, dt);
     render(G);
     const _t2 = performance.now();
     prof(G, "tick", _t1 - _t0); prof(G, "render", _t2 - _t1);
-    adaptRes(G, dt);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -801,7 +802,6 @@ function tickPickups(G, dt) {
 function tick(G, dt) {
   G._pulseInput();
   if (G.input.fsP) { G.toggleFS(); G.input.fsP = false; }
-  if ((G.ticks & 7) === 0 || G._lastScene !== G.scene) { G._syncTouch && G._syncTouch(); G._lastScene = G.scene; }
   if (G.scene === "title") tickTitle(G, dt);
   else if (G.scene === "settings") tickSettings(G, dt);
   else if (G.scene === "vn") tickVN(G, dt);
@@ -809,6 +809,7 @@ function tick(G, dt) {
   else if (G.scene === "pause" || G.scene === "map") tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
   else tickPlay(G, dt);
+  if ((G.ticks & 7) === 0 || G._lastScene !== G.scene) { G._syncTouch && G._syncTouch(); G._lastScene = G.scene; }
   G._auT = (G._auT || 0) + 1;
   if ((G._auT & 3) === 0 && G.audio.update) G.audio.update(G, dt * 4);
   const I = G.input;
@@ -940,7 +941,7 @@ function tickVN(G, dt) {
     if (G.input.upP) G.vn.sel = (G.vn.sel + choices.length - 1) % choices.length;
     if (G.input.downP) G.vn.sel = (G.vn.sel + 1) % choices.length;
   }
-  if (G.input.confirmP || G.input.skipP || (G.input.vnTap && G.vn.t > 0.25)) {
+  if (G.input.confirmP || G.input.skipP || G.input.enterP || (G.input.vnTap && G.vn.t > 0.25)) {
     if (!typedOut) { G.vn.char = total; }
     else if (choices.length) {
       if (!G.input.vnTap) { const ch = choices[G.vn.sel]; if (ch.set) Object.assign(G.flags, ch.set); G.audio.ui(); openVN(G, ch.next); }
@@ -3029,7 +3030,7 @@ function uiPanel(ctx, x, y, w, h, r, opts = {}) {
 function uiButton(G, x, y, w, h, label, act, o = {}) {
   const ctx = G.ctx, u = G.ui;
   const idx = o.nav === false ? -1 : G._nav.length;
-  const btn = { x, y, w, h, act, adj: o.adj };
+  const btn = { x, y, w, h, label, act, adj: o.adj };
   G.buttons.push(btn);
   if (idx >= 0) G._nav.push(btn);
   const sel = idx >= 0 && idx === (G.menuSel || 0) && !G.touch;
@@ -3055,7 +3056,7 @@ function worldToScreen(G, x, y) {
   const dx = x - G.cam.x, dy = y - G.cam.y, c = Math.cos(-G.cam.rot), s = Math.sin(-G.cam.rot);
   return { x: G.canvas.width / 2 + (dx * c - dy * s) * S, y: G.canvas.height / 2 + (dx * s + dy * c) * S };
 }
-function hintText(G, t) { return G.touch ? t.replace("(E)", "— tap CAR") : t; }
+function hintText(G, t) { return G.touch ? t.replace("(E)", "— tap CAR").replace(/press E/gi, "tap TAKE") : t; }
 function updateGPS(G) {
   const at = G.waypoint || currentObjectivePos(G);
   if (!at) { G.gpsPts = null; return; }
@@ -3115,7 +3116,9 @@ function drawHUD(G) {
   const u = G.ui, sf = G.safe || { t: 0, r: 0, b: 0, l: 0 };
   const W = canvas.width, H = canvas.height;
   const pad = 10 * u;
-  const L = pad + sf.l, T = pad + sf.t, R = W - pad - sf.r;
+  // DOM touch controls use CSS pixels, independently of the canvas UI scale.
+  const touchRail = G.touch ? 62 * G.dpr : 0;
+  const L = pad + sf.l, T = pad + sf.t, R = W - pad - sf.r - touchRail;
   let _t = performance.now();
   updateGPS(G);
   prof(G, "h_gps", performance.now() - _t); _t = performance.now();
@@ -3134,7 +3137,7 @@ function drawHUD(G) {
   ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = uiFont(9 * u, 700);
   ctx.fillText(tl.phase, L + mm - 8 * u, vy + 24 * u);
   // chips + stars (top-right, clear of the pause button)
-  const rr = R - (G.touch ? 52 * u : 0);
+  const rr = R;
   const cw = 150 * u;
   uiPanel(ctx, rr - cw, T, cw, 50 * u, 10 * u, { accent: "#f2c14e" });
   ctx.drawImage(G.assets.chipIcon, rr - cw + 12 * u, T + 7 * u, 17 * u, 17 * u);
@@ -3151,7 +3154,7 @@ function drawHUD(G) {
   const narrow = W / u < 640;
   const midW = narrow ? R - (L + mm + 10 * u) : Math.min(W * 0.46, 460 * u);
   const midX = narrow ? L + mm + 10 * u + midW / 2 : W / 2;
-  let oy = narrow ? T + 58 * u : T;
+  let oy = narrow ? T + (G.wanted > 0 ? 78 : 58) * u : T;
   if (G.hint) {
     const title = MISSIONS[G.missionIndex] ? MISSIONS[G.missionIndex].title : "";
     ctx.font = uiFont(13 * u, 700);
@@ -3159,7 +3162,7 @@ function drawHUD(G) {
     const ph = (24 + lines.length * 17) * u;
     uiPanel(ctx, midX - midW / 2, oy, midW, ph, 10 * u, { fill: "rgba(10,7,18,0.72)" });
     ctx.textAlign = "center"; ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(9.5 * u, 900);
-    ctx.fillText(title + '  ' + (G.objectiveIndex + 1) + '/' + (G._flow?.objectives.length || 1) + (G.district ? '  ·  ' + G.district : ''), midX, oy + 14 * u);
+    ctx.fillText(title + '  ' + (G.objectiveIndex + 1) + '/' + (G._flow?.objectives.length || 1) + (G.district ? '  ·  ' + G.district : ''), midX, oy + 14 * u, midW - 16 * u);
     ctx.fillStyle = "#fff"; ctx.font = uiFont(13 * u, 700);
     lines.forEach((ln, i) => ctx.fillText(ln, midX, oy + (31 + i * 17) * u));
     oy += ph + 6 * u;
@@ -3205,9 +3208,13 @@ function drawHUD(G) {
   if (G.race) {
     const r = G.race;
     ctx.fillStyle = '#29f0ff'; ctx.font = uiFont(14 * u, 900); ctx.textAlign = 'center';
-    const label = r.countdown > 0 ? 'READY  ' + Math.ceil(r.countdown) :
-      'LAP ' + Math.min(r.laps, Math.floor(r.i / r.gatesPerLap) + 1) + '/' + r.laps + '  ·  GATE ' + Math.min(r.i + 1, r.pts.length) + '/' + r.pts.length + '  ·  ' + r.t.toFixed(1) + 's  ·  FIRE ' + r.rivalI + '/' + r.pts.length;
-    ctx.fillText(label, midX, oy + 22 * u); oy += 30 * u;
+    const progress = 'LAP ' + Math.min(r.laps, Math.floor(r.i / r.gatesPerLap) + 1) + '/' + r.laps + '  ·  GATE ' + Math.min(r.i + 1, r.pts.length) + '/' + r.pts.length;
+    const timing = r.t.toFixed(1) + 's  ·  FIRE ' + r.rivalI + '/' + r.pts.length;
+    const label = r.countdown > 0 ? 'READY  ' + Math.ceil(r.countdown) : progress + (narrow ? '' : '  ·  ' + timing);
+    ctx.fillText(label, midX, oy + 22 * u, midW); oy += 30 * u;
+    if (narrow && r.countdown <= 0) {
+      ctx.font = uiFont(11 * u, 800); ctx.fillText(timing, midX, oy + 10 * u, midW); oy += 20 * u;
+    }
     if (r.countdown > 0) {
       const cy = Math.max(oy + 35 * u, H * .36);
       uiPanel(ctx, midX - 75 * u, cy - 22 * u, 150 * u, 44 * u, 10 * u, {fill:'rgba(8,18,31,.9)'});
@@ -3226,12 +3233,14 @@ function drawHUD(G) {
   const objective = G._flow?.objectives[G.objectiveIndex];
   if (objective?.hold && G.missionState.holdT > 0) {
     ctx.font = uiFont(12 * u, 800); ctx.textAlign = 'center'; ctx.fillStyle = '#29f0ff';
-    ctx.fillText('CASING  ' + Math.round(100 * G.missionState.holdT / objective.hold) + '% — HOLD STILL', midX, oy + 20 * u);
+    ctx.fillText('CASING  ' + Math.round(100 * G.missionState.holdT / objective.hold) + '% — HOLD STILL', midX, oy + 20 * u, midW);
     oy += 26 * u;
   }
   if (G.missionState.scramblerT > 0) {
     ctx.font = uiFont(12 * u, 800); ctx.textAlign = 'center'; ctx.fillStyle = '#29f0ff';
-    ctx.fillText('SCRAMBLER  ' + Math.ceil(G.missionState.scramblerT) + 's — NEW CRIMES END THE WINDOW', midX, oy + 20 * u);
+    const lines = wrapLines(ctx, 'SCRAMBLER  ' + Math.ceil(G.missionState.scramblerT) + 's — NEW CRIMES END THE WINDOW', midW);
+    lines.forEach((line, i) => ctx.fillText(line, midX, oy + (20 + i * 16) * u));
+    oy += (24 + (lines.length - 1) * 16) * u;
   }
   // speedo (bottom-center)
   if (G.player.type === "veh") {
@@ -3312,6 +3321,7 @@ function drawTitle(G) {
   drawWorld(G);
   const W = canvas.width, H = canvas.height, u = G.ui, sf = G.safe || { t: 0, r: 0, b: 0, l: 0 };
   const portrait = H > W;
+  const compact = !portrait && H / u < 500;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // grade: darken left for type, keep the hero area clean
   const g = ctx.createLinearGradient(0, 0, W * (portrait ? 1 : 0.7), portrait ? H : 0);
@@ -3330,12 +3340,12 @@ function drawTitle(G) {
   }
   const x0 = sf.l + (portrait ? 24 : 48) * u;
   const t = G.titleT || 0;
-  let y = sf.t + (portrait ? 70 : 54) * u;
+  let y = sf.t + (portrait ? 70 : compact ? 30 : 54) * u;
   ctx.textAlign = "left";
   ctx.fillStyle = "#ff2d9b"; ctx.font = uiFont(13 * u, 900);
   ctx.fillText("M E T A W I N N E R S", x0, y);
   ctx.fillStyle = "#f2c14e"; ctx.fillRect(x0, y + 8 * u, 90 * u, 3 * u);
-  const big = Math.min(64 * u, W * (portrait ? 0.15 : 0.085));
+  const big = Math.min((compact ? 44 : 64) * u, W * (portrait ? 0.15 : 0.085));
   ctx.font = uiFont(big, 900, true);
   ctx.lineWidth = big * 0.12; ctx.strokeStyle = "rgba(0,0,0,0.9)";
   const gl = ctx.createLinearGradient(0, y + 10 * u, 0, y + big * 2.1);
@@ -3362,7 +3372,7 @@ function drawTitle(G) {
   let by = portrait ? H - sf.b - 30 * u - items.length * (bh + gap) : Math.max(y + 22 * u, H - sf.b - 34 * u - items.length * (bh + gap));
   for (const [label, act, o] of items) { uiButton(G, x0, by, bw, bh, label, act, { ...o, align: "left" }); by += bh + gap; }
   ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = uiFont(10 * u, 600); ctx.textAlign = "left";
-  ctx.fillText("Fan-made. Play chips only. Not affiliated with MetaWin or any studio.", x0, H - sf.b - 12 * u);
+  ctx.fillText("Fan-made. Play chips only. Not affiliated with MetaWin or any studio.", x0, H - sf.b - 12 * u, W - x0 - sf.r - 12 * u);
 }
 
 
@@ -3379,7 +3389,7 @@ function drawPause(G) {
     ["SAVE GAME", () => save(G), {}],
     ...(G._flow && G.checkpoint ? [["RETRY OBJECTIVE", () => retryObjective(G), {}]] : []),
     ...(G.fsSupported && !G.standalone ? [[G.isFS() ? "EXIT FULL SCREEN" : "FULL SCREEN", () => G.toggleFS(), {}]] : []),
-    ["QUIT TO TITLE", () => { G.scene = "title"; G.menuSel = 0; G.saveExists = !!localStorage.getItem(SAVE_KEY); }, {}],
+    ["QUIT TO TITLE", () => { G.scene = "title"; G.menuSel = 0; G.saveExists = !!readJSON(localStorage, SAVE_KEY); }, {}],
   ];
   const bh = Math.min(42 * u, (H - 150 * u) / items.length - 8 * u);
   const ph = 96 * u + items.length * (bh + 8 * u);
@@ -3610,15 +3620,18 @@ function wrapText(ctx, text, x, y, max, lh) {
 }
 
 function drawEnd(G) {
-  const { ctx, canvas, assets } = G;
+  const { ctx, canvas } = G;
   const W = canvas.width, H = canvas.height, u = G.ui;
-  ctx.drawImage(assets.title, 0, 0, W, H);
+  drawWorld(G);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "rgba(6,4,12,0.62)"; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = "center";
   ctx.fillStyle = "#ffe27a"; ctx.font = uiFont(Math.min(40 * u, W / 14), 900, true);
   ctx.fillText("THE HOUSE DIDN'T WIN.", W / 2, H * 0.32);
   ctx.fillStyle = "#fff"; ctx.font = uiFont(15 * u, 600);
-  ctx.fillText("You never typed the phrase. Play chips only.", W / 2, H * 0.42);
+  ctx.fillText("You never typed the phrase. Play chips only.", W / 2, H * 0.42, W - 32 * u);
+  ctx.fillStyle = "#29f0ff"; ctx.font = uiFont(13 * u, 800);
+  ctx.fillText(`6 JOBS COMPLETE  ·  ${Math.round(G.chips).toLocaleString()} CHIPS`, W / 2, H * 0.49, W - 32 * u);
   uiButton(G, W / 2 - 110 * u, H * 0.62, 220 * u, 46 * u, "BACK TO TITLE", () => { G.scene = "title"; G.saveExists = true; }, { primary: true });
 }
 

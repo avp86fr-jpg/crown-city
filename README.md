@@ -8,7 +8,7 @@ Serve this directory with any static HTTP server; no build or runtime dependenci
 
 ## Controls
 
-WASD / arrows move or drive, E enters/exits and takes marked packages, Space fires, Shift sprints/boosts, R changes radio, M opens the map, Escape pauses. Click the map to set a blue waypoint; JOB ROUTE returns to the gold objective. Touch controls include TAKE/ENTER and MAP. Settings include graphics quality, automatic resolution and reduced motion.
+WASD / arrows move or drive, E enters/exits and takes marked packages, K / J / click fires, Space drifts, Shift sprints/boosts, R changes radio, M opens the map, Escape pauses. Click the map to set a blue waypoint; JOB ROUTE returns to the gold objective. Touch controls include TAKE/ENTER and MAP. Settings include graphics quality, automatic resolution and reduced motion.
 
 ## Campaign
 
@@ -26,4 +26,8 @@ The renderer adds commercial neon accents, wet-road light streaks, rain ripples,
 
 Run `npm test` and `npm run check` with Node 20 or later. Tests use the actual world, collision mask, mission logic and vehicle physics with a mocked browser/canvas. They cover presentation bounds and reduced motion, both campaign choice routes (moving between objectives in the test), a physically driven two-lap race, reachability, checkpoint/save recovery, controls, responsive button bounds and asset request behavior.
 
-These checks do not replace browser visual, audio and touch playtesting. See [the improvement notes](docs/improvement-pass.md) for scope and remaining verification.
+For browser checks, run `npm ci` and `npx playwright install chromium` (or set `CHROMIUM_PATH` to an installed Chromium), start the static server above, then run `npm run test:browser`. Set `GAME_URL` to test a different served copy. Screenshots are saved under `.qa/browser/`.
+
+The Chromium suite covers desktop and emulated multi-touch controls, menu layouts, saves, both campaign routes, a physically simulated race, automatic resolution changes and Web Audio signal/muting. It repositions between mission locations and does not replace a fully manual campaign run or testing on physical phones. See [the improvement notes](docs/improvement-pass.md) for scope and verification.
+
+[Browser phone capture](docs/previews/browser-touch.png) · [Browser landscape capture](docs/previews/browser-landscape.png)

@@ -225,11 +225,12 @@ test('map clicks place a waypoint and JOB ROUTE restores mission guidance', () =
   const route = G.buttons.find(b => b.x === 18 * G.ui); route.act(); assert.equal(G.waypoint, null);
 });
 
-test('paused settings and map renders expose usable controls at desktop and phone sizes', () => {
+test('title with a saved game and menu controls fit desktop and phone sizes', () => {
   mission(0);
-  for (const [w, height] of [[1280, 720], [844, 390], [390, 844]]) {
+  G.saveExists = true;
+  for (const [w, height] of [[1280, 720], [844, 390], [390, 844], [667, 375]]) {
     window.innerWidth = w; window.innerHeight = height; T.fit(G);
-    for (const scene of ['pause', 'map', 'settings', 'brief']) {
+    for (const scene of ['title', 'pause', 'map', 'settings', 'brief']) {
       G.scene = scene; G.pausedFrom = 'play'; T.render(G);
       for (const b of G.buttons) assert.ok(b.w > 0 && b.h > 0 && b.x >= -1 && b.x + b.w <= G.canvas.width + 1 && b.y >= -1 && b.y + b.h <= G.canvas.height + 1, scene);
     }

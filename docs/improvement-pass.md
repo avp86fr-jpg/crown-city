@@ -23,7 +23,11 @@ Story art loads per scene rather than blocking the title. The shared image loade
 
 31 automated tests pass against the actual repository world and collision PNG with mocked canvas/DOM/audio. Two choice routes traverse all six mission state machines, with test repositioning between objectives. The separate stock-Riot race test drives both laps using real physics, road data and collision checks without checkpoint teleporting. Button bounds are checked at 1280×720, 844×390 and 390×844.
 
-The existing production title and opening dialogue were inspected in the shared browser. Local Chromium could not launch in this environment because socket creation was denied. The modified version still needs real-browser visual, touch, audio and full manually driven campaign playtesting before release; no frame-rate benchmark is claimed.
+The modified build now passes nine real Chromium checks (`npm run test:browser`): opening dialogue with E, keyboard movement/shooting, map waypoints, pause/save/reload, menu bounds at 1280×720, 844×390, 390×844 and 667×375, emulated multi-touch movement/RUN and TAKE/MAP/PAUSE, both campaign choice routes, a rendered frame during automatic resolution changes, and actual Web Audio output/master muting. Each campaign run physically simulates the two-lap race with the stock Riot; travel between the other objectives is repositioned. Browser exceptions and HTTP asset failures fail the suite. Browser screenshots are saved under `.qa/browser/`.
+
+Browser testing found and fixed landscape title-menu clipping when Continue is present, objective text beneath phone buttons, a black frame during automatic resolution changes, E failing to advance dialogue, and delayed touch controls when leaving a menu. Touch pickup hints now say TAKE; phone pursuit/race/scrambler feedback fits the available space. The ending uses the game world and shows completed jobs/chips, removing the old menu baked into the title-image background. Quitting to the title tolerates blocked local storage, and the keyboard shooting instructions match the controls.
+
+The real-browser run is automated. A fully manually driven campaign, physical phone/Safari testing and listening-based audio review remain separate; no device performance or frame-rate benchmark is claimed. These changes are prepared on the existing pull request; production has not been changed.
 
 ## Graphics and animation pass
 
@@ -33,4 +37,4 @@ Race gates have a segmented ground halo and illuminated side posts. The countdow
 
 The [animation](previews/graphics-animation.webp) and [still](previews/graphics-night.webp) come from the actual engine running a scripted race with real assets and a native Canvas backend. They are renderer previews, not browser captures. No video assets are downloaded by gameplay. The test harness optionally accepts a native Canvas backend for inspection; normal tests require no extra packages.
 
-The graphics verification also rendered 18 native Canvas combinations: three viewport sizes × three graphics tiers × two motion settings, plus the story screen. Vera now uses a newly generated high-resolution transparent portrait, with its art brief recorded in [art direction](art-direction.md). Browser/touch verification remains separate.
+The graphics verification also rendered 18 native Canvas combinations: three viewport sizes × three graphics tiers × two motion settings, plus the story screen. Vera now uses a newly generated high-resolution transparent portrait, with its art brief recorded in [art direction](art-direction.md). Real-browser/touch verification is described above.
