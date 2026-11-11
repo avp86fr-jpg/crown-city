@@ -21,3 +21,7 @@ The soundtrack is **Afterhours** from VEIL FM, an original funk/bass/keys/brass 
 Run `npm run test:about` with the local server at port 8000. Set `CC_ABOUT_URL` to test another deployment. The suite checks every page image/font, desktop/portrait/landscape layouts including 320px width, gallery navigation and focus, play and section links, details controls, actual 720p playback with decoded audio, captions, reduced motion and failed requests/browser errors. Game regressions and all 19 gameplay browser checks were also rerun before release.
 
 Physical-device testing remains separate from browser emulation. The video captures the game in the shared environment and does not promise a particular phone’s frame rate.
+
+## Coherence pass gallery refresh
+
+`tools/capture-coherence-gallery.cjs` refreshes four 1280×720 stills directly from the game: the boulevard, MetaWin terrace, Midtown Metro and Pinewatch. Characters use the current measured frame bounds and costume extensions. The HUD and fullscreen overlay are hidden for these staged captures; the city, characters and lighting come from the running renderer. The existing 720p trailer remains the preceding metro/wildlife release capture described above.

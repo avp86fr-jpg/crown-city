@@ -1,3 +1,5 @@
+import {characterFrame,characterLayout} from './sprite_frames.js';
+import {firstSolid,shotSpread,projectileDamage} from './combat.js';
 import {initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
 import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
@@ -15,7 +17,7 @@ import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
-import { createLighting, ambientAt, darkness, sunAt, timeLabel, LIGHT } from "./lighting.js";
+import { createLighting, ambientAt, darkness, sunAt, timeLabel, nightMix, LIGHT } from "./lighting.js";
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
@@ -72,15 +74,6 @@ function vehScale(def) {
   if (def.boat) return 0.30;
   return 0.283;
 }
-function charScale(sprite, spr) {
-  const fh = spr.height / 8;
-  // Chaos sheet cells are 224px with a ~208px figure; peds are 128px with a ~110px figure.
-  // Target: people ~54–60 world px tall (still under half a sedan / Nyx).
-  if (sprite === "chaos") return 56 / (fh * .92);
-  if (sprite === "hunter" || sprite === "fire") return 56 / 110;
-  return 58 / 110;
-}
-
 const SURFACE = { 0: "road", 1: "walk", 2: "build", 3: "water", 4: "sand", 5: "grass", 6: "track", 7: "pier", 8: "canal", 9: "lot", 10: "dirt" };
 const GRIP = { road: 1, walk: 0.8, build: 0.2, water: 0.15, sand: 0.5, grass: 0.6, track: 1.05, pier: 0.75, canal: 0.15, lot: 0.95, dirt: 0.62 };
 const FOOT_PROBES=[[1,0],[.70710678,.70710678],[0,1],[-.70710678,.70710678],[-1,0],[-.70710678,-.70710678],[0,-1],[.70710678,-.70710678]];
@@ -162,7 +155,7 @@ export async function boot() {
     wanted: 0,
     wantedCool: 0,
     time: 19.4,
-    weather: "clear",
+    weather: "clear",weatherIndex:0,
     weatherT: 90,
     wet: 0, fog: 0, sand: 0, rainAmt: 0, lightning: 0, lightningT: 8,
     cam: { x: 920, y: 3220, rot: 0, scale: 1.05, northUp: true, shake: 0 },
@@ -614,6 +607,7 @@ function setupTouch(G) {
   hold('tDodge', d => { if(d) G.input.dodgeP=true; });
   hold('tCrew', d => { if(d) G.input.crewP=true; });
   const enterL = document.getElementById("tEnterL"), enterB = document.getElementById("tEnter"), boostB = document.getElementById("tBoost");
+  const enterIcon=enterB.querySelector('path'),icons={TALK:'M4 4h16v12H9l-5 4V4zM8 8h8M8 12h5',REPLAY:'M5 10a7 7 0 1 1 1 8M5 4v6h6',RAIL:'M6 3h12v14H6zM6 10h12M9 3v7M15 3v7M8 21l2-4M16 21l-2-4M8 14h1M15 14h1',TAKE:'M4 8l8-4 8 4v11H4V8zM4 8l8 4 8-4M12 12v7',BOAT:'M3 13l9-4 9 4-3 6H6l-3-6zM7 11V6h10v5M3 21l4-1 5 1 5-1 4 1',FLY:'M12 2v20M3 12l9-4 9 4M7 21l5-3 5 3',LAND:'M12 2v14M7 11l5 5 5-5M4 21h16',EXIT:'M10 3H4v18h6M10 12h11M16 7l5 5-5 5',BIKE:'M8 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM24 17a4 4 0 1 1-4-4 4 4 0 0 1 4 4zM4 17l6-10 10 10M8 7h5',CAR:'M5 16l1.5-5.2A2 2 0 0 1 8.4 9.3h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5'};
   let lastMode = "";
   G._syncTouch = () => {
     syncControlStyle(G);
@@ -627,8 +621,8 @@ function setupTouch(G) {
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 104);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
-      const lbl = G.contactNear&&!drive ? "TALK" : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
-      if (enterL.textContent !== lbl) enterL.textContent = lbl;
+      const lbl = G.contactNear&&!drive ? (G.contactTalk?.id===G.contactNear.id&&G.contactTalk.repeat?'REPLAY':'TALK') : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
+      if (enterL.textContent !== lbl) {enterL.textContent=lbl;enterIcon?.setAttribute('d',icons[lbl]||icons.CAR);}
       enterB.classList.toggle("ready", (!!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
       enterB.style.opacity = drive || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
       boostB.classList.toggle("off", !(drive && (G.player.def.sprite === "nyx" || G.player.def.aircraft)));
@@ -681,7 +675,7 @@ function snapshot(G) {
     chips: G.chips,
     wanted: G.wanted,
     time: G.time,
-    weather: G.weather,
+    weather:G.weather,weatherIndex:G.weatherIndex||0,weatherT:G.weatherT,
     px: G.player.x, py: G.player.y, prot: G.player.rot, ptype: G.player.type,
     vehKind: G.player.type === "veh" ? G.player.kind : null,
     health: G.health, vehicleHealth: G.player.type === 'veh' ? G.player.health : null,
@@ -720,7 +714,7 @@ function restoreState(G, d) {
   if (G.missionIndex >= 5 && !G.unlocked.includes('nyx')) G.unlocked.push('nyx');
   G.chips = finite(d.chips, 400, 0, 1e9); G.wanted = Math.floor(finite(d.wanted, 0, 0, 5));
   G.time = finite(d.time, 19.4, 0, 24) % 24;
-  G.weather = ['clear', 'rain', 'fog', 'sand'].includes(d.weather) ? d.weather : 'clear';
+  G.weather = ['clear', 'rain', 'fog', 'sand'].includes(d.weather) ? d.weather : 'clear';G.weatherIndex=Math.floor(finite(d.weatherIndex,0,0,5));G.weatherT=finite(d.weatherT,90,1,180);
   G.health = finite(d.health, 100, 1, 100);
   G.missionState = d.missionState && typeof d.missionState === 'object' ? { ...d.missionState } : {};
   G.missionState.scramblerT = finite(G.missionState.scramblerT, 0, 0, 90);
@@ -899,7 +893,7 @@ function startNew(G) {
   G.chips = 400;
   G.wanted = 0;
   G.time = 19.4;
-  G.weather = "clear";
+  G.weather = "clear";G.weatherIndex=0;
   G.health = 100;
   G.ended = false;
   G.tipStep = null; G.tipsDone = false; G.walked = 0; G.drove = 0;
@@ -1230,20 +1224,14 @@ function tickPlay(G, dt) {
   if ((G.ticks % 600) === 0) for (const l of Object.values(G.assets.layers)) l.evict(G.ticks);
 }
 
-function nightFactor(G) {
-  const t = G.time;
-  if (t < 5.5) return 1;
-  if (t < 7.5) return 1 - (t - 5.5) / 2;
-  if (t < 18.5) return 0;
-  if (t < 20.5) return (t - 18.5) / 2;
-  return 1;
-}
+function nightFactor(G) { return nightMix(G.time); }
 
 function tickWeather(G, dt) {
   G.weatherT -= dt;
   if (G.weatherT <= 0) {
     const cycle = ["clear", "clear", "rain", "fog", "clear", "sand"];
-    const i = (cycle.indexOf(G.weather) + 1) % cycle.length;
+    const previous=Number.isInteger(G.weatherIndex)&&cycle[G.weatherIndex]===G.weather?G.weatherIndex:Math.max(0,cycle.indexOf(G.weather));
+    const i=(previous+1)%cycle.length;G.weatherIndex=i;
     G.weather = cycle[i];
     G.weatherT = 50 + Math.random() * 50;
     toast(G, G.weather === "clear" ? "Skies open over Crown City." : G.weather === "rain" ? "Rain on the Strip." : G.weather === "fog" ? "Fog rolls off the harbour." : "Sand off the east edge.");
@@ -1345,11 +1333,12 @@ function tickPlayer(G, dt) {
   const target = mag < 0.12 ? 0 : (run ? 175 : 70 + 40 * mag);
   p.spd = lerp(p.spd || 0, target, (target > (p.spd || 0) ? 10 : 14) * dt);
   const h = headingVec(p.rot);
+  const oldX=p.x,oldY=p.y;
   moveFoot(G, p, h.x * p.spd * dt, h.y * p.spd * dt);
-  p.speed = p.spd;
+  p.speed = Math.hypot(p.x-oldX,p.y-oldY)/Math.max(.001,dt);
   const lastStep = Math.floor((p.dist || 0) / 25);
-  p.dist += p.spd * dt;
-  if (G.wet > .2 && Math.floor(p.dist / 25) !== lastStep) G.particles.push({ kind: 'footstep', x: p.x, y: p.y + 10, life: .45, maxLife: .45 });
+  p.dist += p.speed * dt;
+  if (G.wet > .2 && Math.floor(p.dist / 25) !== lastStep) G.particles.push({ kind: 'footstep', x: p.x, y: p.y, life: .45, maxLife: .45 });
   if (p.exitT > 0) p.exitT -= dt * 2.2;
   if (G.input.enterP) tryEnter(G);
   if (G.input.fire) shoot(G, p, true);
@@ -1424,9 +1413,10 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  const throttle = def.boat&&input.brake?0:Math.max(0,input.y||0);
-  const reverse = Math.max(0,-(input.y||0),def.boat&&input.brake?1:0);
-  const hand = !!(input.hand || input.brake && !reverse);
+  const throttle = input.brake?0:Math.max(0,input.y||0);
+  const reverse = Math.max(0,-(input.y||0),input.brake?1:0);
+  const hand = !!input.hand;
+  v.reverseDelay=reverse&&fwd>4?.22:Math.max(0,(v.reverseDelay||0)-dt);
   const isNyx = def.sprite === "nyx" && isPlayer;
   const boosting = isNyx && (input.boost || input.sprint) && throttle > 0;
   v.boost = boosting ? 1 : 0;
@@ -1435,12 +1425,12 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const k = clamp(Math.abs(fwd) / top, 0, 1);
   const torque = def.accel * condition.power * (1.25 - 0.95 * k * k) * (isNyx ? 1 + 0.35 * Math.max(0, 1 - Math.abs(fwd) / 160) : 1) * (boosting ? 1.5 : 1);
   if (throttle > 0) {
-    if (fwd < -5) fwd += def.brake * condition.brake * throttle * dt; // braking out of reverse
+    if (fwd < -5) fwd = Math.min(0,fwd+def.brake * condition.brake * throttle * dt); // braking out of reverse
     else fwd += torque * throttle * dt;
   }
   if (reverse > 0) {
-    if (fwd > 5) fwd -= def.brake * condition.brake * reverse * dt; // brake first
-    else fwd -= def.accel * 0.55 * reverse * dt;
+    if (fwd > 5) fwd = Math.max(0,fwd-def.brake * condition.brake * reverse * dt); // brake first
+    else if(!v.reverseDelay) fwd -= def.accel * condition.power * 0.55 * reverse * dt;
   }
   if (hand) fwd *= Math.exp(-(def.bike ? 1.4 : 0.9) * dt);
   if(!def.boat){const cornerTop=top/(1+Math.abs(input.x||0)*.78);if(Math.abs(fwd)>cornerTop)fwd*=Math.exp(-Math.abs(input.x||0)*1.8*dt);}
@@ -1448,7 +1438,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const speed0 = Math.abs(fwd);
   let grip = def.grip * condition.grip * (GRIP[surf] || 0.7) * (G.wet > 0.3 ? 0.8 : 1);
   if (def.boat) grip = onLand ? 0.2 : 0.62 + 0.25 * Math.max(0, 1 - speed0 / 160); // boats carve: more bite at low speed, slide when fast
-  if (def.bike) grip = Math.max(grip, def.grip * 1.45 * (GRIP[surf] || 0.7));
+  if(def.bike)grip=def.grip*1.45*condition.grip*(GRIP[surf]||.7)*(G.wet>.3?.8:1);
   const speed = Math.abs(fwd);
   // steering: speed-sensitive, understeer at the top end, more bite on bikes
   const steerIn = clamp(input.x || 0, -1, 1);
@@ -1458,6 +1448,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.rot += v.yaw * dt;
   // lateral slip: handbrake lets the rear step out
   const slipGrip = def.boat ? 10 : hand ? 1.1 : (isNyx && Math.abs(steerIn) > 0.6 && speed > 150 ? 4.2 : 7.5);
+  if(def.boat)lat -= fwd*Math.sin(v.yaw*dt)*.35;
   lat *= Math.exp(-grip * slipGrip * dt * (def.boat ? 0.5 : 1));
   if (hand && !def.boat && speed > 60) lat += -steerIn * speed * 0.9 * dt; // kick the tail out
   v.drifting = !def.boat && Math.abs(lat) > 34 && speed > 60;
@@ -1561,7 +1552,9 @@ function explode(G, v) {
 function tickCollisions(G) {
   const vs = G.vehicles;
   const P = G.player;
-  const near = vs.filter((v) => !airborne(v) && Math.abs(v.x - G.cam.x) < 1400 && Math.abs(v.y - G.cam.y) < 1100);
+  const view=G.touch&&G.settings.quality==='low'?streetViewport(G):null,co=Math.abs(Math.cos(G.cam.rot||0)),si=Math.abs(Math.sin(G.cam.rot||0));
+  const width=view?Math.max(700,view.halfW*co+view.halfH*si+300):1400,height=view?Math.max(550,view.halfH*co+view.halfW*si+300):1100;
+  const near=vs.filter(v=>!airborne(v)&&(Math.abs(v.x-G.cam.x)<width&&Math.abs(v.y-G.cam.y)<height||Math.abs(v.x-P.x)<350&&Math.abs(v.y-P.y)<350));
   if (P.type === "veh" && !airborne(P) && !near.includes(P)) near.push(P);
   G.nearVehicles=near;
   const grid=G.streetVehicleGrid||new Map();grid.clear();
@@ -1648,7 +1641,7 @@ function nearestVeh(G, x, y, r, kind) {
     if ((v.driver && v !== G.player) || v.dead || airborne(v)) continue;
     if (kind && v.kind !== kind) continue;
     const d = Math.hypot(v.x - x, v.y - y);
-    if (d < bd) { bd = d; best = v; }
+    if (d < bd && firstSolid(G,x,y,v.x,v.y)===null) { bd = d; best = v; }
   }
   return best;
 }
@@ -1703,6 +1696,7 @@ function exitVeh(G, emergency=false) {
   if (v.type !== "veh") return;
   if(!emergency&&!canExitAircraft(v)){v.landing=true;toast(G,"Land and stop before exiting.");return;}
   if(v.def.aircraft){v.vx=v.vy=v.airspeed=0;v.landing=false;if(emergency)v.altitude=0;}
+  if(v.def.boat&&!emergency&&Math.hypot(v.vx,v.vy)>35){toast(G,"Slow to docking speed before stepping ashore.");return;}
   v.doorT=.75;
   const r = rightVec(v.rot);
   // Boats can only disembark at a nearby reachable bank, never teleport across the bay.
@@ -1712,7 +1706,7 @@ function exitVeh(G, emergency=false) {
   v.siren = false;
   let spot = null;
   for (const side of [-1, 1, 0]) {
-    const offset=v.def.aircraft?70:30;
+    const offset=v.def.aircraft?Math.max(70,bodySize(v).w+16):bodySize(v).w+10;
     const x = v.x + r.x * offset * side, y = v.y + r.y * offset * side + (side === 0 ? 40 : 0);
     if (footClear(G, x, y, 7)) { spot = { x, y }; break; }
   }
@@ -1738,7 +1732,8 @@ function shoot(G, from, onFoot) {
   if (G.touch) rot = aimDirection(G.input, rot, G.cam.rot);
   if (G.input.mouse.fire && !G.touch) {
     const aim = screenToWorld(G, G.input.mouse.x, G.input.mouse.y);
-    rot = Math.atan2(aim.x - from.x, -(aim.y - from.y));
+    // The cursor addresses the visible chest-height tracer, projected above ground.
+    rot = Math.atan2(aim.x - from.x, -(aim.y+(onFoot?23:14)-from.y));
   }
   from.aimRot=rot;
   const h = headingVec(rot);
@@ -1757,15 +1752,16 @@ function shoot(G, from, onFoot) {
   }
   const muzzle=onFoot?18:muzzleLength(from,Math.atan2(ax,-ay));
   const sx = from.x + ax * muzzle, sy = from.y + ay * muzzle;
-  const angle=Math.atan2(ax,-ay);
-  from.aimRot=angle;
-  for(let i=0;i<weapon.pellets;i++) {
-    const a=angle+(Math.random()-.5)*weapon.spread;
-    G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:.7,friend:true,waterLevel:!!from.def?.boat,damage:weapon.damage,carDamage:weapon.carDamage });
+  const angle=Math.atan2(ax,-ay),spread=shotSpread(G,weapon,from),block=firstSolid(G,from.x,from.y,sx,sy);
+  from.aimRot=angle;G.action.bloom=Math.min(1,(G.action.bloom||0)+(weapon.kick||.1));
+  for(let i=0;block===null&&i<weapon.pellets;i++) {
+    const a=angle+(Math.random()-.5)*spread;
+    G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:weapon.range/speed,range:weapon.range,falloff:weapon.falloff,travel:0,height:onFoot?23:14,friend:true,waterLevel:!!from.def?.boat,damage:weapon.damage,carDamage:weapon.carDamage });
   }
   G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
   G.particles.push({kind:'casing',x:from.x+ay*9,y:from.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
-  G.particles.push({ kind: "flash", x: sx, y: sy, life: 0.06, a: 1 });
+  const fx=block===null?sx:from.x+(sx-from.x)*block,fy=(block===null?sy:from.y+(sy-from.y)*block)-(onFoot?23:14);
+  G.particles.push({ kind:block===null?"flash":"spark", x:fx, y:fy, life:block===null?.06:.18, a:1 });
   G.flashes.push({ x: sx, y: sy, r: 150, col: "rgba(255,210,140,0.9)", life: 0.07, max: 0.07 });
   // gunfire is only a crime if someone sees it
   const copNear = G.cops.some((c) => Math.hypot(c.x - from.x, c.y - from.y) < 520) || G.vehicles.some((v) => v.cop && !v.dead && Math.hypot(v.x - from.x, v.y - from.y) < 420);
@@ -1775,29 +1771,29 @@ function shoot(G, from, onFoot) {
   if (!weapon.quiet && G.shotsFired % 6 === 0 && G.peds.some((p) => !p.dead && Math.hypot(p.x - from.x, p.y - from.y) < 300)) crime(G, 1, from.x, from.y, false, 1);
 }
 
-function bridgeAt(G,x,y){const E=G.world?.expansion;if(!E)return false;const c=E.canal;if(c&&(x<c.x-64||x>c.x+c.w+64))return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
+function bridgeAt(G,x,y){const E=G.world?.expansion;if(!E)return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||E.riverBridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
+
 function bulletLayerMatches(G,b,target){return !bridgeAt(G,target.x,target.y)||!!b.waterLevel===!!target.def?.boat;}
 function tickBullets(G, dt) {
   for (const b of G.bullets) {
     if(b.life<=0)continue;
     const x0=b.x,y0=b.y,x1=x0+b.vx*dt,y1=y0+b.vy*dt;b.life-=dt;
     let first=1.01,target=null,wall=false;
-    const steps=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/5));
-    for(let i=1;i<=steps;i++){const t=i/steps;if(G.solidAt(x0+(x1-x0)*t,y0+(y1-y0)*t)){first=t;wall=true;break;}}
+    const obstruction=firstSolid(G,x0,y0,x1,y1);if(obstruction!==null){first=obstruction;wall=true;}
     if(b.friend){
-      for(const p of G.peds){if(p.dead||!bulletLayerMatches(G,b,p))continue;const t=segmentCircle(x0,y0,x1,y1,p.x,p.y,12);if(t!==null&&t<first){first=t;target=p;wall=false;}}
-      for(const v of G.vehicles){if(v===G.player||v.dead||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,2);if(t!==null&&t<first){first=t;target=v;wall=false;}}
+      for(const p of G.peds){if(p.dead||Math.abs(p.x-x0)>Math.abs(x1-x0)+14||Math.abs(p.y-y0)>Math.abs(y1-y0)+14||!bulletLayerMatches(G,b,p))continue;const t=segmentCircle(x0,y0,x1,y1,p.x,p.y,12);if(t!==null&&t<first){first=t;target=p;wall=false;}}
+      for(const v of G.vehicles){if(v===G.player||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,2);if(t!==null&&t<first){first=t;target=v;wall=false;}}
     }else{
       // Cars and scenery shield characters from police fire as well.
-      for(const v of G.vehicles){if(v.dead||v.cop&&v!==G.player||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,1);if(t!==null&&t<first){first=t;target=v;wall=false;}}
+      for(const v of G.vehicles){if(v.cop&&!v.dead&&v!==G.player||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,1);if(t!==null&&t<first){first=t;target=v;wall=false;}}
       if(G.player.type==='foot'&&bulletLayerMatches(G,b,G.player)){const t=segmentCircle(x0,y0,x1,y1,G.player.x,G.player.y,12);if(t!==null&&t<first){first=t;target=G.player;wall=false;}}
     }
-    const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;
+    const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;b.travel=(b.travel||0)+Math.hypot(b.x-x0,b.y-y0);
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});continue;}
-    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
+    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend&&!target.dead){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
     if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;if(G.health<=0){wasted(G);return;}}continue;}
-    if(target){target.hp=(target.hp??30)-(b.damage||20);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
+    if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
       if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
       G.particles.push({kind:'blood',x:b.x,y:b.y,life:.25});if(target.hp<=0)killPed(G,target,true);
     }
@@ -1847,7 +1843,7 @@ function clearRecoveryState(G) {
   if(G.cam)G.cam.lx=G.cam.ly=G.cam.shake=0;
   if(G.nav){G.nav.t=0;G.nav.lastX=G.nav.lastY=-1;G.nav.dist?.fill(65535);}
   if(G.missionState){G.missionState.holdT=0;G.missionState.hacking=false;G.missionState.scramblerT=0;}
-  if(G.action){for(const k of ['reloadT','shotT','dodgeT','dodgeCool','combo','comboT'])G.action[k]=0;G.action.cover=false;G.action.exhausted=false;G.action.stamina=100;if(G.action.contract)G.action.contract.progress=0;}
+  if(G.action){for(const k of ['reloadT','shotT','dodgeT','dodgeCool','combo','comboT'])G.action[k]=0;G.action.bloom=0;G.action.cover=false;G.action.exhausted=false;G.action.stamina=100;if(G.action.contract)G.action.contract.progress=0;}
   G.audio?.setEngine?.(false,0,false);G.audio?.setRadio?.(false);G.radioT=0;
   G.cityAI?.reset?.();
 }
@@ -2158,10 +2154,10 @@ function tickPeds(G, dt) {
     p.impactT=Math.max(0,(p.impactT||0)-dt);
     for(const car of localStreetVehicles(G,p.x,p.y)){
       if(p.impactT)break;
-      const speed=Math.hypot(car.vx||0,car.vy||0);if(car.dead||airborne(car)||car.def.boat||speed<45||Math.abs(car.x-p.x)>110||Math.abs(car.y-p.y)>110)continue;
+      if(car.dead||car.def.boat||Math.abs(car.x-p.x)>110||Math.abs(car.y-p.y)>110||airborne(car)||(car.vx*car.vx+car.vy*car.vy)<2025)continue;
       const px=car.prevX??car.x,py=car.prevY??car.y;
       if(!circleBody(car,p.x,p.y,9)&&segmentBody(car,p.x+(car.x-px),p.y+(car.y-py),p.x,p.y,9)===null)continue;
-      p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
+      const speed=Math.hypot(car.vx,car.vy);p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
       if(p.hp<=0){if(car===pl&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,car===pl);}else{p.dive=.3;if(car===pl)crime(G,1,p.x,p.y,false,2);}
       if(car===pl){G.audio.hit();G.hitConfirmT=.2;car.vx*=.94;car.vy*=.94;}struck=true;break;
     }
@@ -2181,9 +2177,8 @@ function tickPeds(G, dt) {
     }
     if (p.dive > 0) {
       p.dive -= dt;
-      const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
-      if (!G.solidAt(nx, ny)) { p.x = nx; p.y = ny; }
-      p.vx *= 0.9; p.vy *= 0.9; p.speed = 80; p.dist += 40 * dt;
+      const oldX=p.x,oldY=p.y;moveFoot(G,p,p.vx*dt,p.vy*dt);
+      const damping=Math.exp(-6.32*dt);p.vx*=damping;p.vy*=damping;p.speed=Math.hypot(p.x-oldX,p.y-oldY)/Math.max(.001,dt);p.dist+=p.speed*dt;
       continue;
     }
 
@@ -2203,7 +2198,7 @@ function tickPeds(G, dt) {
     if (p.gather) {
       const g = p.gather;
       const d = Math.hypot(p.x - g.x, p.y - g.y);
-      if (d > 28) { p.rot = Math.atan2(g.x - p.x, -(g.y - p.y)); const h = headingVec(p.rot); p.x += h.x * 30 * dt; p.y += h.y * 30 * dt; p.speed = 30; p.dist += 30 * dt; }
+      if (d > 28) { p.rot = Math.atan2(g.x - p.x, -(g.y - p.y)); const h = headingVec(p.rot); moveFoot(G,p,h.x*30*dt,h.y*30*dt);p.speed=30;p.dist+=30*dt; }
       else { p.speed = 0; if (Math.random() < 0.01) p.rot += (Math.random() - 0.5) * 1.2; }
       continue;
     }
@@ -2270,9 +2265,9 @@ function tickParticles(G, dt) {
     if (p.frame != null) p.frame += dt * 12;
   }
   const cap=G.settings.quality==='low'?140:500;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
-  G.particles = G.particles.filter((p) => p.life > 0);
+  let live=0;for(const p of G.particles)if(p.life>0)G.particles[live++]=p;G.particles.length=live;
   for (const s of G.skids) s.a -= dt * 0.15;
-  G.skids = G.skids.filter((s) => s.a > 0);
+  live=0;for(const s of G.skids)if(s.a>0)G.skids[live++]=s;G.skids.length=live;
 }
 
 function tickCamera(G, dt) {
@@ -2836,7 +2831,7 @@ function renderWorldLayer(G) {
   _ph('w_details');
   drawExpansionOverhead(G,r);drawTransitWorld(G,r);
   // 6. actors
-  const actors = [];
+  const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
   for (const p of G.peds) if (p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1) actors.push(p);
   if (G.player.type === "foot") actors.push(G.player);
@@ -3053,9 +3048,10 @@ function vehLights(G, c, v, night, map) {
 
 function drawParticles(G, r, top) {
   const ctx = G.ctx, assets = G.assets;
-  if(!top){ctx.save();ctx.lineWidth=1.8;ctx.lineCap='round';for(const b of G.bullets){if(b.x<r.x0||b.x>r.x1||b.y<r.y0||b.y>r.y1)continue;ctx.strokeStyle=b.friend?'#ffe0a0':'#ff8c7b';ctx.beginPath();ctx.moveTo(b.x-b.vx*.018,b.y-b.vy*.018);ctx.lineTo(b.x,b.y);ctx.stroke();}ctx.restore();}
+  if(!top){ctx.save();ctx.lineWidth=1.8;ctx.lineCap='round';for(const b of G.bullets){if(b.x<r.x0||b.x>r.x1||b.y<r.y0||b.y>r.y1)continue;ctx.strokeStyle=b.friend?'#ffe0a0':'#ff8c7b';ctx.beginPath();ctx.moveTo(b.x-b.vx*.018,b.y-b.vy*.018-(b.height??23));ctx.lineTo(b.x,b.y-(b.height??23));ctx.stroke();}ctx.restore();}
   for (const p of G.particles) {
     if (p.x < r.x0 || p.x > r.x1 || p.y < r.y0 || p.y > r.y1) continue;
+    if((p.kind==='wake'||p.kind==='splash')&&bridgeAt(G,p.x,p.y))continue;
     const isTop = p.kind === "rain" || p.kind === "sand";
     if (isTop !== top) continue;
     if (drawParticleFX(ctx, p)) continue;
@@ -3128,7 +3124,7 @@ function drawVeh(G, v) {
   const ctx = G.ctx;
   ctx.save();
   if(v.def.boat){
-    const bridges=G.world.expansion?.bridges?.filter(b=>v.x+100>b.x&&v.x-100<b.x+b.w&&v.y+120>b.y&&v.y-120<b.y+b.h)||[];
+    const bridges=[...(G.world.expansion?.bridges||[]),...(G.world.expansion?.riverBridges||[])].filter(b=>v.x+100>b.x&&v.x-100<b.x+b.w&&v.y+120>b.y&&v.y-120<b.y+b.h)||[];
     if(bridges.length){ctx.beginPath();ctx.rect(-1000,-1000,WORLD_W+2000,WORLD_H+2000);for(const b of bridges)ctx.rect(b.x,b.y,b.w,b.h);ctx.clip('evenodd');}
   }
   ctx.translate(v.x, v.y);
@@ -3244,95 +3240,33 @@ function drawHeadCone(ctx, len, halfW, beam, alpha) {
 
 function drawVehLights() {}
 
-function drawChar(G, a) {
-  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos');
-  const crowd=civilian && G.assets.sprites.crowd_atlas;
-  const spr = crowd || G.assets.sprites["char_" + (a.sprite || "chaos")];
-  if (!spr) return;
-  const ctx = G.ctx, opacity = ctx.globalAlpha;
-  const fw = spr.width / (crowd?9:6), fh = spr.height / 8;
-  const aiming=a===G.player && G.input.fire && !(G.action?.reloadT>0);
-  const dir = ((Math.round((aiming ? a.aimRot??a.rot : a.rot) / (Math.PI / 4))) + 8) % 8;
-  const row = (dir + 6) % 8; // sheet row 0 is East
-  let col = 4; // idle
-  const moving = (a.speed || 0) > 20 || (a === G.player && a.type === "foot" && Math.hypot(G.input.x, G.input.y) > 0.15);
-  if (moving) col = Math.floor((a.dist || 0) / 9) % 4;
-  if (aiming) col = 5;
-  if(crowd) {
-    const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;
-    col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);
-  }
-  if (a.dead) { ctx.globalAlpha = opacity * 0.5; col = crowd?Math.floor(col/3)*3+2:4; }
-  const sc = crowd ? 56/(fh*.92) : charScale(a.sprite || "chaos", spr);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  if(a.dead){const fall=clamp((a.deadT||0)*4,0,1);ctx.rotate(fall*.7);ctx.scale(1,1-fall*.64);}
-  if (G.jack && a === G.player) {
-    const k = 1 - Math.max(0, G.jack.t) / (G.jack.dur || 0.38);
-    ctx.scale(1 - 0.3 * k, 1 - 0.55 * k);
-  }
-  if (a.exitT > 0) {
-    const k = Math.min(1, a.exitT);
-    ctx.scale(0.7 + 0.3 * k, 0.55 + 0.45 * k);
-  }
-  if (a.dive > 0) {
-    ctx.rotate((a.rot || 0) * 0.15);
-    ctx.scale(1.15, 0.42);
-  }
-  const pose = characterPose(a, moving, G.ticks / 60, G.settings.reducedMotion);
-  if(a===G.player && G.action?.dodgeT>0) {ctx.rotate(Math.sin((1-G.action.dodgeT/.34)*Math.PI)*.35);ctx.scale(1,.67);}
-  const dx = -fw * 0.5 * sc, dy = -fh * 0.68 * sc + pose.bob + pose.recoil * 1.8, dw = fw * sc * pose.sx, dh = fh * sc * pose.sy;
-  // soft south drop shadow
-  ctx.save();
-  const prevSmooth = ctx.imageSmoothingQuality;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = G.settings.quality==='low'?'low':'medium';
-  ctx.fillStyle = "rgba(0,0,0,0.16)";
-  ctx.beginPath(); ctx.ellipse(3, dh * 0.36, dw * 0.36, dh * 0.14, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
-  ctx.beginPath(); ctx.ellipse(2, dh * 0.32, dw * 0.24, dh * 0.09, 0, 0, TAU); ctx.fill();
-  ctx.restore();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = G.settings.quality==='low'?'low':'medium';
-  const isHero = a.sprite === "chaos" || a === G.player;
-  const nightC = nightFactor(G);
-  if (G.settings.quality!=='low' && isHero && nightC > 0.18 && !a.dead) {
-    ctx.save();
-    ctx.shadowColor = `rgba(190, 245, 255, ${0.95 * nightC})`;
-    ctx.shadowBlur = 0;
-    const o = 1.1;
-    for (const [sx, sy] of [[o, 0], [0, -o]]) {
-      ctx.shadowOffsetX = sx;
-      ctx.shadowOffsetY = sy;
-      ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
-    }
-    // pink rim on the north-west edge
-    ctx.shadowColor = `rgba(255, 130, 210, ${0.75 * nightC})`;
-    ctx.shadowOffsetX = -o; ctx.shadowOffsetY = -o;
-    ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
-    ctx.restore();
-  }
-  ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
-  // Aim with the upper body while the locomotion frames keep the legs stepping.
-  if(a===G.player && moving && aiming && !G.settings.reducedMotion && !crowd){
-    const legRow=((((Math.round(a.rot/(Math.PI/4))+8)%8)+6)%8),legCol=Math.floor((a.dist||0)/9)%4;
-    ctx.save();ctx.beginPath();ctx.rect(dx,dy+dh*.69,dw,dh*.31);ctx.clip();
-    ctx.drawImage(spr,legCol*fw,legRow*fh,fw,fh,dx,dy,dw,dh);ctx.restore();
-  }
-  if(a===G.player && G.action?.reloadT>0){
-    const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload,wave=Math.sin(k*Math.PI);
-    ctx.save();ctx.rotate(a.rot);ctx.strokeStyle='#a0b59a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(9,-8);ctx.lineTo(5-wave*7,-3-wave*8);ctx.stroke();ctx.fillStyle='#202e32';ctx.fillRect(3-wave*7,-8-wave*8,4,7);ctx.restore();
-  }
-  if(a!==G.player&&G.settings.quality!=='low')drawAmbientGesture(G,a);
-  if (G.settings.quality!=='low' && isHero && nightC > 0.18 && !a.dead) {
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = opacity * 0.12 * nightC;
-    ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy - 1, dw, dh);
-    ctx.globalAlpha = opacity;
-    ctx.globalCompositeOperation = "source-over";
-  }
-  ctx.restore();
-  ctx.globalAlpha = opacity;
+function drawChar(G,a){
+ const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
+ const spr=crowd||G.assets.sprites['char_'+(a.sprite||'chaos')];if(!spr)return;
+ const ctx=G.ctx,hero=a===G.player||a.sprite==='chaos',aiming=a===G.player&&G.input.fire&&!(G.action?.reloadT>0);
+ const moving=(a.speed||0)>12&&!a.dead,dir=((Math.round((aiming?a.aimRot??a.rot:a.rot)/(Math.PI/4))%8)+8)%8,row=(dir+6)%8;
+ let col=aiming?5:moving?Math.floor((a.dist||0)/9)%4:4;
+ if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);}
+ const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
+ const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
+ const layout=characterLayout(frame,hero?50:48),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
+ ctx.save();ctx.translate(a.x,a.y);
+ ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
+ if(a.dead){const fall=clamp((a.deadT||0)*4,0,1);ctx.globalAlpha*=.65;ctx.rotate(fall*.85);ctx.scale(1,1-fall*.7);}
+ if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
+ if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
+ if(a.dive>0){ctx.rotate((a.rot||0)*.15);ctx.scale(1.12,.45);}
+ if(a===G.player&&G.action?.dodgeT>0){ctx.rotate(Math.sin((1-G.action.dodgeT/.34)*Math.PI)*.35);ctx.scale(1,.67);}
+ const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';
+ ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
+ if(a===G.player&&moving&&aiming&&!G.settings.reducedMotion&&measured){
+  const legRow=(((Math.round(a.rot/(Math.PI/4))%8)+8)%8+6)%8,leg=characterFrame(spr,false,Math.floor((a.dist||0)/9)%4,legRow),l=characterLayout(leg,50);
+  ctx.save();ctx.beginPath();ctx.rect(-28,-15,56,18);ctx.clip();ctx.drawImage(spr,leg.x,leg.y,leg.w,leg.h,l.x,l.y+pose.bob,l.w,l.h);ctx.restore();
+ }
+ if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
+ if(a!==G.player&&G.settings.quality!=='low')drawAmbientGesture(G,a);
+ ctx.restore();
 }
 
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
@@ -3340,9 +3274,9 @@ function drawAimGuide(G){
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,rot=p.aimRot??aimDirection(G.input,p.rot,G.cam.rot),h=headingVec(rot);
   let length=200;for(let n=24;n<200;n+=12)if(G.solidAt(p.x+h.x*n,p.y+h.y*n)){length=n;break;}
-  const x=p.x+h.x*length,y=p.y+h.y*length;
-  c.save();c.strokeStyle=G.hitConfirmT>0?'#fff8e5':'rgba(224,203,158,.7)';c.lineWidth=1.2;c.setLineDash([3,7]);c.beginPath();c.moveTo(p.x+h.x*30,p.y+h.y*30);c.lineTo(x,y);c.stroke();c.setLineDash([]);
-  c.beginPath();c.arc(x,y,G.hitConfirmT>0?5:8,0,TAU);c.stroke();
+  const height=p.type==='foot'?23:14,x=p.x+h.x*length,y=p.y+h.y*length-height;
+  c.save();c.strokeStyle=G.hitConfirmT>0?'#fff8e5':'rgba(224,203,158,.7)';c.lineWidth=1.2;c.setLineDash([3,7]);c.beginPath();c.moveTo(p.x+h.x*30,p.y+h.y*30-height);c.lineTo(x,y);c.stroke();c.setLineDash([]);
+  c.beginPath();c.arc(x,y,G.hitConfirmT>0?5:6+shotSpread(G,WEAPONS[G.action.weapon],p)*30,0,TAU);c.stroke();
   c.beginPath();c.moveTo(x-12,y);c.lineTo(x-6,y);c.moveTo(x+6,y);c.lineTo(x+12,y);c.moveTo(x,y-12);c.lineTo(x,y-6);c.moveTo(x,y+6);c.lineTo(x,y+12);c.stroke();c.restore();
 }
 function drawStreetWaypoint(G){
@@ -3906,7 +3840,7 @@ function api(G) {
     boomNear: (dx = 0, dy = -160) => { const v = nearestVeh(G, G.player.x + dx, G.player.y + dy, 400); if (v && v !== G.player) explode(G, v); return !!v; },
     state: () => ({ cops: G.cops.length, district: G.district, fps: G.fps,
       scene: G.scene, mission: G.missionIndex, obj: G.objectiveIndex, chips: G.chips,
-      wanted: G.wanted, time: G.time, weather: G.weather, x: G.player.x, y: G.player.y,
+      wanted: G.wanted, time: G.time, weather:G.weather,weatherIndex:G.weatherIndex||0,weatherT:G.weatherT, x: G.player.x, y: G.player.y,
       mode: G.player.type, kind: G.player.kind, flags: { ...G.flags }, hint: G.hint, errors: 0,
     }),
   };
@@ -3927,7 +3861,7 @@ function stuckProbe(G, secs = 1.5) {
 
 // Deterministic regression entry points; the shipped game still starts through boot().
 export const testing = {
-  tick, render, tickPlayer, tickDrive, tickVehicles, tickMission, tickRace, startRace,
+  tick, tickWeather, render, drawChar, tickPlayer, tickDrive, tickVehicles, tickMission, tickRace, startRace,
   startNew, startFreeRide, tickCollisions, tickPeds, moveFoot, separateCharacters, beginMission, advanceObjective, completeMission, startPlayFromBrief, openVN,
   clearRecoveryState, endLife, busted, wasted, tickPlay, drawAirborne,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,

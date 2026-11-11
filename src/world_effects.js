@@ -5,6 +5,12 @@ export function drawLocalAtmosphere(G,r){
  c.save();
  if(forest||desert){for(let i=0;i<count;i++){const x=r.x0+((i*173.21+t*(desert?13:3))%w+w)%w,y=r.y0+((i*241.7+Math.sin(t*.4+i)*18)%h+h)%h;c.globalAlpha=forest?n*(.14+.2*(1+Math.sin(t*1.7+i))):.15;c.fillStyle=forest?'#d3e98b':'#e8ce94';c.beginPath();c.ellipse(x,y,forest?1.6:8,forest?1.6:1.2,-.2,0,Math.PI*2);c.fill();}}
  // A sparse set of animated wavelets follows the canal without a full-screen water shader.
- if(r.x1>6864&&r.x0<7072&&r.y1>560&&r.y0<6800){c.strokeStyle='#a1c9bb';c.lineWidth=1;c.globalAlpha=.18*(1-n*.6);for(let i=0;i<count;i++){const x=6882+(i*43)%164,y=Math.max(570,r.y0)+((i*127+t*9)%Math.min(h,600));if(y>6800)continue;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+8,y-2,x+17,y);c.stroke();}}
+ if(r.x1>6864&&r.x0<7072&&r.y1>560&&r.y0<6800){c.strokeStyle='#a1c9bb';c.lineWidth=1;c.globalAlpha=.18*(1-n*.6);for(let i=0;i<count;i++){const x=6882+(i*43)%164,y=Math.max(570,r.y0)+((i*127+t*9)%Math.min(h,600));if(y>6800||G.surfaceAt(x,y)!=='canal')continue;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+8,y-2,x+17,y);c.stroke();}}
+ const river=G.world?.river;
+ if(river&&r.y1>river[0]&&r.y0<river[1]){
+  c.strokeStyle='#bad9ca';c.lineWidth=1;c.globalAlpha=.17*(1-n*.55);
+  for(let i=0;i<count;i++){const x=r.x0+((i*137.1+t*14)%w+w)%w,y=river[0]+16+(i*47)%(river[1]-river[0]-32);if(G.surfaceAt(x,y)!=='water')continue;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+9,y-2,x+19,y);c.stroke();}
+  for(const shore of river)for(let x=Math.floor(r.x0/96)*96;x<r.x1;x+=96){const y=shore+(shore===river[0]?4:-4)+Math.sin(t*.7+x)*1.5;if(G.surfaceAt(x,y)!=='water')continue;c.globalAlpha=.07+.035*(1+Math.sin(t+x*.1));c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+24,y+2,x+48,y);c.stroke();}
+ }
  c.restore();
 }

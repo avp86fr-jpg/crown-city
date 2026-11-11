@@ -1,0 +1,95 @@
+{
+  "date": "2026-11-11",
+  "baseline_commit": "217e28e1fcadb58087d26d5c827a5303ad4eecc5",
+  "environment": {
+    "browser": "headless Chromium",
+    "viewport_css": [
+      844,
+      390
+    ],
+    "device_pixel_ratio": 2,
+    "cpu_throttle": 4,
+    "quality": "low",
+    "auto_resolution": false,
+    "weather": "rain",
+    "hour": 21,
+    "seed": 77123,
+    "warmup_seconds": 4.5,
+    "scenario": "Hold W in the mission Riot for approximately 4 seconds with radio playing."
+  },
+  "limitations": "Sequential before/after sample on a shared host, repeated after an initial pair showed the same direction. Not physical Redmi hardware and not a promised device frame rate. The short sample has substantial frame-time spikes; startup and scene populations vary between runs.",
+  "before": {
+    "seconds": 4.265,
+    "frames": 55,
+    "ticks": 217,
+    "peds": 111,
+    "vehicles": 300,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "smoothed_work_ms": {
+      "tick": 20.996144277542136,
+      "render": 11.383925271305104,
+      "hud": 4.350853044407137
+    },
+    "presented_frames_per_second": 12.895662368112545,
+    "peak_work_ms": {
+      "tick": 60.100000001490116,
+      "render": 62.099999997764826,
+      "hud": 47.100000001490116
+    }
+  },
+  "after": {
+    "seconds": 4.189699999999255,
+    "frames": 57,
+    "ticks": 210,
+    "peds": 111,
+    "vehicles": 300,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "smoothed_work_ms": {
+      "tick": 15.765352050241155,
+      "render": 8.90259372239983,
+      "hud": 3.4229501338099158
+    },
+    "presented_frames_per_second": 13.604792705924083,
+    "peak_work_ms": {
+      "tick": 52.399999998509884,
+      "render": 58.600000001490116,
+      "hud": 45.30000000074506
+    }
+  },
+  "reduction_percent": {
+    "tick": 24.91310860773581,
+    "render": 21.796801101284835
+  },
+  "initial_pair": {
+    "before": {
+      "smoothed_work_ms": {
+        "tick": 20.96031197443214,
+        "render": 9.425353676875288
+      },
+      "frames": 51,
+      "seconds": 4.185
+    },
+    "after": {
+      "smoothed_work_ms": {
+        "tick": 15.53507319884479,
+        "render": 6.752837430016722
+      },
+      "frames": 73,
+      "seconds": 4.243800000000745
+    }
+  }
+}

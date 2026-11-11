@@ -22,7 +22,7 @@ The individual Chaos and Gold Mage identities were checked on OpenSea. The user 
 
 `assets/premium/vehicles.webp` is a new six-car atlas: red striped muscle coupe, violet-black hypercar, teal sports coupe, navy/white pursuit sedan, mustard taxi and graphite sedan. Designs are unbranded. Wheel steering, suspension, wipers, entry/exit doors, damage, paint changes and vehicle lights remain runtime effects. `assets/premium/city-fleet.webp` adds a matching bus, ambulance, armored Palace courier van, sport motorcycle, cruiser and speedboat. It was generated from the first vehicle atlas as a style reference; the larger yacht retains its earlier art.
 
-All four atlases were generated with the built-in image-generation tool and compressed to WebP. The regular cell grids are used directly; no claim of 3D models or skeletal animation is made. Sprite anchors and direction transitions still warrant physical-device/manual art review.
+All four atlases were generated with the built-in image-generation tool and compressed to WebP. Chaos and crowd frames now use measured alpha bounds and torso anchors, including the mobile variants; no claim of 3D models or skeletal animation is made. Sprite anchors and direction transitions still warrant physical-device/manual art review.
 
 ## Original score
 
@@ -45,10 +45,16 @@ The corrected About/title cover depicts Chaos and a single complete red muscle c
 
 ## Frontier cast and scenery
 
-`assets/premium/frontier-cast.webp` retains generated adaptations of Hunter, Neural, Mask and Fire. Its old Gold Mage column is **never drawn**. Gold Mage instead uses the supplied reference pixels as a silhouette-clipped face/armor texture over a small runtime robe. No helmet or face regeneration is involved. His contact-panel portrait and all story portraits show the complete supplied image. Chief, Ice and Steampunk also use their collectible portrait pixels for the face and armor; their full portraits remain visible at encounters.
+`assets/premium/frontier-cast.webp` retains generated adaptations of Hunter, Neural, Mask and Fire. Its old Gold Mage column is **never drawn**. Gold Mage instead uses the supplied reference pixels as a silhouette-clipped face/armor texture above a separately drawn lower-body costume. No helmet or face regeneration is involved. His contact-panel portrait and all story portraits show the complete supplied image. Chief, Ice and Steampunk also use their collectible portrait pixels for the face and armor; their full portraits remain visible at encounters.
 
 The new portraits were downloaded from the collectible image URLs embedded in the corresponding public OpenSea pages on 2026-11-11. Their identity/type names and token IDs were checked there. Story roles and dialogue are original fiction.
 
 `wildlife.webp` is a generated 4×6 atlas: deer, fox, dog, cat, gull and pigeon, with four poses each. A second image-tool pass removed the background. `transit.webp` is a generated atlas of the subway entrance, train roof, regional platform canopy and side-view carriage. Runtime doors, train timetables, route movement, shadows and station signage remain separate from the artwork. WebP conversion and resizing are mechanical exports.
 
 `frontier-terrain.webp` supplies forest floor, sand, slate and casino paving. `frontier-scenery.webp` supplies a painted pine, slate outcrop, red mesa and cactus cluster. Both are original generated environmental atlases. Mechanical resizing and WebP compression retain alpha where present.
+
+## Grounding and costume pass
+
+`src/sprite_frames.js` records measured alpha bounds for every Chaos and crowd frame, scaled to the existing mobile textures. Figures use a common foot origin and a torso anchor rather than each cell’s geometric center. No source atlas pixels were repainted.
+
+`assets/premium/contact-costumes.webp` contains four waist-to-boot extensions generated with the image tool from the Gold Mage, Chief, Ice and Steampunk costume palettes. The generation explicitly excluded heads, helmets, faces, arms and upper torsos. Runtime rendering combines those extensions with smaller silhouette clips of the original portraits for adult proportions. Gold Mage’s original cyan insignia and horns remain sourced from the supplied image, whose file hash is unchanged. The lower-body costumes are game adaptations, not additional NFT source art. The retained generated PNG was mechanically resized and exported as a transparent WebP.
