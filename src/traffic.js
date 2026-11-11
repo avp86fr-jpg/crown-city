@@ -292,6 +292,7 @@ export function createPeds(G) {
 
 /* ---------- nav field (cars) ---------- */
 export function createNav(G) {
+  let N_raw = null;
   const C = 32, NW = Math.ceil(WORLD_W / C), NH = Math.ceil(WORLD_H / C);
   const pass = new Uint8Array(NW * NH);
   for (let y = 0; y < NH; y++) for (let x = 0; x < NW; x++) {
@@ -302,10 +303,19 @@ export function createNav(G) {
     }
     pass[y * NW + x] = ok;
   }
+  // cars need room: erode by one cell so the flow field never threads 1-cell alleys
+  {
+    const raw = pass.slice();
+    for (let y = 1; y < NH - 1; y++) for (let x = 1; x < NW - 1; x++) {
+      const i = y * NW + x;
+      if (raw[i] && !(raw[i - 1] && raw[i + 1] && raw[i - NW] && raw[i + NW])) pass[i] = 0;
+    }
+    N_raw = raw;
+  }
   const dist = new Uint16Array(NW * NH);
   const q = new Int32Array(NW * NH);
   const N = {
-    C, NW, NH, pass, dist, t: 0,
+    C, NW, NH, pass, dist, t: 0, get raw() { return N_raw; },
     update(tx, ty, force) {
       N.t -= 1;
       if (N.t > 0 && !force) return;
@@ -354,7 +364,16 @@ export function createNav(G) {
     // returns a steering point a few cells downhill from (x,y)
     next(x, y, steps = 3) {
       let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp((y / C) | 0, 0, NH - 1);
-      if (dist[cy * NW + cx] === 65535) return null;
+      if (dist[cy * NW + cx] === 65535) {
+        // off the car grid (curb, eroded edge): head for the best nearby reachable cell
+        let bd = 65535, bx = -1, by = -1;
+        for (let r = 1; r <= 4 && bx < 0; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
+          const d = dist[ny * NW + nx]; if (d < bd) { bd = d; bx = nx; by = ny; }
+        }
+        if (bx < 0) return null;
+        return { x: bx * C + C / 2, y: by * C + C / 2, d: bd };
+      }
       for (let s = 0; s < steps; s++) {
         let best = dist[cy * NW + cx], bx = cx, by = cy;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
@@ -373,7 +392,7 @@ export function createNav(G) {
       const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 24);
       for (let i = 1; i < n; i++) {
         const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
-        if (!pass[((y / C) | 0) * NW + ((x / C) | 0)]) return false;
+        if (!N_raw[((y / C) | 0) * NW + ((x / C) | 0)]) return false;
       }
       return true;
     },

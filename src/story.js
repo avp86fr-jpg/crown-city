@@ -249,7 +249,7 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m6_intro",
         objectives: [
-          { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Take the bag to the east highway." },
+          { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the bag out the east highway to the city limits." },
           { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat." },
         ],
         winVN: () => (flags.stash === "flip" ? "m6_end_flip" : "m6_end_safe"),

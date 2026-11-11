@@ -33,6 +33,8 @@ const VEH_DEFS = {
   ambulance: { name: "Mercy Unit", kind: "sedan", sprite: "ambulance", accel: 200, max: 220, steer: 2.15, grip: 0.8, brake: 240, mass: 1.2, r: 26 },
   bus: { name: "Line 7", kind: "sedan", sprite: "bus", accel: 80, max: 110, steer: 1.3, grip: 0.85, brake: 180, mass: 2.4, r: 36 },
 };
+// the city is ~6x bigger now: everything drivable gets more legs (scripted van/bus stay slow)
+for (const [k, d] of Object.entries(VEH_DEFS)) if (k !== "van" && k !== "bus") { d.max = Math.round(d.max * 1.3); d.accel = Math.round(d.accel * 1.4); }
 
 function vehScale(def) {
   if (!def) return 0.283;
@@ -85,7 +87,7 @@ export async function boot() {
     loadImg("assets/ui/star_on.png"),
     loadImg("assets/ui/star_off.png"),
     loadImg("assets/ui/chip.png"),
-    loadImg("assets/painted/chaos_hero_cut.png"),
+    loadImg("assets/painted/chaos_hero_title.png"),
     ...texNames.map((n) => loadImg(`assets/tex/${n}.webp`).then((i) => (tex[n] = i))),
   ]);
   drawBoot(ctx, canvas, 0.35, "Loading cars and crews…");
@@ -293,7 +295,7 @@ function navOk(G, x, y) {
       const i = q.pop(); const xx = i % N.NW, yy = (i / N.NW) | 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = xx + dx, ny = yy + dy; if (nx < 0 || ny < 0 || nx >= N.NW || ny >= N.NH) continue;
-        const j = ny * N.NW + nx; if (!N.reach[j] && N.pass[j]) { N.reach[j] = 1; q.push(j); }
+        const j = ny * N.NW + nx; if (!N.reach[j] && N.raw[j]) { N.reach[j] = 1; q.push(j); }
       }
     }
   }
@@ -310,10 +312,13 @@ function spawnWorld(G) {
   const car = findSafe(G, 920, 3236, 30, false);
   const spawn = findSafe(G, car.x - 52, car.y, 10, true, true);
   meta.spawns.player = [spawn.x, spawn.y];
+  // the getaway now runs the whole east highway out to the city edge
+  { const d = findSafe(G, 9700, 3900, 30, false); meta.spawns.desert = [d.x, d.y]; }
   G.vehicles.push(makeVeh("riot", car.x, car.y, Math.PI, { keep: true, mission: true }));
   meta.spawns.garage = [car.x, car.y];
-  const c2 = findSafe(G, 920, 3330, 30, false);
-  G.vehicles.push(makeVeh("fare", c2.x, c2.y, Math.PI, { keep: true }));
+  // keep the lane in front of the Riot clear: the spare cab waits across the road, facing north
+  const c2 = findSafe(G, 1044, 3330, 30, false);
+  G.vehicles.push(makeVeh("fare", c2.x, c2.y, 0, { keep: true }));
   const c3 = findSafe(G, 870, 3140, 16, false);
   G.vehicles.push(makeVeh("hog", c3.x, c3.y, Math.PI, { keep: true }));
   const pd = meta.spawns.pd;
@@ -1272,7 +1277,6 @@ function damageVeh(G, v, amt) {
   if (v.health < 35 && !v.wrecked) { v.wrecked = true; }
   if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; }
   if (v.cop && v === G.player) return;
-  if (v.cop && G.player.type === "veh" && Math.hypot(G.player.x - v.x, G.player.y - v.y) < 140) crime(G, 1, v.x, v.y, true);
 }
 function tickVehDamage(G, v, dt) {
   if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
@@ -1340,7 +1344,11 @@ function tickCollisions(G) {
           if (a === P || b === P) { G.audio.crash(); addShake(G, Math.min(12, imp / 22)); }
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
           for (let k = 0; k < 8; k++) G.particles.push({ kind: "spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
-          if ((a === P && b.cop) || (b === P && a.cop)) crime(G, 1, cx, cy, true);
+          // only the player's fault if they were the one ramming (cops pinning you is not a new crime)
+          if ((a === P && b.cop) || (b === P && a.cop)) {
+            const cop = a === P ? b : a, ps = Math.hypot(P.vx, P.vy), cs = Math.hypot(cop.vx, cop.vy);
+            if (ps > 150 && ps > cs + 60 && !(G._ramCool > 0)) { G._ramCool = 4; crime(G, 1, cx, cy, true, Math.max(3, G.wanted)); }
+          }
         }
       }
     }
@@ -1550,6 +1558,7 @@ function crime(G, n, x, y, serious, cap) {
 function tickWanted(G, dt) {
   if (G._endT > 0) G._endT -= dt;
   if (G._crimeCool > 0) G._crimeCool -= dt;
+  if (G._ramCool > 0) G._ramCool -= dt;
   if (G.starFlash > 0) G.starFlash -= dt;
   if (G.wanted <= 0) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
@@ -1575,10 +1584,13 @@ function tickWanted(G, dt) {
   // cop units grow with stars: 1 / 2 / 3 / 5 / 6
   const need = [0, 1, 2, 3, 5, 6][G.wanted];
   G.cops = G.cops.filter((c) => !c.dead && G.vehicles.includes(c) && c !== P);
-  if (G.cops.length < need && (G.ticks % 40) === 0) {
+  if (G.cops.length < need && (G.ticks % (G.cops.length ? 90 : 20)) === 0) {
     // spawn on a road edge just out of view, never on top of the player
-    const viewR = 760 / G.cam.scale;
-    const v = G.traffic.spawnCar(P, viewR + 120, viewR + 700, "metro");
+    const S = G.cam.scale * worldZoom(G);
+    const viewR = Math.hypot(G.canvas.width, G.canvas.height) / 2 / S;
+    let v = null;
+    for (let k = 0; k < 4 && !v; k++) v = G.traffic.spawnCar(P, viewR + 40, viewR + 380 + k * 250, "metro");
+    if (v && G.nav.next(v.x, v.y, 1) == null) { G.vehicles.splice(G.vehicles.indexOf(v), 1); v = null; }
     if (v) { v.traffic = false; v.tr = null; v.ai = true; v.cop = true; v.chasing = true; v.siren = true; v.ambient = false; v.keep = true; v.parked = false; G.cops.push(v); }
   }
   // heli at 4+
@@ -1598,7 +1610,7 @@ function tickCops(G, dt) {
     const ang = Math.atan2(tx - c.x, -(ty - c.y));
     const diff = angNorm(ang - c.rot);
     const fwd = c.vx * Math.sin(c.rot) - c.vy * Math.cos(c.rot);
-    let y = 0.55 + Math.min(0.45, G.wanted * 0.1);
+    let y = dist > 600 && !los ? 1 : 0.78 + Math.min(0.22, G.wanted * 0.05);
     if (Math.abs(diff) > 1.4 && fwd > 120) y = -0.6;
     // stuck recovery
     c.stuckT = Math.abs(fwd) < 18 ? (c.stuckT || 0) + dt : 0;
@@ -1610,6 +1622,12 @@ function tickCops(G, dt) {
     if (footTarget && dist < 190) { y = fwd > 20 ? -1 : 0; }
     tickDrive(G, c, { x, y, hand: Math.abs(diff) > 1.2 && fwd > 140 && los, brake: false, fire: false, enterP: false }, dt, false);
     c.siren = true;
+    // no progress for 5 s while out of sight: quietly recycle the unit (a fresh one is dispatched nearer)
+    c.progT = (c.progT || 0) + dt;
+    if (c.progT > 5) {
+      if (!los && dist > 700 && dist > (c.progD || 1e9) - 120) { const i = G.vehicles.indexOf(c); if (i >= 0) G.vehicles.splice(i, 1); }
+      c.progT = 0; c.progD = dist;
+    }
     if (footTarget && dist < 230 && Math.abs(fwd) < 30 && !c.crewOut && G.wanted >= 1) {
       c.crewOut = true;
       for (let i = 0; i < (G.wanted >= 3 ? 2 : 1); i++) {
@@ -2058,22 +2076,22 @@ function drawLife(G, cam, view) {
     ctx.beginPath(); ctx.arc(f.x, f.y - 4 - 6 * pulse, 2.2, 0, TAU); ctx.fill();
     ctx.restore();
   }
-  // traffic lights at intersections
+  // traffic lights on every signalled node (same phase as the traffic AI)
   const phase = ((t / 60) % 16);
-  const nsGreen = phase < 7;
-  const amber = (phase >= 7 && phase < 8) || (phase >= 15);
-  for (const s of (G.meta.signals || [])) {
-    if (Math.abs(s.x - cam.x) > view || Math.abs(s.y - cam.y) > view) continue;
-    for (const [dx, dy, ns] of [[-22, -22, true], [22, 22, true], [-22, 22, false], [22, -22, false]]) {
-      const go = ns ? nsGreen : (phase >= 8 && phase < 15);
-      const col = amber ? "#ffb000" : go ? "#3ce06a" : "#ff3a3a";
-      ctx.save();
-      ctx.translate(s.x + dx, s.y + dy);
-      ctx.fillStyle = "#1a1a1e";
-      ctx.fillRect(-3, -8, 6, 16);
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(0, go || amber ? -3 : 3, 2.6, 0, TAU); ctx.fill();
-      ctx.restore();
+  const nsCol = phase < 6.6 ? "#3ce06a" : phase < 8 ? "#ffb000" : "#ff3a3a";
+  const ewCol = phase >= 8 && phase < 14.6 ? "#3ce06a" : phase >= 14.6 ? "#ffb000" : "#ff3a3a";
+  G._sigLit = [];
+  for (const n of G.graph.nodes) {
+    if (!n.sig || Math.abs(n.x - cam.x) > view || Math.abs(n.y - cam.y) > view) continue;
+    const hw = (n.hw || 40) + 10, hh = (n.hh || 40) + 10;
+    // corner poles: NS heads face up/down traffic, EW heads face sideways
+    for (const [dx, dy, ns] of [[-hw, -hh, true], [hw, hh, true], [-hw, hh, false], [hw, -hh, false]]) {
+      const col = ns ? nsCol : ewCol;
+      const x = n.x + dx, y = n.y + dy;
+      ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(x - 3, y - 6, 8, 16);
+      ctx.fillStyle = "#16161a"; ctx.fillRect(x - 4, y - 8, 8, 16);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y + (col === "#3ce06a" ? 4 : col === "#ffb000" ? 0 : -4), 2.6, 0, TAU); ctx.fill();
+      G._sigLit.push(x, y, col);
     }
   }
   // birds
@@ -2362,7 +2380,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       // street lamps
       const lamp = (x, y, rad, a) => { lx.globalAlpha = a * lit; lx.drawImage(warm, x - rad, y - rad, rad * 2, rad * 2); };
       for (const Lm of G.meta.lights) { if ((!Lm.kind || Lm.kind === "street") && Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) lamp(Lm.x, Lm.y, 150, 0.75); }
-      for (const Lm of G.world.lamps) { if (Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) lamp(Lm.x + (Lm.v ? -Lm.side * 30 : 0), Lm.y + (Lm.v ? 0 : -Lm.side * 30), 160, 0.75); }
+      for (const Lm of G.world.lamps) { if (Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) lamp(Lm.x + (Lm.v ? -Lm.side * 30 : 0), Lm.y + (Lm.v ? 0 : -Lm.side * 30), 200, 0.9); }
       // neon washes from the casino strip
       if (r.x0 < CORE && r.y0 < CORE) {
         lx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(lx, r, G.ticks);
@@ -2416,6 +2434,8 @@ function drawLighting(G, r, S, ox, oy, low) {
     const bulb = LIGHT.radial("rgba(255,230,180,1)", 32);
     ctx.globalAlpha = lit;
     for (const Lm of G.world.lamps) if (Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) ctx.drawImage(bulb, Lm.x - 7, Lm.y - 7, 14, 14);
+    const sl = G._sigLit || [];
+    for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);
   }
   const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);
@@ -2455,7 +2475,7 @@ function vehLights(G, c, v, night, map) {
     }
     if (sirenOn) {
       const ph = ((G.ticks / 7) | 0) % 2;
-      const rad = 260;
+      const rad = 320;
       const col = v.role === "ambulance" ? (ph ? "rgba(255,60,60,0.95)" : "rgba(255,255,255,0.8)") : (ph ? "rgba(255,40,60,0.95)" : "rgba(40,90,255,0.95)");
       c.globalAlpha = 0.55 + 0.45 * night;
       c.drawImage(LIGHT.radial(col), v.x - rad, v.y - rad, rad * 2, rad * 2);
@@ -2489,8 +2509,8 @@ function vehLights(G, c, v, night, map) {
   }
   if (sirenOn) {
     const ph = ((G.ticks / 7) | 0) % 2;
-    c.globalAlpha = 0.12 + 0.2 * night;
-    c.drawImage(LIGHT.radial(ph ? "rgba(255,40,60,1)" : (v.role === "ambulance" ? "rgba(255,255,255,1)" : "rgba(50,100,255,1)")), v.x - 150, v.y - 150, 300, 300);
+    c.globalAlpha = 0.14 + 0.3 * night;
+    c.drawImage(LIGHT.radial(ph ? "rgba(255,40,60,1)" : (v.role === "ambulance" ? "rgba(255,255,255,1)" : "rgba(50,100,255,1)")), v.x - 190, v.y - 190, 380, 380);
     c.globalAlpha = 1;
     const a = LIGHT.radial(v.role === "ambulance" ? "rgba(255,60,60,1)" : "rgba(255,40,60,1)", 64), b = LIGHT.radial(v.role === "ambulance" ? "rgba(255,255,255,1)" : "rgba(60,110,255,1)", 64);
     c.drawImage(ph ? a : b, v.x - rt.x * 9 - 16, v.y - rt.y * 9 - 16, 32, 32);
@@ -2890,9 +2910,10 @@ function drawHUD(G) {
   if (G.radioT > 0) {
     ctx.globalAlpha = Math.min(1, G.radioT);
     const ry = vy + 38 * u;
+    uiPanel(ctx, L, ry - 2 * u, mm, 32 * u, 8 * u);
     ctx.textAlign = "left"; ctx.font = uiFont(8.5 * u, 800); ctx.fillStyle = "#29f0ff";
-    ctx.fillText("♪ NOW PLAYING", L + 2 * u, ry + 8 * u);
-    ctx.font = uiFont(12 * u, 800); ctx.fillStyle = "#fff"; ctx.fillText(G.radioName, L + 2 * u, ry + 23 * u);
+    ctx.fillText("♪ NOW PLAYING", L + 8 * u, ry + 9 * u);
+    ctx.font = uiFont(12 * u, 800); ctx.fillStyle = "#fff"; ctx.fillText(G.radioName, L + 8 * u, ry + 24 * u);
     ctx.globalAlpha = 1;
   }
   if (G.toastT > 0 && G.toast) {
@@ -2907,14 +2928,15 @@ function drawHUD(G) {
   // district title card
   if (G.districtT > 0 && G.district) {
     ctx.globalAlpha = Math.min(1, G.districtT, (3 - G.districtT) * 3);
-    ctx.font = uiFont(26 * u, 900, true); ctx.textAlign = "center";
-    ctx.lineWidth = 5 * u; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(G.district, W / 2, H * 0.64);
-    ctx.fillStyle = "#ffe27a"; ctx.fillText(G.district, W / 2, H * 0.64);
+    ctx.font = uiFont(22 * u, 900, true); ctx.textAlign = "center";
+    const dy = oy + 34 * u;
+    ctx.lineWidth = 5 * u; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(G.district, midX, dy);
+    ctx.fillStyle = "#ffe27a"; ctx.fillText(G.district, midX, dy);
     ctx.globalAlpha = 1;
   }
   // speedo (bottom-center)
   if (G.player.type === "veh") {
-    const v = G.player, spd = Math.hypot(v.vx, v.vy), kmh = (spd * 0.6) | 0;
+    const v = G.player, spd = Math.hypot(v.vx, v.vy), kmh = (spd * 0.5) | 0;
     const bw = 150 * u, bx = narrow ? R - bw : W / 2 - bw / 2, by = narrow ? oy : H - 52 * u - sf.b;
     uiPanel(ctx, bx, by, bw, 44 * u, 12 * u);
     ctx.textAlign = "left"; ctx.fillStyle = "#fff"; ctx.font = uiFont(22 * u, 900, true);
