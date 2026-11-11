@@ -53,4 +53,8 @@ The Chromium battery sample used a 390×844 emulated phone: the UI remained 780 
 
 [Latest scripted gameplay with mixed audio](previews/afterhours-preview.mp4) · [City](previews/afterhours-city.webp) · [Mobile HUD](previews/afterhours-mobile.webp) · [Title](previews/afterhours-title.webp)
 
-Production is unchanged until the source pull request is merged/published.
+GitHub Pages publishes the game and release page from the repository’s main branch.
+
+## After Hours release page
+
+The replacement About page includes new cover art, four reference portraits, six fresh in-game screenshots, original story copy, responsive controls/help and a keyboard-accessible screenshot lightbox. A 31.1-second 1280×720 H.264/AAC trailer uses actual staged gameplay and the original Afterhours score, with optional captions. Media loads on demand. See [release-media.md](release-media.md) for provenance and the dedicated browser checks.

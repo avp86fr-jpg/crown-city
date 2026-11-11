@@ -45,7 +45,7 @@ Three original arranged radio loops total about 3½ minutes: funk/brass night dr
 
 [MetaWinners character references and art/audio provenance](docs/character-references.md) · [Implementation and validation notes](docs/improvement-pass.md)
 
-[Latest gameplay video with sound](docs/previews/afterhours-preview.mp4) · [City](docs/previews/afterhours-city.webp) · [Mobile HUD](docs/previews/afterhours-mobile.webp) · [Title](docs/previews/afterhours-title.webp)
+[720p After Hours trailer](about/assets/crown-city-trailer-720p.mp4) · [Release page](https://avp86fr-jpg.github.io/crown-city/about/) · [Media notes](docs/release-media.md) · [Gameplay capture with sound](docs/previews/afterhours-preview.mp4) · [City](docs/previews/afterhours-city.webp) · [Mobile HUD](docs/previews/afterhours-mobile.webp) · [Title](docs/previews/afterhours-title.webp)
 
 Performance mode renders the city at a lower resolution while preserving a sharp UI at up to 2× device pixel density. Battery Saver presents at 30 fps while the simulation stays at 60 Hz. Hidden tabs stop frame rendering and suspend audio. World and street-detail caches have explicit limits; obsolete crowd image requests no longer load at boot.
 
@@ -56,3 +56,5 @@ Run `npm test` and `npm run check` with Node 20 or later. The regression suite e
 For real-browser checks, run `npm ci` and `npx playwright install chromium` (or set `CHROMIUM_PATH`), start the static server, then run `npm run test:browser`. `GAME_URL` selects another served copy. Screenshots are saved under `.qa/browser/`.
 
 The browser suite covers keyboard and emulated multi-touch controls, responsive menus, Chrome fullscreen entry/exit, directional touch aiming, control preferences, saves, crew work, both campaign routes, a physically simulated race, free roam, automatic resolution changes with sharp UI, battery-saver simulation cadence, streamed station/pursuit music and master muting. It repositions between most mission locations. A fully manually driven campaign, physical-phone/Safari testing and subjective audio/art review remain separate; no device FPS benchmark is claimed.
+
+For the release page, run `npm run test:about` against the local server. `CC_ABOUT_URL` selects another deployment. This verifies responsive layouts, assets, gallery focus/navigation, links, 720p video/audio decoding and captions.

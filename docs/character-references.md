@@ -30,3 +30,7 @@ All four atlases were generated with the built-in image-generation tool and comp
 - NIGHT SHIFT 107.7: **No Clean Exit**, approximately 58 seconds, faster pursuit arrangement.
 
 The browser streams the Ogg tracks into the game's Web Audio master bus, fades between stations/pursuit, and ducks music during dialogue and menus. Synthesized score fallback remains available when a media stream cannot start. The three files total approximately 1.8 MB; they do not block boot.
+
+## Release cover and trailer
+
+The About page cover is a new generated crime-poster illustration referenced to the retained Chaos and Gold Mage portraits. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.
