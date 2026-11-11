@@ -1,0 +1,9 @@
+{
+  "name": "crown-city",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/game.js && node --check src/story.js && node --check src/session.js && node --check src/assets.js && node --check src/render_world.js && node --check src/main.js && node --check src/audio.js"
+  }
+}

@@ -82,7 +82,13 @@ export function createAudio() {
   }
 
   /* ---------------- SFX ---------------- */
-  A.unlock = () => { ensure(); if (ctx.state === "suspended") ctx.resume(); startMusic(); };
+  A.unlock = () => {
+    try {
+      if (!(window.AudioContext || window.webkitAudioContext)) return false;
+      ensure(); if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      startMusic(); return true;
+    } catch (e) { console.warn('Audio is unavailable; continuing silently.'); return false; }
+  };
   A.setSfx = (v) => { A.sfxVol = v; if (sfx) { sfx.gain.value = v; amb.gain.value = 0.55 * v; } };
   A.setMus = (v) => { A.musVol = v; if (mus) mus.gain.setTargetAtTime(v * musLevel, now(), 0.1); };
   A.setMaster = (v) => { A.masterVol = v; if (master) master.gain.value = v; };

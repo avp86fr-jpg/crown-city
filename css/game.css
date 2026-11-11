@@ -37,3 +37,12 @@ body.isfs #touch .btn.fsb, #touch.menu .fsb { display: none; }
 @media (max-height: 380px) { #touch .cluster { transform: scale(0.88); transform-origin: right bottom; } }
 .hidden { display: none !important; }
 #touch.used .hintL, #touch.drive .hintL { opacity: 0; }
+
+#touch .btn.map { top: calc(114px + var(--sat)); right: calc(10px + var(--sar)); width: 44px; height: 44px; border-radius: 12px; }
+#touch.menu .map { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#bootError { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 28px; background: #100a19; color: #fff; text-align: center; }
+#bootError h1 { color: #f2c14e; margin: 0; }
+#bootError p { max-width: 36em; }
+#bootError button { min-height: 48px; min-width: 160px; border: 0; border-radius: 12px; background: #f2c14e; color: #1a1206; font: 800 16px system-ui; cursor: pointer; }
+#bootError a { color: #67e7ff; }

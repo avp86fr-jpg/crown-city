@@ -19,7 +19,8 @@
 </head>
 <body>
   <div id="wrap">
-    <canvas id="c" width="1280" height="720"></canvas>
+    <canvas id="c" width="1280" height="720" tabindex="0" aria-label="Crown City game. Use W and S to accelerate or reverse, A and D to steer, E to interact, M for the map, and Escape to pause."></canvas>
+    <p id="gameStatus" class="sr-only" role="status" aria-live="polite"></p>
     <div id="touch" class="hidden foot">
       <div id="joyZone"><div class="joy" id="joy"><div class="knob" id="knob"></div></div><div class="hintL" id="hintL">DRAG TO MOVE</div></div>
       <div class="cluster">
@@ -31,6 +32,7 @@
         <button class="btn sprint foot-only" id="tSprint" type="button"><span>RUN</span></button>
       </div>
       <button class="btn fsb" id="tFS" type="button" aria-label="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="btn map" id="tMap" type="button" aria-label="City map"><span>MAP</span></button>
       <button class="btn pause" id="tPause" type="button" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
     </div>
     <div id="safe"></div>

@@ -2,17 +2,12 @@
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
-export function loadImg(src) {
-  const im = new Image();
-  im.decoding = "async";
-  im.src = src;
-  return im.decode().then(() => im);
-}
+import { loadImage as loadImg } from "./assets.js";
 
 export class TileLayer {
   constructor(name, keys, size, ext = "webp") {
     this.name = name; this.keys = new Set(keys); this.size = size; this.ext = ext;
-    this.img = new Map(); this.pending = new Set(); this.used = new Map();
+    this.img = new Map(); this.pending = new Map(); this.used = new Map(); this.retryAt = new Map();
   }
   get(tx, ty, frame) {
     const k = tx + "_" + ty;
@@ -20,13 +15,23 @@ export class TileLayer {
     this.used.set(k, frame);
     const im = this.img.get(k);
     if (im) return im;
-    if (!this.pending.has(k)) {
-      this.pending.add(k);
-      loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`).then((i) => { this.img.set(k, i); this.pending.delete(k); }).catch(() => this.pending.delete(k));
-    }
+    this.request(k, frame);
     return null;
   }
-  preload(keys) { return Promise.all([...keys].filter((k) => this.keys.has(k)).map((k) => loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`).then((i) => this.img.set(k, i)).catch(() => {}))); }
+  request(k, frame = 0) {
+    if (this.img.has(k)) return Promise.resolve(this.img.get(k));
+    if (this.pending.has(k)) return this.pending.get(k);
+    if ((this.retryAt.get(k) || 0) > frame) return Promise.resolve(null);
+    const promise = loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`)
+      .then(im => { this.img.set(k, im); this.retryAt.delete(k); return im; })
+      .catch(() => { this.retryAt.set(k, frame + 600); return null; })
+      .finally(() => this.pending.delete(k));
+    this.pending.set(k, promise);
+    return promise;
+  }
+  preload(keys) {
+    return Promise.all([...keys].filter(k => this.keys.has(k)).map(k => { this.used.set(k, 0); return this.request(k, 0); }));
+  }
   draw(ctx, r, frame) {
     const T = this.size;
     const tx0 = Math.max(0, Math.floor(r.x0 / T)), ty0 = Math.max(0, Math.floor(r.y0 / T));
@@ -53,7 +58,6 @@ export class TileLayer {
     return ok;
   }
   evict(frame, keep = 600) {
-    if (this.img.size < 10) return;
     for (const [k, f] of this.used) if (frame - f > keep && this.img.has(k)) { this.img.delete(k); this.used.delete(k); }
   }
 }
