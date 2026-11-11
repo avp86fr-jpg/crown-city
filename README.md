@@ -25,7 +25,7 @@ Serve this directory with any static HTTP server; the game has no build step or 
 
 Settings → Controls includes left-handed layout, control size, opacity, aim assist, vibration and street tips. Fullscreen is requested from a direct click/key gesture in Chrome, with a visible exit option.
 
-Weapons have distinct magazines, cadence, spread and damage. Empty magazines reload automatically; X reloads early. The silenced .45 is quieter, the Vulture SMG fires quickly and the Breacher shoots a spread of pellets. Sprinting and dodge rolls use stamina. Standing still beside a wall grants cover protection; rolls briefly evade shots. Ammunition refills per magazine without a separate reserve-ammo inventory.
+Weapons have distinct magazines, cadence, spread and damage. Moving and sustained bursts widen the aim cone; releasing fire restores accuracy. Long shots lose damage, with the shotgun tuned for close range. Walls stop the muzzle and wrecks provide cover. Mouse aim follows the visible torso even with a rotated camera. Empty magazines reload automatically; X reloads early. The silenced .45 is quieter, the Vulture SMG fires quickly and the Breacher shoots a spread of pellets. Sprinting and dodge rolls use stamina. Standing still beside a wall grants cover protection; rolls briefly evade shots. Ammunition refills per magazine without a separate reserve-ammo inventory.
 
 ## Campaign and crew work
 
@@ -66,10 +66,18 @@ Vehicle collisions use oriented bodies matching the artwork and swept shoreline 
 
 Nine stations connect the subway and elevated regional railway. Approach an M/R entrance on foot and press E or tap RAIL, then choose a destination for 25 chips. Police checks prevent boarding while wanted. Trains accelerate, stop and open their doors; a platform/interior journey leads to a collision-checked street exit. Skip becomes available after boarding and still advances time and any active contract deadline. Train history survives saves; busted/death recovery clears unfinished boarding state.
 
-The city canal, outdoor MetaWin casino, Red Mesa desert, Pinewatch forest, Sierra mountains and airport add road, water and air routes. Use LAND in a plane to assist runway alignment, descent and braking; cancel the approach to go around. Boat BRAKE overrides the forward stick. Directional panel damage persists and reduces handling and power; wrecks retain their vehicle type and remain solid.
+The city canal, outdoor MetaWin casino, Red Mesa desert, Pinewatch forest, Sierra mountains and airport add road, water and air routes. Use LAND in a plane to assist runway alignment, descent and braking; cancel the approach to go around. Car and boat BRAKE override the forward stick and stop before selecting reverse. Boat exits require docking speed and nearby reachable land. Directional panel damage persists and reduces handling and power; wrecks retain their vehicle type and remain solid.
 
 Find Chief at East Port station, Ice at Sierra Junction and Steampunk beside Midtown Metro for three new stories. The crew menu now contains 13 repeatable contracts, including canal, casino and helicopter jobs. The Last Witness and Borrowed Minutes require actual train travel. Six wildlife species populate local habitats: deer, foxes, dogs, cats, gulls and pigeons react to nearby traffic, movement and gunfire.
 
 Gold Mage’s portrait is the exact user-supplied reference, also used as the face/armor texture in his world character. [Character provenance](docs/character-references.md) records the reference hash and verified collectible links for Chief, Ice and Steampunk.
 
 Additional browser checks: `npm run test:metro`, `npm run test:vehicles`, `npm run test:flight`, and `npm run test:frontier`. Set `CC_URL` to test another deployment. [Metro, wildlife and vehicle release notes](docs/metro-wildlife-pass.md) include the measured mobile-emulation comparison and limitations.
+
+## Coherence, combat and handling polish
+
+Character animation uses measured artwork bounds and grounded feet; repeat turns cannot select invalid frames. Gold Mage, Chief, Ice and Steampunk combine unchanged original portrait pixels with detailed lower-body clothing. Their complete source portraits remain visible in dialogue. Completed crew contracts are now remembered by ID, with personal follow-up conversations and an explicit REPLAY action.
+
+The eastern forest river stays navigable under road bridges and the elevated railway. Train carriages remain continuous when reversing at termini. Aircraft clearance includes wing spans, tips and rotor sweep, and steering eases into turns. Pedestrian dives respect banks and walls. Rain, fog and sand now cycle correctly, with saved weather timing and consistent day/night lighting across quality modes.
+
+Run `npm run test:coherence` for the new real-browser regression checks. [Pass notes](docs/coherence-combat-pass.md) and the [mobile comparison](docs/performance/coherence-comparison.json) record the verification and remaining physical-device limits.

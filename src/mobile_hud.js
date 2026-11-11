@@ -37,8 +37,8 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
   rows.forEach((s,i)=>text(s,xx+12*d,y+(31+i*15)*d,11));
  }
  if(G.player.type==='veh'){
-  const speed=Math.round(Math.hypot(G.player.vx,G.player.vy)*.36),y=portrait?H-230*d:H-18*d;
-  c.textAlign='center';c.font=font(14*d,800);c.fillStyle='#f1ddae';c.fillText(speed+' KM/H',W/2,y);
+  const nautical=G.player.def.boat||G.player.def.aircraft,speed=Math.round(Math.hypot(G.player.vx,G.player.vy)*(nautical?.1944:.36)),y=portrait?H-230*d:H-18*d;
+  c.textAlign='center';c.font=font(14*d,800);c.fillStyle='#f1ddae';c.fillText(speed+(nautical?' KTS':' KM/H'),W/2,y);if(G.player.def.boat){c.font=font(8*d,700);c.fillStyle='#a4d1cc';c.fillText((G.player.fwd||0)<-5?'ASTERN':speed<7?'DOCKING SPEED':'UNDER WAY',W/2,y-18*d);}
  }
  if(objectiveAt){const p=screen(G,objectiveAt.x,objectiveAt.y);if(p.x<20*d||p.x>W-20*d||p.y<20*d||p.y>H-20*d){
   const a=Math.atan2(p.x-W/2,-(p.y-H/2)),cy=portrait?H*.48:H*.5,rx=W*.35,ry=portrait?H*.15:H*.16;

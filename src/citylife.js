@@ -128,7 +128,7 @@ export function drawRoofDetail(G,r){
 export function drawAmbientGesture(G,p){
  if(p.dead||p.copPed||p.flee>0||((p.speed||0)>20&&p.cityActivity!=='shopping'))return;
  const c=G.ctx,t=G.settings.reducedMotion?0:G.ticks/60,seed=hash(p.x+p.y);
- c.save();c.rotate(p.rot||0);
+ c.save();c.translate(0,-23);c.rotate(p.rot||0);
  if(p.cityActivity==='bus'||p.cityActivity==='news'||(!p.cityActivity&&seed<.34)){ // phone screen
   c.translate(8,-9);c.rotate(Math.sin(t*.8+seed)*.1);panel(c,-2,-3,4,7,'#16272e');c.fillStyle='#83b7bb';c.fillRect(-1,-2,2,4);
  }else if(p.cityActivity==='coffee'||p.cityActivity==='conversation'||(!p.cityActivity&&seed<.67)){ // cup / conversation gesture

@@ -1,5 +1,5 @@
 /* Shared world-space bodies for rendering, swept projectiles and vehicle contacts. */
-const BODIES=Object.freeze(Object.fromEntries(Object.entries({plane:{w:57,l:51},heli:{w:30,l:55},bike:{w:10,l:35},bus:{w:28,l:69},gulf:{w:29,l:62},boat:{w:20,l:57},van:{w:25,l:58},car:{w:24,l:52}}).map(([key,body])=>[key,Object.freeze(body)])));
+const BODIES=Object.freeze(Object.fromEntries(Object.entries({plane:{w:86,l:67},heli:{w:30,l:55},bike:{w:10,l:35},bus:{w:28,l:69},gulf:{w:29,l:62},boat:{w:20,l:57},van:{w:25,l:58},car:{w:24,l:52}}).map(([key,body])=>[key,Object.freeze(body)])));
 export function bodySize(v) {
   if(v.def?.aircraft)return v.kind==='plane'?BODIES.plane:BODIES.heli;
   if(v.def?.bike)return BODIES.bike;

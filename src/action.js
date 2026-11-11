@@ -4,18 +4,19 @@ import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const number=(v,d,a,b)=>Number.isFinite(v)?clamp(v,a,b):d;
 export const WEAPONS=[
- {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:780,pellets:1,spread:.018,quiet:true},
- {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:860,pellets:1,spread:.09},
- {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:680,pellets:6,spread:.3},
+ {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:780,pellets:1,spread:.018,range:560,falloff:340,kick:.13,quiet:true},
+ {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:860,pellets:1,spread:.075,range:600,falloff:280,kick:.16},
+ {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:680,pellets:6,spread:.28,range:340,falloff:100,kick:.35},
 ];
 export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
- stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,
+ stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
+ completedJobs:[...new Set((Array.isArray(s.completedJobs)?s.completedJobs:[]).filter(id=>CONTRACTS.some(c=>c.id===id)))],
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
  upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}
@@ -78,7 +79,7 @@ export function startContract(G,id) {
 }
 export function tickAction(G,dt,hooks) {
  const A=G.action,I=G.input,P=G.player;if(!A)return;
- A.shotT=Math.max(0,A.shotT-dt);A.dodgeCool=Math.max(0,A.dodgeCool-dt);
+ A.shotT=Math.max(0,A.shotT-dt);A.dodgeCool=Math.max(0,A.dodgeCool-dt);A.bloom=Math.max(0,(A.bloom||0)-dt*.85);
  if(A.reloadT>0){A.reloadT=Math.max(0,A.reloadT-dt);if(A.reloadT===0){A.ammo[A.weapon]=WEAPONS[A.weapon].mag;G.audio?.cock?.();}}
  if(I.weaponP){A.weapon=(A.weapon+1)%WEAPONS.length;A.reloadT=0;G.audio?.cock?.();}
  if(I.reloadP)reload(G);
@@ -108,7 +109,7 @@ export function tickAction(G,dt,hooks) {
   if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
   if(c.id==='rescue'||c.id==='signal'||c.id==='harbour'||EXPANSION_JOBS.some(j=>j.id===c.id))done=tickStreetJob(G,c,dt,message);
   if(c.t===0)done=false;
-  if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;message(G,def.contact,'+'+def.reward+' chips. '+(EXPANSION_DEBRIEFS[c.id]||STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
+  if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;if(!A.completedJobs.includes(c.id))A.completedJobs.push(c.id);message(G,def.contact,'+'+def.reward+' chips. '+(EXPANSION_DEBRIEFS[c.id]||STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
   else if(c.t===0){message(G,def.contact,'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}
  }
  A.comboT=Math.max(0,A.comboT-dt);if(!A.comboT)A.combo=0;

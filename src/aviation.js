@@ -59,6 +59,13 @@ export function obstacleHeight(G,x,y,r=30){
  if(!height&&G.solidAt?.(x,y))height=75;
  return height;
 }
+const PLANE_PROBES=[[0,0,17],[-36,7,30],[36,7,30],[-77,7,14],[77,7,14],[0,-55,15],[0,48,19]];
+const HELI_PROBES=[[0,0,45],[-48,-2,15],[48,-2,15],[0,-48,15],[0,59,17]];
+export function aircraftClearance(G,v,x=v.x,y=v.y){
+ const co=Math.cos(v.rot),si=Math.sin(v.rot);let height=0;
+ for(const [px,py,r] of v.def.helicopter?HELI_PROBES:PLANE_PROBES)height=Math.max(height,obstacleHeight(G,x+px*co-py*si,y+px*si+py*co,r));
+ return height;
+}
 export function tickAircraft(G,v,I,dt,hooks={}){
  if(v.dead)return;
  dt=clamp(dt,0,.1);v.groundLock=Math.max(0,(v.groundLock||0)-dt);v.prevX=v.x;v.prevY=v.y;v.altitude=num(v.altitude,0,0,420);
@@ -69,10 +76,10 @@ export function tickAircraft(G,v,I,dt,hooks={}){
  if(I.enterP&&!canExitAircraft(v)){v.landing=!v.landing;v.approachDirection=Math.sin(v.rot)>=0?1:-1;notice(v.landing?helicopter?'Landing approach. Hold over a clear helipad.':'Runway assist armed. Fly alongside the runway; release steering to align.':'Landing cancelled.');}
  if(up){v.landing=false;v.autoBrake=false;}
  v.rotor=clamp((v.rotor||0)+dt*((v===G.player||v.driver==='player')?.8:-.35),0,1);
- const oldAltitude=v.altitude,oldX=v.x,oldY=v.y;
+ const oldAltitude=v.altitude,oldX=v.x,oldY=v.y,oldRot=v.rot;
  let speed=Math.hypot(v.vx||0,v.vy||0),vertical=0;
  if(helicopter){
-  v.rot=angle(v.rot+steer*1.7*dt);v.lean=steer*.15;
+  v.yaw=(v.yaw||0)+(steer*1.7-(v.yaw||0))*(1-Math.exp(-7*dt));v.rot=angle(v.rot+v.yaw*dt);v.lean=(v.lean||0)+(steer*.15-(v.lean||0))*(1-Math.exp(-5*dt));
   const moving=throttle>0.08, target=moving?throttle*v.def.max*condition.top:throttle*75;
   // Release the stick to hold a stable hover; horizontal flight requires lift first.
   const fly=v.altitude>8,blend=1-Math.exp(-(moving?1.25:3.1)*dt);
@@ -101,7 +108,7 @@ export function tickAircraft(G,v,I,dt,hooks={}){
   }else if(!ground&&I.touchFlight&&throttle===0&&!up){speed+=clamp(240-speed,-25,25)*dt;}
   else speed+=((throttle>0?throttle*105*condition.power:ground?-23:-8)-((down||v.autoBrake)&&ground?150:0)-(throttle<0?-throttle*120:0))*dt;
   speed=clamp(speed,0,v.def.max*condition.top);v.airspeed=speed;
-  v.rot=angle(v.rot+steer*(ground?1.15:.74)*clamp(speed/120,.1,1)*dt);v.lean=steer*.25;
+  const yaw=steer*(ground?1.15:.74)*clamp(speed/120,.1,1);v.yaw=(v.yaw||0)+(yaw-(v.yaw||0))*(1-Math.exp(-(ground?9:5)*dt));v.rot=angle(v.rot+v.yaw*dt);v.lean=(v.lean||0)+(steer*.25-(v.lean||0))*(1-Math.exp(-5*dt));
   v.vx=Math.sin(v.rot)*speed;v.vy=-Math.cos(v.rot)*speed;
   v.stall=!ground&&speed<155;
   if(ground&&throttle>0&&!v.groundLock&&speed>=185&&onRunway(G,v)&&Math.abs(Math.cos(v.rot))<.35&&!down){vertical=38;v.altitude=1.1;}
@@ -110,10 +117,11 @@ export function tickAircraft(G,v,I,dt,hooks={}){
   if(ground&&speed>170&&!onRunway(G,v))notice('Takeoff needs the marked runway.');
  }
  v.verticalSpeed=vertical;v.altitude=clamp(v.altitude+vertical*dt,0,420);
- let nx=clamp(v.x+v.vx*dt,65,WORLD_W-65),ny=clamp(v.y+v.vy*dt,65,WORLD_H-65);
- const height=obstacleHeight(G,nx,ny,helicopter?24:46);
- if(height&&v.altitude<height+18){
-  v.vx*= -.12;v.vy*= -.12;v.airspeed=0;nx=oldX;ny=oldY;
+ const edge=helicopter?80:105;let nx=clamp(v.x+v.vx*dt,edge,WORLD_W-edge),ny=clamp(v.y+v.vy*dt,edge,WORLD_H-edge);
+ const steps=Math.max(1,Math.ceil(Math.hypot(nx-oldX,ny-oldY)/18));let height=0;
+ for(let i=1;i<=steps;i++){const q=i/steps,h=aircraftClearance(G,v,oldX+(nx-oldX)*q,oldY+(ny-oldY)*q);if(h&&oldAltitude+(v.altitude-oldAltitude)*q<h+18){height=h;break;}}
+ if(height){
+  v.vx*= -.12;v.vy*= -.12;v.airspeed=0;v.yaw=0;v.rot=oldRot;nx=oldX;ny=oldY;
   if(oldAltitude>=height+18)v.altitude=oldAltitude;
   if(!(v.airImpactT>0)){hooks.damage?.(v,Math.max(8,speed/7));v.airImpactT=.8;notice('Obstacle ahead — gain altitude before crossing rooftops.');}
  }

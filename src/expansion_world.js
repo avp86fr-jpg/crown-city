@@ -24,7 +24,7 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  for(const s of W.roads)if(!s.v&&s.a<canal.x&&s.b>canal.x+canal.w&&s.c>canal.y&&s.c<6800){
   const b={x:canal.x-64,y:s.c-s.w/2,w:canal.w+128,h:s.w,clearance:36};E.bridges.push(b);fill(b.x,b.y,b.w,b.h,CODE.road);
  }
- W.boatSurfaceAt=(x,y)=>inside(x,y,canal)?(E.docks.some(d=>Math.abs(y-d.y)<37&&(d.x<canal.x?x<canal.x+27:x>canal.x+canal.w-27))?'pier':'canal'):null;
+ W.boatSurfaceAt=(x,y)=>inside(x,y,canal)?(E.docks.some(d=>Math.abs(y-d.y)<37&&(d.x<canal.x?x<canal.x+27:x>canal.x+canal.w-27))?'pier':'canal'):x>=0&&x<WORLD_W&&y>=W.river[0]&&y<W.river[1]?'water':null;
  for(const d of E.docks){const left=d.x<canal.x;const pier={x:left?canal.x-65:canal.x+canal.w-25,y:d.y-32,w:90,h:64};W.piers.push(pier);fill(pier.x,pier.y,pier.w,pier.h,CODE.pier);}
  for(let y=1000;y<6500;y+=150){if(E.bridges.some(b=>y>b.y-35&&y<b.y+b.h+35))continue;for(const x of [canal.x-39,canal.x+canal.w+39]){W.lamps.push({x,y,v:true});E.decor.push({kind:'canal',x,y,seed:rnd()});}}
  // Outdoor casino is a walkable terrace, with tables, cabanas, a stage and an aircraft pad.
@@ -43,10 +43,11 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  }
  for(let i=0;i<7;i++){const x=casino.x+75+i*200;W.trees.push({x,y:casino.y+casino.h-180,r:16,t:2});E.decor.push({kind:'cabana',x,y:casino.y+casino.h-120,seed:rnd()});}
  // Extend connected roads into the eastern forest and the southern desert / mountain belt.
- for(let y=720;y<WORLD_H;y+=CELL)for(let x=10240;x<WORLD_W;x+=CELL)fill(x,y,CELL,CELL,terrainRegion(x,y)==='forest'?CODE.grass:CODE.dirt);
+ for(let y=720;y<WORLD_H;y+=CELL)for(let x=10240;x<WORLD_W;x+=CELL)if(y<W.river[0]-40||y>=W.river[1]+40)fill(x,y,CELL,CELL,terrainRegion(x,y)==='forest'?CODE.grass:CODE.dirt);
  fill(0,9216,WORLD_W,WORLD_H-9216,CODE.sand);fill(8800,9216,WORLD_W-8800,WORLD_H-9216,CODE.dirt);
  const roads=[{v:false,c:1600,a:10000,b:11600,w:144},{v:true,c:10880,a:860,b:9800,w:144},{v:true,c:11600,a:1600,b:9800,w:128},{v:false,c:4800,a:10000,b:11600,w:144},{v:false,c:9000,a:10000,b:11600,w:144},{v:true,c:5600,a:9000,b:9800,w:144},{v:true,c:3840,a:9000,b:9800,w:144},{v:false,c:9800,a:3840,b:11600,w:144}];
  for(const s of roads){s.lanes=1;s.med=0;s.k='frontier';W.roads.push(s);const r=s.v?{x:s.c-s.w/2-22,y:s.a,w:s.w+44,h:s.b-s.a}:{x:s.a,y:s.c-s.w/2-22,w:s.b-s.a,h:s.w+44};clear(r,CODE.dirt);if(s.v)fill(s.c-s.w/2,s.a,s.w,s.b-s.a,CODE.road);else fill(s.a,s.c-s.w/2,s.b-s.a,s.w,CODE.road);}
+ E.riverBridges=W.roads.filter(s=>s.v&&s.a<W.river[0]&&s.b>W.river[1]).map(s=>({x:s.c-s.w/2,y:W.river[0]-16,w:s.w,h:W.river[1]-W.river[0]+32,vertical:true,clearance:36}));
  // Camp, fuel stop and mountain rescue station give the new roads destinations.
  for(const r of [{x:11120,y:4840,w:440,h:260,k:'camp'},{x:5430,y:9560,w:440,h:280,k:'fuel'},{x:11010,y:9480,w:420,h:270,k:'rescue'}]){clear(r,CODE.lot);E.decor.push({...r,kind:r.k});}
  const roadClear=(x,y,rad)=>!W.roads.some(s=>s.v?Math.abs(x-s.c)<s.w/2+rad&&y>s.a-rad&&y<s.b+rad:Math.abs(y-s.c)<s.w/2+rad&&x>s.a-rad&&x<s.b+rad);
@@ -115,7 +116,8 @@ export function drawExpansionGround(c,W,r,pats={}){
  }
 }
 export function drawExpansionOverhead(G,r){
- const c=G.ctx;for(const b of G.world.expansion?.bridges||[]){if(b.x>r.x1||b.x+b.w<r.x0||b.y>r.y1||b.y+b.h<r.y0)continue;
+ const c=G.ctx;for(const b of [...(G.world.expansion?.bridges||[]),...(G.world.expansion?.riverBridges||[])]){if(b.x>r.x1||b.x+b.w<r.x0||b.y>r.y1||b.y+b.h<r.y0)continue;
+  if(b.vertical){box(c,b.x,b.y,b.w,b.h,'#454b4c');for(const x of [b.x-8,b.x+b.w]){box(c,x,b.y,8,b.h,'#a79878');for(let y=b.y;y<b.y+b.h;y+=38)box(c,x-2,y,12,5,'#d0bf9e');}c.strokeStyle='#d5c3a1';c.lineWidth=2;c.setLineDash([18,16]);c.beginPath();c.moveTo(b.x+b.w/2,b.y);c.lineTo(b.x+b.w/2,b.y+b.h);c.stroke();c.setLineDash([]);continue;}
   // Road deck hides boats below while cars/pedestrians are redrawn by the caller above it.
   box(c,b.x,b.y,b.w,b.h,'#454b4c');box(c,b.x,b.y-9,b.w,9,'#a79878');box(c,b.x,b.y+b.h,b.w,9,'#a79878');
   c.strokeStyle='#d5c3a1';c.lineWidth=2;c.setLineDash([18,16]);c.beginPath();c.moveTo(b.x,b.y+b.h/2);c.lineTo(b.x+b.w,b.y+b.h/2);c.stroke();c.setLineDash([]);

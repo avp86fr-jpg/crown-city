@@ -18,7 +18,7 @@ export const TRANSIT_FARE=25;
 export const stationExit=s=>({x:s.x-(s.line==='regional'?105:0),y:s.y+84});
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),smooth=t=>t*t*(3-2*t),TAU=Math.PI*2;
 export function applyTransitWorld(W,{CODE}){
- W.transit={stations:STATIONS,rail:{x:10320,y0:1240,y1:9660}};
+ W.transit={stations:STATIONS,rail:{x:10320,y0:1140,y1:9660}};
  // Portals and forecourts live outside the painted core; clear props and solid geometry together.
  for(const s of STATIONS){
   const r={x:s.x-182,y:s.y-98,w:364,h:212};
@@ -37,7 +37,7 @@ export function applyTransitWorld(W,{CODE}){
  const validDecor=new Set(W.expansion.decor);for(const [key,items] of W.expansion.decorBins){const live=items.filter(p=>validDecor.has(p));if(live.length)W.expansion.decorBins.set(key,live);else W.expansion.decorBins.delete(key);}
  // Elevated alignment: roads and canal retain their surface collision beneath the viaduct.
  for(let y=1280;y<9600;y+=240){
-  if(STATIONS.some(s=>s.line==='regional'&&Math.abs(s.y-y)<170)||W.roads.some(s=>!s.v&&Math.abs(s.c-y)<s.w/2+40))continue;
+  if(y>W.river[0]-50&&y<W.river[1]+50||STATIONS.some(s=>s.line==='regional'&&Math.abs(s.y-y)<170)||W.roads.some(s=>!s.v&&Math.abs(s.c-y)<s.w/2+40))continue;
   W.fill(10288,y-10,16,20,CODE.build);
   W.expansion?.obstacles.push({x:10288,y:y-10,w:16,h:20,hgt:42});
  }
@@ -104,7 +104,7 @@ export function drawTransitWorld(G,r,overhead=false){
   for(let y=y0;y<y1;y+=16){box(c,rail.x-42,y,84,5,'#8c8770');box(c,rail.x-40,y+5,80,2,'#353f3f');}
   for(const x of [-31,-6,6,31]){box(c,rail.x+x,y0,3,y1-y0,'#aeb5a8');box(c,rail.x+x+3,y0,1,y1-y0,'#293e40');}
   for(const x of [-49,48])box(c,rail.x+x,y0,2,y1-y0,'#c0b99b');
-  for(const offset of [0,99]){const v=regionalTrainAt(G.transit?.clock||0,offset);if(v.y<r.y0-420||v.y>r.y1+420)continue;for(let i=2;i>=0;i--)trainCar(c,v.x,v.y+Math.cos(v.rot)*i*148,v.rot,i===0?v.doors:0,true,G.transitAtlas);}
+  for(const offset of [0,99]){const v=regionalTrainAt(G.transit?.clock||0,offset);if(v.y<r.y0-420||v.y>r.y1+420)continue;for(let i=-1;i<=1;i++)trainCar(c,v.x,v.y+i*148,v.rot,i===0?v.doors:0,true,G.transitAtlas);}
  }
  if(overhead)return;
  for(const s of STATIONS){if(s.x<r.x0-220||s.x>r.x1+220||s.y<r.y0-160||s.y>r.y1+160)continue;

@@ -1,3 +1,4 @@
+import {LIGHT} from './lighting.js';
 /* Rendering-only effects. No collision, economy or mission state is changed here. */
 const TAU = Math.PI * 2;
 const clamp = (n, a = 0, b = 1) => Math.max(a, Math.min(b, n));
@@ -28,7 +29,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
   ctx.save();
   if(G.settings.quality==='low'){
     if(v.fwd< -8){ctx.fillStyle='#d4eeeb';ctx.fillRect(-w*.25,h*.4,4,3);ctx.fillRect(w*.25-4,h*.4,4,3);}
-    if(G.input.hand||G.input.tBrake){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
+    if(v.braking&&!v.dead){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
     ctx.restore();return;
   }
   // A moving clear-coat highlight follows the car's angle to the city lights.
@@ -53,6 +54,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
       const spin = Math.sin((v.visualTravel || 0) * .23) * 3.5;
       ctx.beginPath(); ctx.moveTo(-1.6, spin); ctx.lineTo(1.6, spin); ctx.stroke(); ctx.restore();
     }
+    if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);}
     // Reverse lights are distinct from the warm brake lamps.
     if ((v.fwd || 0) < -8) { ctx.fillStyle = '#d3f4ff'; ctx.fillRect(-w * .24, h * .39, 3, 2); ctx.fillRect(w * .24 - 3, h * .39, 3, 2); }
   }
@@ -146,9 +148,8 @@ export function drawParticleFX(ctx, p) {
     ctx.beginPath();ctx.ellipse(0,10,spread*.7,4+age*7,0,0,TAU);ctx.stroke();
   } else if (p.kind === 'fire') {
     ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (1 - age) * .8;
-    const r=4 + age * 14, g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
-    g.addColorStop(0,'#fff4ba'); g.addColorStop(.25,'rgba(255,192,63,.9)');g.addColorStop(.6,'rgba(255,77,26,.4)');g.addColorStop(1,'rgba(255,50,10,0)');
-    ctx.fillStyle=g;ellipse(ctx,p.x,p.y,r,r*1.4);
+    const r=4+age*14;ctx.drawImage(LIGHT.radial('rgba(255,154,45,.95)',64),p.x-r,p.y-r*1.4,r*2,r*2.8);
+    ctx.fillStyle='#fff1a3';ellipse(ctx,p.x,p.y,r*.18,r*.5*(1-age));
   } else if (p.kind === 'trail' || p.kind === 'boost') {
     ctx.globalCompositeOperation = 'lighter';ctx.globalAlpha = clamp(p.life*4)*(p.a??1);
     ctx.strokeStyle = p.col || (p.kind === 'trail' ? '#ff4676' : '#7df5ff');ctx.lineWidth = 2 + (1-age)*2;
@@ -162,18 +163,14 @@ export function drawParticleFX(ctx, p) {
   } else if (p.kind === 'smoke' || p.kind === 'dust') {
     const size = (p.kind === 'smoke' ? 6 : 3) + age * (p.kind === 'smoke' ? 22 : 14);
     ctx.globalAlpha = (1 - age) * .42 * (p.a ?? 1);
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
-    const col = p.kind === 'dust' ? '178,151,111' : p.dark ? '34,39,48' : '166,181,196';
-    g.addColorStop(0, `rgba(${col},.65)`); g.addColorStop(.55, `rgba(${col},.3)`); g.addColorStop(1, `rgba(${col},0)`);
-    ctx.fillStyle = g; ellipse(ctx, p.x, p.y, size, size * .8);
+    const col=p.kind==='dust'?'178,151,111':p.dark?'34,39,48':'166,181,196';
+    ctx.drawImage(LIGHT.radial(`rgba(${col},.65)`,64),p.x-size,p.y-size*.8,size*2,size*1.6);
   } else if (p.kind === 'boom') {
     ctx.globalCompositeOperation = 'lighter';
     const radius = (p.big ? 90 : 36) * age + 3;
     ctx.strokeStyle = `rgba(255,184,92,${(1 - age) * .8})`; ctx.lineWidth = 1 + (1 - age) * 5;
     ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, TAU); ctx.stroke();
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 1.2);
-    g.addColorStop(0, `rgba(255,244,192,${(1 - age) * .7})`); g.addColorStop(.3, `rgba(255,109,44,${(1 - age) * .55})`); g.addColorStop(1, 'rgba(255,60,20,0)');
-    ctx.fillStyle = g; ellipse(ctx, p.x, p.y, radius * 1.2, radius * 1.2);
+    ctx.globalAlpha=(1-age)*.7;ctx.drawImage(LIGHT.radial('rgba(255,168,74,.95)',128),p.x-radius*1.2,p.y-radius*1.2,radius*2.4,radius*2.4);
   } else if (p.kind === 'footstep') {
     ctx.globalAlpha = (1 - age) * .2; ctx.strokeStyle = '#bbd5dd'; ctx.lineWidth = .7;
     ctx.beginPath(); ctx.ellipse(p.x, p.y, 2 + age * 8, 1 + age * 3, 0, 0, TAU); ctx.stroke();
@@ -267,8 +264,9 @@ export function drawSpeedometer(G, x, y, w, h) {
   ctx.fillStyle=bg;ctx.fillRect(x,y,w,h);
   ctx.fillStyle='#64e4ed';ctx.fillRect(x,y,3*u,h);
   ctx.fillStyle='#effaff';ctx.font=`900 ${Math.round(25*u)}px ${"Inter, system-ui, sans-serif"}`;ctx.textAlign='left';
-  ctx.fillText(String((speed*.5)|0).padStart(2,'0'),x+12*u,y+30*u);
-  ctx.fillStyle='#8da9bc';ctx.font=`700 ${Math.round(8*u)}px Inter, system-ui, sans-serif`;ctx.fillText('KM/H',x+13*u,y+42*u);
+  const nautical=v.def.boat||v.def.aircraft;
+  ctx.fillText(String(Math.round(speed*(nautical?.1944:.36))).padStart(2,'0'),x+12*u,y+30*u);
+  ctx.fillStyle='#8da9bc';ctx.font=`700 ${Math.round(8*u)}px Inter, system-ui, sans-serif`;ctx.fillText(nautical?'KTS':'KM/H',x+13*u,y+42*u);
   ctx.textAlign='right';ctx.fillStyle='#e2c790';ctx.font=`700 ${Math.round(9*u)}px Inter, system-ui, sans-serif`;
   ctx.fillText(v.def.name.toUpperCase(),x+w-11*u,y+15*u,w-72*u);
   const bars=12,bw=(w-82*u)/bars;

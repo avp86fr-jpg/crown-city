@@ -47,7 +47,7 @@ export function drawCrew(G,{button,panel,save}){
   if(portraitArt){c.save();c.beginPath();c.arc(x+cw-37*u,y+31*u,22*u,0,Math.PI*2);c.clip();c.drawImage(portraitArt,x+cw-59*u,y+9*u,44*u,44*u);c.restore();}
   c.font=font(16*u,900);c.fillStyle='#f2eadb';c.fillText(d.title,x+14*u,y+43*u,cw-84*u);
   c.font=font(11*u,500);c.fillStyle='#bfc5bf';const lines=textLines(c,d.text,cw-28*u).slice(0,portrait?2:4);lines.forEach((line,j)=>c.fillText(line,x+14*u,y+(64+j*15)*u));
-  const active=A.contract?.id===d.id,label=active?'CANCEL CONTRACT':A.contract?'CONTRACT ACTIVE':'TAKE JOB / +'+d.reward;
+  const active=A.contract?.id===d.id,label=active?'CANCEL CONTRACT':A.contract?'CONTRACT ACTIVE':(A.completedJobs?.includes(d.id)?'REPLAY / +':'TAKE JOB / +')+d.reward;
   button(G,x+12*u,y+ch-39*u,cw-24*u,29*u,label,()=>{if(active){A.contract=null;G.waypoint=null;G.gps=null;}else if(startContract(G,d.id))G.scene='play';save(G);},{primary:!A.contract,size:10*u});
  });
  button(G,left,H-99*u,cw*columns+(columns-1)*gap,30*u,page===0?'MORE JOBS / HUNTER + VERA ›':page===1?'FRONTIER / CANAL + CASINO + FLIGHT ›':page===2?'RAIL / CHIEF + ICE + STEAMPUNK ›':page<pages-1?'MORE CREW JOBS ›':'‹ STREET CONTRACTS',()=>{G.crewPage=(page+1)%pages;G.menuSel=0;},{size:10*u});
