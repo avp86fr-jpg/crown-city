@@ -1,0 +1,54 @@
+{
+  "environment": {
+    "quality": "med",
+    "viewport": [
+      1280,
+      720
+    ],
+    "cpuThrottle": 4,
+    "frames": 60,
+    "actors": "one fixed player, no traffic or crowds",
+    "metric": "render submission milliseconds, one sample per native animation frame; no simulation"
+  },
+  "scenarios": [
+    {
+      "scene": "palace-night",
+      "drawCalls": {
+        "fillRect": 284,
+        "drawImage": 137,
+        "fill": 893,
+        "stroke": 160,
+        "createRadialGradient": 8
+      },
+      "renderP50": 136.80000000074506,
+      "renderP95": 193.5,
+      "renderMean": 140.73999999991307
+    },
+    {
+      "scene": "canal-night",
+      "drawCalls": {
+        "fillRect": 131,
+        "drawImage": 57,
+        "fill": 311,
+        "stroke": 34,
+        "createRadialGradient": 31
+      },
+      "renderP50": 18.5,
+      "renderP95": 125.30000000074506,
+      "renderMean": 35.44666666655491
+    },
+    {
+      "scene": "palace-day",
+      "drawCalls": {
+        "fillRect": 257,
+        "drawImage": 137,
+        "fill": 937,
+        "stroke": 119,
+        "createRadialGradient": 0
+      },
+      "renderP50": 164.5,
+      "renderP95": 265.9000000022352,
+      "renderMean": 174.13166666645557
+    }
+  ]
+}

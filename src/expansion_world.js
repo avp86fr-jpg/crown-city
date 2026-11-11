@@ -87,6 +87,9 @@ export function drawExpansionGround(c,W,r,pats={}){
   c.strokeStyle='rgba(140,200,176,.15)';c.lineWidth=1.5;for(let y=Math.max(canal.y,Math.floor(r.y0/32)*32);y<Math.min(6800,r.y1);y+=32){c.beginPath();c.moveTo(canal.x+24,y);c.quadraticCurveTo(canal.x+100,y-9,canal.x+184,y+2);c.stroke();}
  }
  const C=E.casino;if(intersects({x:r.x0,y:r.y0,w:r.x1-r.x0,h:r.y1-r.y0},C)){
+  // Inlaid terrace aisles break up repeating stone without adding draw work per frame.
+  box(c,C.x+190,C.y+307,1090,35,'#9d9b82');box(c,C.x+190,C.y+307,1090,2,'#d4c59e');box(c,C.x+190,C.y+340,1090,2,'#d4c59e');
+  for(let col=0;col<5;col++)for(let row=0;row<2;row++){const x=C.x+280+col*205,y=C.y+235+row*185;ellipse(c,x+3,y+8,80,48,'rgba(29,55,48,.13)');}
   c.strokeStyle='#b99a5a';c.lineWidth=6;c.strokeRect(C.x+12,C.y+12,C.w-24,C.h-24);c.lineWidth=1;c.strokeRect(C.x+25,C.y+25,C.w-50,C.h-50);
   text(c,'METAWIN',C.x+C.w/2,C.y+165,50,'#315c4f');text(c,'OPEN AIR / PRIVATE TABLES',C.x+C.w/2,C.y+195,13,'#5b6656');
  }

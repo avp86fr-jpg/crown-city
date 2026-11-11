@@ -1,5 +1,5 @@
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
-import {mobileTint,LIGHT} from './lighting.js';
+import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadImage} from './assets.js';
 import {drawStreetScene,loadStreetArt} from './citylife.js';
 import {drawExpansionPeople} from './expansion.js';
@@ -61,6 +61,7 @@ export function drawMobileWorld(G,H) {
   for(const {x,y} of queue){const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const surface=G.surfaceAt((x+.5)*OUTER,(y+.5)*OUTER);c.fillStyle=surface==='water'||surface==='canal'?'#193e43':surface==='grass'?'#59634b':surface==='sand'?'#9d8964':'#555d58';c.fillRect(x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}}
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
+  drawTrafficSignals(G,r);
   c.fillStyle='#17201f';for(const s of G.skids){if(s.x<r.x0||s.x>r.x1||s.y<r.y0||s.y>r.y1)continue;c.globalAlpha=s.a*.4;c.fillRect(s.x-7,s.y-3,3,6);c.fillRect(s.x+5,s.y-3,3,6);}c.globalAlpha=1;
   for(const p of G.props){
     if(p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;
@@ -80,15 +81,16 @@ export function drawMobileWorld(G,H) {
   c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(7,15,32,${tint.alpha})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
   if(tint.warm>.002){c.fillStyle=`rgba(246,149,82,${tint.warm})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   H.worldXform(G,c,r.S);c.globalCompositeOperation='lighter';
-  if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);let count=0;for(const source of [G.meta.lights,G.world.lamps]){for(const lamp of source){if(lamp.x<r.x0||lamp.x>r.x1||lamp.y<r.y0||lamp.y>r.y1)continue;c.globalAlpha=.2*night;c.drawImage(glow,lamp.x-42,lamp.y-42,84,84);if(++count===16)break;}if(count>=16)break;}}
-  for(const v of actors)if(v.def&&!v.dead&&!(v.def.aircraft&&v.altitude>10)&&(night||v.cop)){
+  if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.2*night;for(const lamp of visibleStreetLights(G,r,16))c.drawImage(glow,lamp.x-42,lamp.y-42,84,84);}
+  for(const v of actors)if(v.def&&!v.dead&&!v.def.boat&&!v.def.aircraft&&(v===G.player||v.traffic||v.ai||v.siren||v.role||v.loose&&v.looseT<6)&&(night||v.cop)){
     const s=Math.sin(v.rot),co=Math.cos(v.rot);c.globalAlpha=.65*(v.cop?1:night);c.fillStyle=v.cop?(G.ticks%36<18?'#ff5676':'#65a8ff'):'#e9ecc4';
-    const d=v.def.bike?30:46;c.beginPath();c.arc(v.x+s*d,v.y-co*d,3.5,0,Math.PI*2);c.fill();
+    const d=v.def.bike?16:Math.max(24,v.r*1.05);c.beginPath();c.arc(v.x+s*d,v.y-co*d,3.5,0,Math.PI*2);c.fill();
     if(v===G.player&&night){c.save();c.translate(v.x,v.y);c.rotate(v.rot);c.globalAlpha=.12*night;c.fillStyle='#e7e5b6';c.beginPath();c.moveTo(-14,-42);c.lineTo(-48,-165);c.lineTo(48,-165);c.lineTo(14,-42);c.fill();c.restore();}
   }
+  for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);
   if(G.rainAmt>.15&&!G.settings.reducedMotion){c.strokeStyle='rgba(190,216,230,.22)';c.lineWidth=1;c.beginPath();for(let i=0;i<28;i++){const x=(i*97+G.ticks*1.5)%G.canvas.width,y=(i*137+G.ticks*6)%G.canvas.height;c.moveTo(x,y);c.lineTo(x+3,y+9);}c.stroke();}
-  if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);G.hurtT=Math.max(0,G.hurtT-1/30);}
+  if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,outerLimit:G._outerLimit,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

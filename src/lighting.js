@@ -1,4 +1,5 @@
 /* Time of day + light map. Ambient multiply pass at reduced resolution with additive lights. */
+import {signalPhase} from './traffic.js';
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -48,6 +49,77 @@ export function timeLabel(t) {
 export function nightMix(t){const v=clamp((darkness(t)-.12)/.42,0,1);return v*v*(3-2*v);}
 export function mobileTint(t){const rgb=ambientAt(t),n=nightMix(t);return {night:n,alpha:.025+n*.145,warm:Math.max(0,(rgb[0]-rgb[2])/255)*.12};}
 
+// Effects use simulation time, independent of rendering or skipped frames.
+export function tickLightEffects(G,dt){
+  G.hurtT=Math.max(0,(G.hurtT||0)-dt);
+  let live=0;
+  for(const f of G.flashes){f.life-=dt;if(f.life>0)G.flashes[live++]=f;}
+  G.flashes.length=live;
+}
+
+// The legacy neon mask predates the painted roofs. Brighten the current casino
+// artwork itself so signs and pool edges cannot drift or appear twice.
+export function drawCoreGlow(G,ctx,r,frame,night){
+  if(night<.02)return;
+  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.46*night;
+  for(const b of G.world.coreBuildings){
+    if(b.kind!=='casino'||b.x>r.x1||b.x+b.w<r.x0||b.y>r.y1||b.y+b.h<r.y0)continue;
+    G.assets.layers.roofs.drawRect(ctx,b.x,b.y,b.w,b.h,frame,(ax,ay,bx,by)=>[ax,ay,bx-ax,by-ay]);
+  }
+  ctx.restore();
+}
+
+// Live signal heads share the AI's phase, including the baked mobile renderer.
+const SIGNAL_COLORS=['#3ce06a','#ffb000','#ff3a3a'],SIGNAL_ART=[];
+function signalArt(phase){
+  if(SIGNAL_ART[phase])return SIGNAL_ART[phase];
+  const canvas=document.createElement('canvas');canvas.width=24;canvas.height=40;const c=canvas.getContext('2d');c.scale(2,2);
+  c.fillStyle='rgba(0,0,0,.35)';c.fillRect(1,2,8,16);c.fillStyle='#16161a';c.fillRect(0,0,8,16);
+  c.fillStyle=SIGNAL_COLORS[phase];c.beginPath();c.arc(4,12-phase*4,2.6,0,TAU);c.fill();return SIGNAL_ART[phase]=canvas;
+}
+export function drawTrafficSignals(G,r){
+  let index=G._signalIndex;
+  if(!index||index.source!==G.graph.nodes){
+    index=G._signalIndex={source:G.graph.nodes,bins:new Map()};
+    for(const n of G.graph.nodes)if(n.sig){const key=Math.floor(n.x/512)+':'+Math.floor(n.y/512);if(!index.bins.has(key))index.bins.set(key,[]);index.bins.get(key).push(n);}
+  }
+  const c=G.ctx,ns=signalPhase(G.ticks,true),ew=signalPhase(G.ticks,false),lit=G._sigLit||(G._sigLit=[]);lit.length=0;
+  c.save();c.globalAlpha=1;
+  for(let y=Math.floor((r.y0-200)/512);y<=Math.floor((r.y1+200)/512);y++)for(let x=Math.floor((r.x0-200)/512);x<=Math.floor((r.x1+200)/512);x++)for(const n of index.bins.get(x+':'+y)||[]){
+    const hw=(n.hw||40)+10,hh=(n.hh||40)+10;
+    for(let k=0;k<4;k++){
+      const sx=n.x+(k===0||k===2?-hw:hw),sy=n.y+(k===0||k===3?-hh:hh),phase=k<2?ns:ew;
+      if(sx<r.x0-8||sx>r.x1+8||sy<r.y0-8||sy>r.y1+8)continue;
+      c.drawImage(signalArt(phase),sx-4,sy-8,12,20);lit.push(sx,sy,SIGNAL_COLORS[phase]);
+    }
+  }c.restore();
+}
+
+// Query nearby cells instead of scanning the entire city for each light pass.
+export function visibleStreetLights(G,r,limit=Infinity){
+  const core=G.meta.lights,outer=G.world.lamps;
+  let index=G._lampIndex;
+  if(!index||index.core!==core||index.outer!==outer||index.count!==core.length+outer.length){
+    index=G._lampIndex={core,outer,count:core.length+outer.length,bins:new Map(),visible:[]};
+    const add=(p,expanded)=>{
+      if(!expanded&&p.kind&&p.kind!=='street')return;
+      const side=p.side||0;
+      const x=p.x+(expanded&&p.v?-side*30:0),y=p.y+(expanded&&!p.v?-side*30:0);
+      const key=Math.floor(x/512)+':'+Math.floor(y/512);
+      if(!index.bins.has(key))index.bins.set(key,[]);
+      index.bins.get(key).push({x,y,bulbX:p.x,bulbY:p.y,radius:expanded?200:150,expanded});
+    };
+    core.forEach(p=>add(p,false));outer.forEach(p=>add(p,true));
+  }
+  const out=index.visible;out.length=0;
+  for(let y=Math.floor((r.y0-200)/512);y<=Math.floor((r.y1+200)/512);y++)for(let x=Math.floor((r.x0-200)/512);x<=Math.floor((r.x1+200)/512);x++){
+    const bin=index.bins.get(x+':'+y);if(!bin)continue;
+    for(const p of bin)if(p.x+p.radius>r.x0&&p.x-p.radius<r.x1&&p.y+p.radius>r.y0&&p.y-p.radius<r.y1)out.push(p);
+  }
+  if(out.length>limit){const x=G.cam.x,y=G.cam.y;out.sort((a,b)=>(a.x-x)**2+(a.y-y)**2-(b.x-x)**2-(b.y-y)**2);out.length=limit;}
+  return out;
+}
+
 const sprites = new Map();
 function radial(color, size = 128) {
   const k = color + size;
@@ -76,7 +148,13 @@ function cone(color) {
   const y = c2.getContext("2d"); y.filter = "blur(6px)"; y.drawImage(c, 0, 0);
   sprites.set(k, c2); return c2;
 }
-export const LIGHT = { radial, cone };
+function hurt(){
+  if(sprites.has('hurt'))return sprites.get('hurt');
+  const c=document.createElement('canvas');c.width=256;c.height=144;const x=c.getContext('2d');
+  const g=x.createRadialGradient(128,72,43,128,72,115);g.addColorStop(0,'rgba(200,0,20,0)');g.addColorStop(1,'rgba(200,0,20,1)');
+  x.fillStyle=g;x.fillRect(0,0,256,144);sprites.set('hurt',c);return c;
+}
+export const LIGHT = { radial, cone, hurt };
 
 export function createLighting() {
   const cv = document.createElement("canvas");

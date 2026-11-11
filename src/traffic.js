@@ -99,11 +99,14 @@ function trimAt(n, e) {
   const horizontal = Math.abs(e.dx) > Math.abs(e.dy);
   return (horizontal ? n.hw : n.hh) + 8;
 }
+export function signalPhase(ticks,ns){
+  const phase=((ticks/60)%16+16)%16;
+  return ns?(phase<6.6?0:phase<8?1:2):(phase<8?2:phase<14.6?0:1);
+}
 export function lightGreen(G, n, e) {
   if (!n.sig) return true;
-  const phase = ((G.ticks / 60) % 16);
   const ns = Math.abs(e.dy) > Math.abs(e.dx);
-  return ns ? phase < 6.6 : (phase >= 8 && phase < 14.6);
+  return signalPhase(G.ticks,ns)===0;
 }
 
 const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };

@@ -17,7 +17,7 @@ import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
-import { createLighting, ambientAt, darkness, sunAt, timeLabel, nightMix, LIGHT } from "./lighting.js";
+import { createLighting, ambientAt, darkness, sunAt, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
@@ -1154,7 +1154,7 @@ function tickPlay(G, dt) {
   if (G.cineLock) {
     G.ticks++;
     if (G.radioT > 0) G.radioT = Math.max(G.radioT, 1.1);
-    tickParticles(G, 1 / 60);
+    tickParticles(G, dt);
     return;
   }
   if ((G.ticks % 30) === 0) { ensureMissionCar(G);
@@ -2262,6 +2262,7 @@ function tickProps(G, dt) {
 }
 
 function tickParticles(G, dt) {
+  tickLightEffects(G,dt);
   for (const p of G.particles) {
     if (!p.maxLife) p.maxLife = p.life;
     p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.life -= dt;
@@ -2471,7 +2472,8 @@ function applyQuality(G) {
   const q = G.settings.quality;
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
-  if (G.ground) G.ground.maxChunks=q==='low'?24:q==='med'?40:64;
+  // Mobile retains composed tiles; bound duplicate source art to 8 MiB.
+  if (G.ground) G.ground.maxChunks=q==='low'?8:q==='med'?40:64;
 }
 function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
@@ -2548,24 +2550,7 @@ function drawLife(G, cam, view) {
     ctx.beginPath(); ctx.arc(f.x, f.y - 4 - 6 * pulse, 2.2, 0, TAU); ctx.fill();
     ctx.restore();
   }
-  // traffic lights on every signalled node (same phase as the traffic AI)
-  const phase = ((t / 60) % 16);
-  const nsCol = phase < 6.6 ? "#3ce06a" : phase < 8 ? "#ffb000" : "#ff3a3a";
-  const ewCol = phase >= 8 && phase < 14.6 ? "#3ce06a" : phase >= 14.6 ? "#ffb000" : "#ff3a3a";
-  G._sigLit = [];
-  for (const n of G.graph.nodes) {
-    if (!n.sig || Math.abs(n.x - cam.x) > view || Math.abs(n.y - cam.y) > view) continue;
-    const hw = (n.hw || 40) + 10, hh = (n.hh || 40) + 10;
-    // corner poles: NS heads face up/down traffic, EW heads face sideways
-    for (const [dx, dy, ns] of [[-hw, -hh, true], [hw, hh, true], [-hw, hh, false], [hw, -hh, false]]) {
-      const col = ns ? nsCol : ewCol;
-      const x = n.x + dx, y = n.y + dy;
-      ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(x - 3, y - 6, 8, 16);
-      ctx.fillStyle = "#16161a"; ctx.fillRect(x - 4, y - 8, 8, 16);
-      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y + (col === "#3ce06a" ? 4 : col === "#ffb000" ? 0 : -4), 2.6, 0, TAU); ctx.fill();
-      G._sigLit.push(x, y, col);
-    }
-  }
+  drawTrafficSignals(G,{x0:cam.x-view,y0:cam.y-view,x1:cam.x+view,y1:cam.y+view});
   // birds
   for (const b of (G.birds || [])) {
     if (Math.abs(b.x - cam.x) > view || Math.abs(b.y - cam.y) > view) continue;
@@ -2851,7 +2836,7 @@ function renderWorldLayer(G) {
   if (G.player.type === "foot") {
     const D = 980 / Math.max(.45, cam.scale);
     const hidden = [...G.bld.inView(r)].some(b => {
-      const k = (b.core ? Math.min(70, b.hgt || 24) : b.hgt) / D;
+      const k = (b.core ? 0 : b.hgt) / D;
       const x = b.x + (b.x - cam.x) * k, y = b.y + (b.y - cam.y) * k;
       return G.player.x > x && G.player.x < x + b.w * (1 + k) && G.player.y > y && G.player.y < y + b.h * (1 + k);
     });
@@ -2875,7 +2860,7 @@ function renderWorldLayer(G) {
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
   drawGrade(G);
-  if (G.hurtT > 0) { G.hurtT -= 1 / 60; const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.3, canvas.width / 2, canvas.height / 2, canvas.height * 0.8); g.addColorStop(0, "rgba(255,0,0,0)"); g.addColorStop(1, `rgba(200,0,20,${G.hurtT})`); ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
 function drawLighting(G, r, S, ox, oy, low) {
@@ -2884,6 +2869,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   const rain = G.rainAmt * 0.18, fog = G.fog * 0.1;
   const ar = amb[0] * (1 - rain - fog), ag = amb[1] * (1 - rain * 0.8 - fog), ab = amb[2] * (1 - rain * 0.5);
   const dark = darkness(G.time);
+  const lamps=dark>.012?visibleStreetLights(G,r):[];
   const hasFlash = G.flashes.length > 0;
   const lt = G.light, lx = lt.lx;
   const needMap = Math.min(ar, ag, ab) < 248;
@@ -2903,12 +2889,10 @@ function drawLighting(G, r, S, ox, oy, low) {
       const warm = LIGHT.radial("rgba(255,196,120,0.9)");
       // street lamps
       const lamp = (x, y, rad, a) => { lx.globalAlpha = a * lit; lx.drawImage(warm, x - rad, y - rad, rad * 2, rad * 2); };
-      for (const Lm of G.meta.lights) { if ((!Lm.kind || Lm.kind === "street") && Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) lamp(Lm.x, Lm.y, 150, 0.75); }
-      for (const Lm of G.world.lamps) { if (Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) lamp(Lm.x + (Lm.v ? -Lm.side * 30 : 0), Lm.y + (Lm.v ? 0 : -Lm.side * 30), 200, 0.9); }
+      for(const Lm of lamps)lamp(Lm.x,Lm.y,Lm.radius,Lm.expanded?.9:.75);
       // neon washes from the casino strip
       if (r.x0 < CORE && r.y0 < CORE) {
         lx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(lx, r, G.ticks);
-        lx.globalAlpha = 0.8 * lit; assets.layers.neon.draw(lx, r, G.ticks);
         for (const N of G.meta.neons) {
           const nx = N.x + N.w * 0.5, ny = N.y + N.h + 16;
           if (nx < r.x0 || nx > r.x1 || ny < r.y0 || ny > r.y1) continue;
@@ -2950,16 +2934,14 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lit = clamp(dark * 1.7, 0, 1);
   if (lit > 0.03) {
     if (r.x0 < CORE && r.y0 < CORE) {
-      const fl = 0.92 + 0.08 * Math.sin(G.ticks * 0.21);
-      ctx.globalAlpha = 0.9 * lit * fl; assets.layers.neon.draw(ctx, r, G.ticks);
-      ctx.globalAlpha = 0.6 * lit; assets.layers.windows.draw(ctx, r, G.ticks);
+      drawCoreGlow(G,ctx,r,G.ticks,lit);
       ctx.globalAlpha = 1;
       drawMarquees(G, cam, 900 / cam.scale, lit);
     }
     if (!low || lit > 0.5) G.bld.drawLit(ctx, cam, r, lit);
     const bulb = LIGHT.radial("rgba(255,230,180,1)", 32);
     ctx.globalAlpha = lit;
-    for (const Lm of G.world.lamps) if (Lm.x > r.x0 && Lm.x < r.x1 && Lm.y > r.y0 && Lm.y < r.y1) ctx.drawImage(bulb, Lm.x - 7, Lm.y - 7, 14, 14);
+    for(const Lm of lamps)if(Lm.expanded)ctx.drawImage(bulb,Lm.bulbX-7,Lm.bulbY-7,14,14);
     const sl = G._sigLit || [];
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);
@@ -2973,8 +2955,6 @@ function drawLighting(G, r, S, ox, oy, low) {
   // daytime flashes still pop
   for (const f of G.flashes) { const k = f.max ? f.life / f.max : 1; ctx.globalAlpha = clamp(k, 0, 1) * (0.35 + 0.4 * (1 - dark)); ctx.drawImage(LIGHT.radial(f.col), f.x - f.r * 0.5, f.y - f.r * 0.5, f.r, f.r); }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-  for (const f of G.flashes) f.life -= 1 / 60;
-  G.flashes = G.flashes.filter((f) => f.life > 0);
 }
 
 // light emitters of one vehicle. map=true draws into the light map (pools on the ground), else bulbs

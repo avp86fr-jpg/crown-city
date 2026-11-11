@@ -112,8 +112,8 @@ export function drawRoofDetail(G,r){
  if(G.settings.quality==='low')return;
  const c=G.ctx,D=980/Math.max(.45,G.cam.scale),t=G.settings.reducedMotion?0:G.ticks/60;
  for(const b of G.bld.inView(r)){
-  if(b.w<80||b.h<70)continue;
-  const seed=hash(b.x*.13+b.y),k=(b.core?Math.min(70,b.hgt||24):b.hgt)/D;
+  if(b.w<80||b.h<70||b.core&&b.kind==='casino')continue; // Preserve painted pools, signs and helipads.
+  const seed=hash(b.x*.13+b.y),k=(b.core?0:b.hgt)/D;
   const x=b.x+(b.x-G.cam.x)*k,y=b.y+(b.y-G.cam.y)*k,w=b.w*(1+k),h=b.h*(1+k);
   c.save();
   if(G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;

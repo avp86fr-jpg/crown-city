@@ -199,7 +199,7 @@ export function drawArchitectureLights(G, r, night) {
   let signs = 0;
   for (const b of buildings) {
     if (!['shop', 'loft', 'garage', 'office', 'casino'].includes(b.kind)) continue;
-    const h = b.core ? Math.min(70, b.hgt || 24) : b.hgt;
+    const h = b.core ? 0 : b.hgt;
     const k = h / D, rx = b.x + (b.x - G.cam.x) * k, ry = b.y + (b.y - G.cam.y) * k;
     const rw = b.w * (1 + k), rh = b.h * (1 + k);
     const color = b.kind === 'loft' ? '98,208,255' : b.kind === 'garage' ? '255,165,76' : b.kind === 'casino' ? '255,106,194' : ['60,219,232', '244,104,171', '255,193,106'][Math.floor(hash(b.seed) * 3)];
@@ -216,9 +216,8 @@ export function drawArchitectureLights(G, r, night) {
     const label = b.kind === 'loft' ? 'NEURAL' : b.kind === 'garage' ? 'CUSTOMS' : ['AFTER HOURS', 'OPEN 24', 'NIGHT MARKET', 'CROWN CLUB'][Math.floor(hash(b.seed + 1) * 4)];
     const sw = Math.min(rw - 16, 140), sh = 24, sx = rx + (rw - sw) / 2, sy = ry + rh - 36;
     ctx.save();
-    const glow = ctx.createRadialGradient(sx + sw / 2, sy + 12, 3, sx + sw / 2, sy + 12, sw * .7);
-    glow.addColorStop(0, `rgba(${color},${night * .22})`); glow.addColorStop(1, `rgba(${color},0)`);
-    ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = glow; ctx.fillRect(sx - sw * .3, sy - sw * .5, sw * 1.6, sw * 1.3);
+    ctx.globalCompositeOperation = 'screen';ctx.globalAlpha=night*.32;
+    ctx.drawImage(LIGHT.radial(`rgba(${color},1)`,128),sx-sw*.3,sy-sw*.5,sw*1.6,sw*1.3);ctx.globalAlpha=1;
     ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#101925'; ctx.fillRect(sx,sy,sw,sh);
     ctx.strokeStyle = `rgba(${color},${.3 + night * .65})`; ctx.lineWidth = 1; ctx.strokeRect(sx + 1,sy + 1,sw - 2,sh - 2);
     ctx.fillStyle = `rgb(${color})`; ctx.textAlign = 'center'; ctx.font = '700 10px system-ui, sans-serif';

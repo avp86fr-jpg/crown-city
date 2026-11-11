@@ -9,3 +9,7 @@
 .arrow{width:18px;height:18px;display:inline-block;vertical-align:middle;flex-shrink:0}.play-icon{width:16px;height:16px;flex-shrink:0}.expand .arrow{width:23px;height:23px}.media-caption .arrow,.crew-note .arrow,.footer-bottom .arrow{width:12px;height:12px}
 
 .crew-card>img{height:auto;aspect-ratio:1;object-fit:contain}.crew-card:after{background:linear-gradient(0deg,#081213 0%,#081213e6 12%,transparent 55%)}
+
+.trailer-chapters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:24px}.trailer-chapters button{min-height:64px;padding:12px;text-align:left;background:#142120;border:1px solid #ffffff22;font-size:11px;line-height:1.5}.trailer-chapters span{display:block;color:#8bcfc1;font-size:10px;letter-spacing:.12em}.trailer-chapters button:hover,.trailer-chapters button[aria-current="true"]{border-color:#8bcfc1;background:#20332f}.cinema{background:#050b0c}.cinema video{display:block;width:100%;height:auto;aspect-ratio:16/9}.gallery img{background:#142120}.shot button:hover img{filter:brightness(1.06)}
+@media(max-width:900px){.trailer-chapters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:440px){.trailer-chapters{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.trailer-chapters button{min-height:62px}}

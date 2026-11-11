@@ -1,0 +1,193 @@
+{
+  "environment": {
+    "viewport": [
+      844,
+      390
+    ],
+    "dpr": 2,
+    "cpuThrottle": 4,
+    "quality": "low",
+    "autoResolution": false,
+    "seed": 77123,
+    "input": "CDP touch drag; no keyboard events",
+    "sampleSeconds": 4
+  },
+  "scenarios": [
+    {
+      "scene": "boulevard",
+      "seconds": 4.031300000000745,
+      "ticks": 242,
+      "frames": 148,
+      "touch": true,
+      "peds": 112,
+      "vehicles": 295,
+      "position": [
+        2108,
+        1699.2616196537913
+      ],
+      "altitude": 0,
+      "prof": {
+        "render": 4.811750676572754,
+        "tick": 5.144573672072112,
+        "hud": 2.1134356058412145
+      },
+      "tiles": {
+        "tiles": 11,
+        "outerTiles": 0,
+        "outerVisible": 0,
+        "outerPending": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 31
+      },
+      "drawCalls": {
+        "fillRect": 9,
+        "stroke": 4,
+        "fill": 21,
+        "drawImage": 38,
+        "fillText": 8,
+        "measureText": 0
+      },
+      "workMsPerSecond": 269.6400664806699,
+      "presentedFps": 36.71272294296446,
+      "workP50": 6.899999998509884,
+      "workP95": 13.699999999254942,
+      "frameP50": 33.29999999999927,
+      "frameP95": 50,
+      "over50ms": 4
+    },
+    {
+      "scene": "regional",
+      "seconds": 4.0415,
+      "ticks": 243,
+      "frames": 156,
+      "touch": true,
+      "peds": 114,
+      "vehicles": 302,
+      "position": [
+        10215,
+        4984
+      ],
+      "altitude": 0,
+      "prof": {
+        "render": 2.427951198905985,
+        "tick": 3.3144435321216847,
+        "hud": 0.8168715088326128
+      },
+      "tiles": {
+        "tiles": 11,
+        "outerTiles": 6,
+        "outerVisible": 4,
+        "outerPending": 0,
+        "outerLimit": 40,
+        "groundChunks": 6,
+        "groundLimit": 8,
+        "actors": 7
+      },
+      "drawCalls": {
+        "fillRect": 12,
+        "stroke": 6,
+        "fill": 13,
+        "drawImage": 13,
+        "fillText": 9,
+        "measureText": 0
+      },
+      "workMsPerSecond": 221.6751206194751,
+      "presentedFps": 38.59952987752072,
+      "workP50": 5.5,
+      "workP95": 9.199999999254942,
+      "frameP50": 33.19999999999709,
+      "frameP95": 33.400000000001455,
+      "over50ms": 4
+    },
+    {
+      "scene": "forest",
+      "seconds": 4.0165,
+      "ticks": 244,
+      "frames": 189,
+      "touch": true,
+      "peds": 72,
+      "vehicles": 290,
+      "position": [
+        11223.396982914293,
+        2039.099159256938
+      ],
+      "altitude": 0,
+      "prof": {
+        "render": 2.353611253330667,
+        "tick": 1.7250387220969035,
+        "hud": 0.8880632598759484
+      },
+      "tiles": {
+        "tiles": 11,
+        "outerTiles": 17,
+        "outerVisible": 6,
+        "outerPending": 0,
+        "outerLimit": 40,
+        "groundChunks": 8,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "drawCalls": {
+        "fillRect": 10,
+        "stroke": 4,
+        "fill": 19,
+        "drawImage": 9,
+        "fillText": 7,
+        "measureText": 0
+      },
+      "workMsPerSecond": 278.4264907194493,
+      "presentedFps": 47.05589443545376,
+      "workP50": 3.600000001490116,
+      "workP95": 10.5,
+      "frameP50": 16.700000000000728,
+      "frameP95": 33.400000000001455,
+      "over50ms": 8
+    },
+    {
+      "scene": "airfield",
+      "seconds": 4.0883000000007454,
+      "ticks": 246,
+      "frames": 132,
+      "touch": true,
+      "peds": 110,
+      "vehicles": 294,
+      "position": [
+        7789.390057310107,
+        7500.457609493216
+      ],
+      "altitude": 72.23333333333333,
+      "prof": {
+        "render": 8.591702709042627,
+        "tick": 3.4662799626253555,
+        "hud": 1.78983178707497
+      },
+      "tiles": {
+        "tiles": 11,
+        "outerTiles": 34,
+        "outerVisible": 12,
+        "outerPending": 1,
+        "outerLimit": 40,
+        "groundChunks": 8,
+        "groundLimit": 8,
+        "actors": 5
+      },
+      "drawCalls": {
+        "fillRect": 21,
+        "stroke": 31,
+        "fill": 46,
+        "drawImage": 22,
+        "fillText": 13,
+        "measureText": 0
+      },
+      "workMsPerSecond": 336.0076315372907,
+      "presentedFps": 32.28725876280506,
+      "workP50": 6.899999998509884,
+      "workP95": 44.600000001490116,
+      "frameP50": 33.29999999999927,
+      "frameP95": 66.69999999999709,
+      "over50ms": 11
+    }
+  ]
+}
