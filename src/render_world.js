@@ -77,6 +77,7 @@ export function makeGround(W, tex, codeAt) {
       tile.getContext('2d').drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
       // Quiet limestone tones keep the casino's green felt and characters readable.
       if(name==='casino'){const c=tile.getContext('2d');c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
+      if(name==='asphalt'){const c=tile.getContext('2d');c.fillStyle='rgba(48,53,56,.64)';c.fillRect(0,0,256,256);}
       pats[name]=scratch.createPattern(tile,'repeat');
       const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'?.55:.8;
       pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
@@ -203,6 +204,9 @@ export function makeGround(W, tex, codeAt) {
         const px = ox + rn() * CH, py = oy + rn() * CH;
         const v = cellAt((px / CELL) | 0, (py / CELL) | 0);
         if (v === CODE.road || v === CODE.lot || v === CODE.track) {
+          const maintained=v!==CODE.lot&&!(px>4096&&(py<1600||py>3900&&py<6600));
+          if(maintained&&i%4!==0)continue;
+          x.save();x.globalAlpha=maintained?.42:.8;
           const t = rn();
           if (t < 0.35) { // oil stain
             const rr = 5 + rn() * 9; x.fillStyle = "rgba(10,8,6,0.22)";
@@ -217,6 +221,7 @@ export function makeGround(W, tex, codeAt) {
             for (let j = 0; j < 5; j++) { cx += (rn() - 0.5) * 26; cy += (rn() - 0.5) * 26; x.lineTo(cx, cy); }
             x.stroke();
           }
+          x.restore();
         } else if (v === CODE.grass) {
           const rr = 6 + rn() * 16; x.fillStyle = rn() < 0.5 ? "rgba(30,60,15,0.25)" : "rgba(190,210,110,0.16)";
           x.beginPath(); x.ellipse(px, py, rr, rr * 0.8, 0, 0, TAU); x.fill();
@@ -342,45 +347,93 @@ function drawMarkings(x, W, s) {
     for (const sg of [-1, 1]) { const p = L(sg * (half - 8), a, b); dash(x, p[0], p[1], p[2], p[3], 0, 0, 2.5, "rgba(240,240,240,0.8)"); }
   }
 }
-function drawIntersection(x, W, n, pats) {
-  const hw = n.vs.w / 2, hh = n.hs.w / 2;
-  x.fillStyle = pats.asphalt; x.fillRect(n.x - hw, n.y - hh, hw * 2, hh * 2);
-  if(n.vs.k==='frontier'&&n.hs.k==='frontier')return;
-  // zebra crossings on each approach (only if that road continues)
-  x.fillStyle = "rgba(240,240,236,0.88)";
-  const zw = 22;
-  const vCont = (dy) => (dy < 0 ? n.y - hh > n.vs.a + 4 : n.y + hh < n.vs.b - 4);
-  const hCont = (dx) => (dx < 0 ? n.x - hw > n.hs.a + 4 : n.x + hw < n.hs.b - 4);
-  if (n.vs.k === "highway" && n.hs.k === "highway") return;
-  for (const dy of [-1, 1]) if (vCont(dy)) {
-    const y0 = dy < 0 ? n.y - hh - zw - 6 : n.y + hh + 6;
-    if (n.vs.k !== "highway") for (let xx = n.x - hw + 6; xx < n.x + hw - 8; xx += 14) x.fillRect(xx, y0, 8, zw);
-    // stop line
-    x.fillRect(dy < 0 ? n.x - hw + 4 : n.x + 2, dy < 0 ? y0 - 10 : y0 + zw + 6, hw - 6, 4);
-  }
-  for (const dx of [-1, 1]) if (hCont(dx)) {
-    const x0 = dx < 0 ? n.x - hw - zw - 6 : n.x + hw + 6;
-    if (n.hs.k !== "highway") for (let yy = n.y - hh + 6; yy < n.y + hh - 8; yy += 14) x.fillRect(x0, yy, zw, 8);
-    x.fillRect(dx < 0 ? x0 - 10 : x0 + zw + 6, dx < 0 ? n.y + 2 : n.y - hh + 4, 4, hh - 6);
-  }
+// A junction's actual arms drive paint as well as geometry: never paint a
+// fourth crossing across the closed side of a T junction.
+export function junctionApproaches(W,n){
+  const hw=n.vs.w/2,hh=n.hs.w/2;
+  const roads=W.roads||[n.vs,n.hs],out=[];
+  for(const [v,side] of [[true,-1],[true,1],[false,-1],[false,1]]){
+    const centre=v?n.y:n.x,half=v?hh:hw,c=v?n.x:n.y;
+    const candidates=roads.filter(s=>s.v===v&&Math.abs(s.c-c)<2&&s.a<=centre+1&&s.b>=centre-1);
+    const reaches=candidates.filter(s=>side<0?s.a<centre-half-4:s.b>centre+half+4);
+    if(!reaches.length)continue;
+    const road=reaches.reduce((a,b)=>a.w>b.w?a:b),distance=side<0?centre-road.a:road.b-centre;
+    out.push({v,side,road,distance,half});
+  }return out;
 }
-function drawLot(x, l) {
-  if (l.k === "parking" || l.k === "industrial") {
-    x.strokeStyle = "rgba(235,235,230,0.55)"; x.lineWidth = 2;
-    const rowH = 110;
-    for (let y = l.y + 20; y + rowH / 2 < l.y + l.h; y += rowH) {
-      for (let xx = l.x + 16; xx < l.x + l.w - 16; xx += 40) {
-        x.beginPath(); x.moveTo(xx, y); x.lineTo(xx, y + 46); x.stroke();
+function laneArrow(x,cx,cy,rot){
+  x.save();x.translate(cx,cy);x.rotate(rot);x.strokeStyle='rgba(239,235,218,.65)';x.lineWidth=2.5;x.lineCap='butt';
+  x.beginPath();x.moveTo(0,13);x.lineTo(0,-12);x.moveTo(-7,-4);x.lineTo(0,-12);x.lineTo(7,-4);x.stroke();x.restore();
+}
+export function drawIntersection(x,W,n,pats){
+  const hw=n.vs.w/2,hh=n.hs.w/2,arms=junctionApproaches(W,n);
+  x.fillStyle=pats.asphalt||'#34393b';x.fillRect(n.x-hw,n.y-hh,hw*2,hh*2);
+  const rural=n.vs.k==='frontier'&&n.hs.k==='frontier';
+  for(const a of arms){
+    const {v,side,road,half}=a,width=road.w/2,med=road.med||0,zw=18,clear=42;
+    // Remove centre/lane marks beneath the crossing and stop position. Refuges
+    // stay visible, instead of yellow lines running through zebra stripes.
+    x.fillStyle=pats.asphalt||'#34393b';
+    if(v)x.fillRect(n.x-width,n.y+side*half+(side<0?-clear:0),width*2,clear);
+    else x.fillRect(n.x+side*half+(side<0?-clear:0),n.y-width,clear,width*2);
+    const at=(v?n.y:n.x)+side*(half+7)+(side<0?-zw:0);
+    if(!rural&&road.k!=='highway'){
+      x.fillStyle='rgba(238,235,220,.8)';
+      for(let q=-width+8;q+8<width-7;q+=14){
+        if(med&&q<med/2+3&&q+8>-med/2-3)continue;
+        if(v)x.fillRect(n.x+q,at,8,zw);else x.fillRect(at,n.y+q,zw,8);
       }
     }
-    x.fillStyle = "rgba(0,0,0,0.08)";
-    for (let i = 0; i < 6; i++) x.fillRect(l.x + ((i * 97) % Math.max(1, l.w - 40)), l.y + ((i * 53) % Math.max(1, l.h - 30)), 30, 18);
-  } else if (l.k === "yard") {
-    x.fillStyle = "rgba(240,200,40,0.6)";
-    for (let xx = l.x; xx < l.x + l.w; xx += 120) x.fillRect(xx, l.y + l.h - 8, 60, 4);
-  } else if (l.k === "apron") {
-    x.strokeStyle = "rgba(240,200,40,0.8)"; x.lineWidth = 3;
-    for (let xx = l.x + 300; xx < l.x + l.w; xx += 600) { x.beginPath(); x.moveTo(xx, l.y); x.quadraticCurveTo(xx, l.y + 150, xx + 160, l.y + 170); x.stroke(); }
+    if(med){
+      x.fillStyle='#b8b6a8';
+      if(v)x.fillRect(n.x-med/2+3,n.y+side*half+(side<0?-31:5),med-6,26);
+      else x.fillRect(n.x+side*half+(side<0?-31:5),n.y-med/2+3,26,med-6);
+    }
+    if(rural||road.k==='highway')continue;
+    const line=(v?n.y:n.x)+side*(half+35),incoming=v?side:-side,laneStart=incoming<0?-width+6:med/2+6,laneWidth=width-med/2-12;
+    x.fillStyle='rgba(239,235,220,.85)';
+    if(v)x.fillRect(n.x+laneStart,line-2,laneWidth,4);else x.fillRect(line-2,n.y+laneStart,4,laneWidth);
+    if(a.distance>half+130){
+      const lanes=road.lanes||1,lw=(width-med/2)/lanes;
+      for(let lane=0;lane<lanes;lane++){
+        const offset=incoming*(med/2+lw*(lane+.5)),along=side*(half+92);
+        laneArrow(x,n.x+(v?offset:along),n.y+(v?along:offset),v?(side<0?Math.PI:0):(side<0?Math.PI/2:-Math.PI/2));
+      }
+    }
+  }
+  // Re-establish the continuous kerb on the closed side of a T junction.
+  x.strokeStyle='#bcb9ad';x.lineWidth=3;x.setLineDash([]);
+  for(const [v,side] of [[true,-1],[true,1],[false,-1],[false,1]]){
+    if(arms.some(a=>a.v===v&&a.side===side))continue;
+    x.beginPath();if(v){x.moveTo(n.x-hw,n.y+side*hh);x.lineTo(n.x+hw,n.y+side*hh);}else{x.moveTo(n.x+side*hw,n.y-hh);x.lineTo(n.x+side*hw,n.y+hh);}x.stroke();
+  }
+}
+export function drawLot(x,l){
+  if(Array.isArray(l.bays)){
+    // Paint the exact plan used by vehicle placement. Bay width/depth includes
+    // door space and bumper clearance; entrances face the shared driving aisle.
+    x.strokeStyle='rgba(228,225,207,.64)';x.lineWidth=2;
+    for(const b of l.bays){
+      x.save();x.translate(b.x,b.y);x.rotate(b.rot||0);const w=b.w/2,h=b.l/2;
+      x.beginPath();x.moveTo(-w,h);x.lineTo(-w,-h);x.lineTo(w,-h);x.lineTo(w,h);x.stroke();
+      x.fillStyle='#b8b5a3';x.fillRect(-Math.min(19,w-5),-h+10,Math.min(38,b.w-10),5);
+      x.fillStyle='rgba(13,18,19,.15)';x.fillRect(-Math.min(19,w-5),-h+15,Math.min(38,b.w-10),3);x.restore();
+    }
+    const aisle=l.aisle;
+    if(aisle&&aisle.w>180&&aisle.h>50){
+      x.strokeStyle='rgba(231,218,173,.3)';x.lineWidth=2;x.setLineDash([16,22]);
+      x.beginPath();if(aisle.w>aisle.h){x.moveTo(aisle.x+20,aisle.y+aisle.h/2);x.lineTo(aisle.x+aisle.w-20,aisle.y+aisle.h/2);}else{x.moveTo(aisle.x+aisle.w/2,aisle.y+20);x.lineTo(aisle.x+aisle.w/2,aisle.y+aisle.h-20);}x.stroke();x.setLineDash([]);
+    }
+    return;
+  }
+  if(l.k==='parking'||l.k==='industrial'){
+    // Legacy lots get correctly scaled spaces, never miniature 40×46 markings.
+    x.strokeStyle='rgba(228,225,207,.5)';x.lineWidth=2;
+    for(let yy=l.y+16;yy+120<l.y+l.h-16;yy+=240)for(let xx=l.x+16;xx+64<l.x+l.w-16;xx+=64){x.beginPath();x.moveTo(xx,yy+120);x.lineTo(xx,yy);x.lineTo(xx+64,yy);x.lineTo(xx+64,yy+120);x.stroke();}
+  }else if(l.k==='yard'){
+    x.fillStyle='rgba(240,200,40,.6)';for(let xx=l.x;xx<l.x+l.w;xx+=120)x.fillRect(xx,l.y+l.h-8,60,4);
+  }else if(l.k==='apron'){
+    x.strokeStyle='rgba(240,200,40,.8)';x.lineWidth=3;for(let xx=l.x+300;xx<l.x+l.w;xx+=600){x.beginPath();x.moveTo(xx,l.y);x.quadraticCurveTo(xx,l.y+150,xx+160,l.y+170);x.stroke();}
   }
 }
 function drawFeature(x, f, pats) {
@@ -393,9 +446,21 @@ function drawFeature(x, f, pats) {
     x.strokeStyle = "rgba(120,100,80,0.35)"; x.lineWidth = 6;
     x.strokeRect(f.x + 20, f.y + 20, f.w - 40, f.h - 40);
   } else if (f.k === "fountain") {
-    x.fillStyle = "#d9d2c2"; x.beginPath(); x.arc(f.x, f.y, f.r * 1.15, 0, TAU); x.fill();
-    x.fillStyle = "#4fb8d8"; x.beginPath(); x.arc(f.x, f.y, f.r, 0, TAU); x.fill();
-    x.fillStyle = "#d9d2c2"; x.beginPath(); x.arc(f.x, f.y, f.r * 0.25, 0, TAU); x.fill();
+    // The square foundation matches the blocked basin footprint; the circular
+    // bowl is inset above it. Every gradient/ripple is baked into terrain once.
+    const r=f.r;
+    x.fillStyle='#9d9d8c';x.fillRect(f.x-r,f.y-r,r*2,r*2);
+    x.fillStyle='rgba(12,27,26,.22)';x.beginPath();x.ellipse(f.x+5,f.y+8,r*1.15,r*1.08,0,0,TAU);x.fill();
+    const stone=x.createLinearGradient(f.x-r,f.y-r,f.x+r,f.y+r);stone.addColorStop(0,'#e2dac4');stone.addColorStop(.65,'#b7b49e');stone.addColorStop(1,'#808879');
+    x.fillStyle=stone;x.beginPath();x.arc(f.x,f.y,r*1.15,0,TAU);x.fill();
+    const water=x.createRadialGradient(f.x-r*.25,f.y-r*.3,1,f.x,f.y,r);water.addColorStop(0,'#65979a');water.addColorStop(.52,'#396f79');water.addColorStop(1,'#193f4b');
+    x.fillStyle=water;x.beginPath();x.arc(f.x,f.y,r,0,TAU);x.fill();
+    x.strokeStyle='rgba(216,239,224,.28)';x.lineWidth=1.5;
+    for(const rr of [.42,.72]){x.beginPath();x.ellipse(f.x,f.y+1,r*rr,r*rr*.93,0,.2,TAU-.2);x.stroke();}
+    x.strokeStyle='rgba(247,240,219,.65)';x.lineWidth=2;x.beginPath();x.arc(f.x,f.y,r*1.08,Math.PI,Math.PI*1.8);x.stroke();
+    x.fillStyle='rgba(16,45,49,.35)';x.beginPath();x.ellipse(f.x+4,f.y+5,r*.23,r*.2,0,0,TAU);x.fill();
+    x.fillStyle='#c3c6af';x.beginPath();x.arc(f.x,f.y,r*.17,0,TAU);x.fill();
+    x.fillStyle='#e4ebdb';x.beginPath();x.arc(f.x-1,f.y-2,r*.09,0,TAU);x.fill();
   } else if (f.k === "park") {
     x.fillStyle = "rgba(255,255,255,0.05)"; x.fillRect(f.x, f.y, f.w, f.h);
   } else if (f.k === "pond") {
@@ -439,12 +504,17 @@ export function makeBuildings(W, tex, coreRoofs) {
   function canopy(t,low){
     const palette=Math.min(2,t.t||0),angle=((Math.round(t.x*8/TAU)%8)+8)%8,key=palette+':'+angle+':'+!!low;
     if(treeArt.has(key))return treeArt.get(key);
-    const cv=document.createElement('canvas');cv.width=cv.height=96;const c=cv.getContext('2d'),r=48;
-    const colors=palette===0?['#2f5a26','#4d8a37','#6fb04a']:palette===1?['#2a4f2c','#3f7a3c','#5f9e52']:['#3c5a22','#5f8a2e','#86b04a'];
-    const gradient=c.createRadialGradient(r*.7,r*.65,1,r,r,r);gradient.addColorStop(0,colors[2]);gradient.addColorStop(.5,colors[1]);gradient.addColorStop(1,colors[0]);
-    c.fillStyle=gradient;c.beginPath();c.arc(r,r,r,0,TAU);c.fill();
-    if(!low){for(let i=0;i<6;i++){const a=i*TAU/6+angle*TAU/8;c.fillStyle=colors[i%2?1:0];c.globalAlpha=.35;c.beginPath();c.arc(r+Math.cos(a)*r*.48,r+Math.sin(a)*r*.48,r*.43,0,TAU);c.fill();}
-      c.globalAlpha=1;c.fillStyle=colors[2];c.beginPath();c.arc(r*.68,r*.66,r*.36,0,TAU);c.fill();}
+    const cv=document.createElement('canvas');cv.width=cv.height=96;const c=cv.getContext('2d'),r=40,cx=45,cy=43;
+    const colors=palette===0?['#263f31','#466349','#78865a']:palette===1?['#263e35','#405e4b','#718568']:['#39472e','#5b6c44','#8c9365'];
+    // An irregular, softly lobed canopy and contact shadow share this small
+    // cached sprite. No new gradients or shadow paths are paid per visible tree.
+    c.fillStyle='rgba(8,17,13,.25)';c.beginPath();c.ellipse(cx+7,cy+11,r*1.03,r*.78,.2,0,TAU);c.fill();
+    const gradient=c.createRadialGradient(cx-r*.3,cy-r*.35,1,cx,cy,r);gradient.addColorStop(0,colors[2]);gradient.addColorStop(.55,colors[1]);gradient.addColorStop(1,colors[0]);
+    const points=[];for(let i=0;i<12;i++){const a=i*TAU/12+angle*TAU/8,rr=r*(.84+((i*7+angle*3)%5)/25);points.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}
+    c.fillStyle=gradient;c.beginPath();c.moveTo((points[11][0]+points[0][0])/2,(points[11][1]+points[0][1])/2);
+    for(let i=0;i<12;i++){const p=points[i],q=points[(i+1)%12];c.quadraticCurveTo(p[0],p[1],(p[0]+q[0])/2,(p[1]+q[1])/2);}c.closePath();c.fill();
+    for(let i=0;i<(low?3:6);i++){const a=i*TAU/6+angle*TAU/8;c.fillStyle=colors[i%2?1:0];c.globalAlpha=.3;c.beginPath();c.arc(cx+Math.cos(a)*r*.45,cy+Math.sin(a)*r*.45,r*.34,0,TAU);c.fill();}
+    c.globalAlpha=1;c.fillStyle=colors[2];c.beginPath();c.ellipse(cx-r*.27,cy-r*.32,r*.26,r*.21,-.5,0,TAU);c.fill();
     treeArt.set(key,cv);return cv;
   }
   const pat = {};
@@ -458,7 +528,7 @@ export function makeBuildings(W, tex, coreRoofs) {
   const BIN = 512, bins = new Map();
   const all = W.buildings.concat(W.coreBuildings);
   all.forEach((b, i) => {
-    b.seed = (b.x * 31 + b.y * 17) % 997;
+    b.seed = Math.abs(Math.floor(b.x * 31 + b.y * 17)) % 997;
     for (let bx = Math.floor(b.x / BIN); bx <= Math.floor((b.x + b.w) / BIN); bx++)
       for (let by = Math.floor(b.y / BIN); by <= Math.floor((b.y + b.h) / BIN); by++) {
         const k = bx + by * 100; if (!bins.has(k)) bins.set(k, []); bins.get(k).push(b);
@@ -489,7 +559,9 @@ export function makeBuildings(W, tex, coreRoofs) {
   }
   function project(cam, D, px, py, h) {
     const k = h / D;
-    return [px + (px - cam.x) * k, py + (py - cam.y) * k];
+    // Keep roof parallax within its block instead of stretching a distant
+    // tower over a neighbouring roadway. The static/mobile footprint stays valid.
+    const cap=24;return [px+Math.max(-cap,Math.min(cap,(px-cam.x)*k)),py+Math.max(-cap,Math.min(cap,(py-cam.y)*k))];
   }
   // ---- painted roof bake: texture + per-building tint + grime + sun gradient + AO edge + parapet + details
   const roofCache = new Map();

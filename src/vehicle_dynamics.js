@@ -33,6 +33,8 @@ export function drawVehicleDamage(ctx,v){
  if(v.health>=88&&!v.dead)return;
  const b=bodySize(v),w=b.w,l=b.l,wear=1-clamp((v.health??100)/100);
  const d=v.damage||{front:wear,rear:wear*.3,left:wear*.45,right:wear*.25};
+ if(v.def.boat){drawHullWear(ctx,w,l,d,v.dead);return;}
+ if(v.def.bike){drawBikeWear(ctx,w,l,d,v.dead);return;}
  ctx.save();ctx.lineJoin='round';
  // Crumpled panel seams remain aligned with the actual impact face.
  for(const [side,amount] of Object.entries(d)){
@@ -57,4 +59,32 @@ export function drawVehicleDamage(ctx,v){
   ctx.fillStyle='rgba(10,16,18,.55)';ctx.beginPath();ctx.ellipse(0,-l*.12,w*.65,l*.58,0,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='#a18c68';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-w*.65,-l*.64);ctx.lineTo(-w*.2,-l*.4);ctx.lineTo(w*.5,-l*.62);ctx.stroke();
  }ctx.restore();
+}
+
+function drawHullWear(ctx,w,l,d,dead){
+ // Gelcoat scuffs follow the tapered hull. A launch has no car hood, lamp
+ // rectangles or windshield-sized overlay across its passenger deck.
+ ctx.save();ctx.lineJoin='round';
+ for(const [side,amount] of Object.entries(d)){
+  const a=dead?1:amount;if(a<.08)continue;ctx.save();
+  ctx.strokeStyle=`rgba(19,34,38,${.45+a*.4})`;ctx.lineWidth=1.4+a*1.7;
+  if(side==='left'||side==='right'){
+   const sign=side==='left'?-1:1;ctx.beginPath();ctx.moveTo(sign*w*.5,-l*.62);ctx.lineTo(sign*w*(.85-a*.15),-l*.2);ctx.lineTo(sign*w*.77,l*.4);ctx.stroke();
+   ctx.strokeStyle='#d1c8a9';ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(sign*w*.65,-l*.2);ctx.lineTo(sign*w*.55,l*.13);ctx.lineTo(sign*w*.7,l*.36);ctx.stroke();
+  }else{
+   const y=side==='front'?-l*.68:l*.65,width=side==='front'?w*.38:w*.68;
+   ctx.beginPath();ctx.moveTo(-width,y);ctx.lineTo(-width*.2,y+a*5);ctx.lineTo(width*.25,y-3);ctx.lineTo(width,y+2);ctx.stroke();
+  }ctx.restore();
+ }
+ if(dead){ctx.fillStyle='rgba(13,27,29,.5)';ctx.beginPath();ctx.ellipse(0,l*.18,w*.55,l*.31,0,0,Math.PI*2);ctx.fill();}
+ ctx.restore();
+}
+function drawBikeWear(ctx,w,l,d,dead){
+ // Compact tank/fork damage, rather than scaled-down car panels and glass.
+ ctx.save();ctx.strokeStyle='#253039';ctx.lineWidth=1.5;
+ if(d.front>.12||dead){const bend=dead?5:d.front*5;ctx.beginPath();ctx.moveTo(-w*.55,-l*.22);ctx.lineTo(-w*.45+bend,-l*.78);ctx.moveTo(w*.55,-l*.22);ctx.lineTo(w*.45+bend,-l*.78);ctx.stroke();}
+ ctx.strokeStyle='rgba(194,184,155,.85)';ctx.lineWidth=.9;
+ if(d.left>.08||d.right>.08||dead){const sign=d.left>d.right?-1:1;ctx.beginPath();ctx.moveTo(sign*w*.55,-l*.12);ctx.lineTo(-sign*w*.15,l*.08);ctx.lineTo(sign*w*.3,l*.2);ctx.stroke();}
+ if(d.rear>.12||dead){ctx.strokeStyle='#1b252b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-w*.4,l*.58);ctx.lineTo(w*.35,l*.68);ctx.stroke();}
+ ctx.restore();
 }

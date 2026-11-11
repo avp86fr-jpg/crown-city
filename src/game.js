@@ -93,11 +93,10 @@ export async function boot() {
   drawBoot(ctx, canvas, 0.05, "Loading Crown City…");
   const texNames = ["asphalt", "asphalt_hw", "concrete", "dirt", "glass", "grass", "lot", "paver", "paver_warm", "sand", "tar", "water", "roof_gravel", "roof_gravel2", "roof_metal", "roof_metal2", "roof_terra", "roof_terra2"];
   const tex = {};
-  const [manifest, meta, maskImg, minimapCore, title, starOn, starOff, chipIcon, hero] = await Promise.all([
+  const [manifest, meta, maskImg, title, starOn, starOff, chipIcon, hero] = await Promise.all([
     fetch("assets/tiles/manifest.json").then((r) => r.json()),
     fetch("assets/city/meta.json").then((r) => r.json()),
     loadImg("assets/city/mask_gray.png"),
-    loadImg("assets/city/minimap.png"),
     loadImg("assets/ui/title.jpg"),
     loadImg("assets/ui/star_on.png"),
     loadImg("assets/ui/star_off.png"),
@@ -187,7 +186,7 @@ export async function boot() {
   applyQuality(G);
   G.nav = createNav(G);
   G.crossOk=p=>safeCrossing(G,p);
-  G.minimap = buildMinimap(G, minimapCore);
+  G.minimap = buildMinimap(G);
   audio.setSfx && audio.setSfx(settings.sfx);
   audio.setMus && audio.setMus(settings.mus);
   if (settings.master != null && audio.setMaster) audio.setMaster(settings.master);
@@ -242,14 +241,14 @@ export async function boot() {
   return G;
 }
 
-function buildMinimap(G, coreImg) {
+function buildMinimap(G) {
   const S = 8; // world px per minimap px
   const W = WORLD_W / S, H = WORLD_H / S;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
   const img = x.createImageData(W, H);
-  const col = { 0: [52, 54, 62], 1: [150, 146, 138], 2: [96, 84, 92], 3: [30, 86, 122], 4: [196, 170, 118], 5: [70, 118, 56], 6: [70, 70, 76], 7: [120, 96, 70], 8: [30, 86, 122], 9: [110, 110, 114], 10: [134, 112, 82] };
+  const col = { 0: [144, 153, 150], 1: [81, 94, 88], 2: [49, 65, 66], 3: [25, 62, 75], 4: [125, 110, 79], 5: [49, 77, 62], 6: [150, 155, 150], 7: [129, 117, 86], 8: [25, 62, 75], 9: [103, 109, 100], 10: [89, 87, 66] };
   for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) {
     const c0 = G.codeAt(xx * S + 4, y * S + 4);
     const k = col[c0] || [0, 0, 0];
@@ -257,7 +256,8 @@ function buildMinimap(G, coreImg) {
     img.data[i] = k[0]; img.data[i + 1] = k[1]; img.data[i + 2] = k[2]; img.data[i + 3] = 255;
   }
   x.putImageData(img, 0, 0);
-  if (coreImg) { x.globalAlpha = 0.85; x.drawImage(coreImg, 0, 0, CORE / S, CORE / S); x.globalAlpha = 1; }
+  // Use the actual collision geography across the whole atlas. Mixing the
+  // illustrated core image with a schematic frontier obscured roads at the seam.
   return { c, S };
 }
 
@@ -337,12 +337,28 @@ function spawnWorld(G) {
   G.peds = [];
   G.cops = [];
   G.bullets = [];
-  const car = findSafe(G, 920, 3236, 30, false);
+  const blocked = new Set(["road", "track", "water", "canal", "build"]);
+  const addParked=(kind,pk,extra={})=>{
+    const v=makeVeh(kind,pk.x,pk.y,pk.rot||0,{keep:true,...extra});
+    if(worldBodyHit(G,v,v.x,v.y)||G.vehicles.some(o=>Math.abs(o.x-v.x)<150&&Math.abs(o.y-v.y)<150&&bodyContact(v,o)))return false;
+    const b=bodySize(v),sn=Math.sin(v.rot),co=Math.cos(v.rot);
+    for(const a of [-1,-.5,0,.5,1])for(const d of [-1,-.5,0,.5,1]){const x=a*(b.w+8),y=d*(b.l+8);if(blocked.has(G.surfaceAt(v.x+x*co-y*sn,v.y+x*sn+y*co)))return false;}
+    G.vehicles.push(v);return v;
+  };
+  const parkNear=(kind,x,y,rot,extra={})=>{
+    // Authored coordinates are anchors, not permission to occupy a live lane.
+    for(const surface of ['lot','walk','sand'])for(let radius=0;radius<=512;radius+=32){
+      const count=radius?Math.max(8,Math.ceil(radius/16)):1;
+      for(let i=0;i<count;i++){const angle=i/count*TAU,pk={x:x+Math.cos(angle)*radius,y:y+Math.sin(angle)*radius,rot};
+        if(G.surfaceAt(pk.x,pk.y)===surface){const v=addParked(kind,pk,extra);if(v)return v;}
+      }
+    }
+  };
+  const car = parkNear('riot',920,3236,Math.PI,{mission:true});
   const spawn = findSafe(G, car.x - 52, car.y, 10, true, true);
   meta.spawns.player = [spawn.x, spawn.y];
   // the getaway now runs the whole east highway out to the city edge
   { const d = findSafe(G, 9700, 3900, 30, false); meta.spawns.desert = [d.x, d.y]; }
-  G.vehicles.push(makeVeh("riot", car.x, car.y, Math.PI, { keep: true, mission: true }));
   meta.spawns.garage = [car.x, car.y];
   // keep the lane in front of the Riot clear: the spare cab waits across the road, facing north
   // Mission markers belong at reachable entrances, not deep inside painted roofs.
@@ -353,35 +369,28 @@ function spawnWorld(G) {
   }
   const lot = findSafe(G, meta.spawns.casinoDoor[0], meta.spawns.casinoDoor[1] + 240, 10, true);
   meta.interactions.casinoLot = [lot.x, lot.y];
-  const c2 = findSafe(G, 1044, 3330, 30, false);
-  G.vehicles.push(makeVeh("fare", c2.x, c2.y, 0, { keep: true }));
-  const c3 = findSafe(G, 870, 3140, 16, false);
-  G.vehicles.push(makeVeh("hog", c3.x, c3.y, Math.PI, { keep: true }));
+  parkNear("fare",1044,3330,0);
+  parkNear("hog",870,3140,Math.PI);
   const pd = meta.spawns.pd;
-  for (const ox of [-50, 50]) { const p = findSafe(G, pd[0] + ox, pd[1], 28, false); G.vehicles.push(makeVeh("metro", p.x, p.y, 0, { keep: true, pdCar: true })); }
-  const blocked = new Set(["road", "track", "water", "canal", "build"]);
+  for(const ox of [-60,60])parkNear("metro",pd[0]+ox,pd[1],0,{pdCar:true});
   let parkedN = 0;
   const stripX = (meta.layout && meta.layout.stripX) || 1964;
   for (const pk of meta.parking) {
     if (parkedN >= 30) break;
-    if (blocked.has(G.surfaceAt(pk.x, pk.y))) continue;
-    if (Math.abs(pk.x - stripX) < 360) continue;
-    const kinds = ["fare", "dart", "riot", "fare"];
-    G.vehicles.push(makeVeh(kinds[parkedN % kinds.length], pk.x, pk.y, pk.rot || 0, { keep: true }));
-    parkedN++;
+    if (blocked.has(G.surfaceAt(pk.x, pk.y))||Math.abs(pk.x-stripX)<360)continue;
+    if(addParked(["fare","dart","riot","fare"][parkedN%4],pk))parkedN++;
   }
   const pkinds = ["fare", "dart", "fare", "riot", "taxi", "fare", "dart"];
-  for (const pk of G.world.parking) {
-    const s = G.surfaceAt(pk.x, pk.y);
-    if (s === "build" || s === "water") continue;
-    G.vehicles.push(makeVeh(pkinds[((pk.x + pk.y) | 0) % pkinds.length], pk.x, pk.y, pk.rot + (((pk.x | 0) % 2) ? Math.PI : 0), { keep: true, parkedOuter: true }));
+  for(const pk of G.world.parking){
+    if(blocked.has(G.surfaceAt(pk.x,pk.y)))continue;
+    addParked(pkinds[Math.abs((pk.x+pk.y)|0)%pkinds.length],pk,{parkedOuter:true});
   }
   for (const [i,s] of meta.slips.slice(0,8).entries()) {const v=makeVeh(i%4===3?'gulf':'wake',s.x,s.y,s.rot||0,{keep:true});const at=waterBerth(G,v,s.x,s.y);if(at&&!G.vehicles.some(o=>o.def.boat&&Math.hypot(o.x-at.x,o.y-at.y)<110)){Object.assign(v,at);G.vehicles.push(v);}}
   for (const p of G.world.piers.slice(0,6)){const v=makeVeh('wake',p.x-60,p.y+60,0,{keep:true});const at=waterBerth(G,v,v.x,v.y);if(at){Object.assign(v,at);G.vehicles.push(v);}}
   const palace = meta.spawns.casino || [2560, 2090];
-  G.vehicles.push(makeVeh("nyx", palace[0] - 40, palace[1] - 200, Math.PI, { lockedUntil: "nyx", keep: true }));
-  G.vehicles.push(makeVeh("dart", 2480, 1680, 0, { lockedUntil: "dart", keep: true }));
-  G.vehicles.push(makeVeh("stitch", 2520, 1680, 0.2, { lockedUntil: "stitch", keep: true }));
+  parkNear("nyx",palace[0]-40,palace[1]-200,Math.PI,{lockedUntil:"nyx"});
+  parkNear("dart",2480,1680,0,{lockedUntil:"dart"});
+  parkNear("stitch",2544,1680,0,{lockedUntil:"stitch"});
   for (let i = 0; i < 22; i++) G.traffic.spawnCar({ x: spawn.x, y: spawn.y }, 300, 2000);
   for (const gt of (meta.gathers || [])) {
     const n = 2 + ((Math.random() * 2) | 0);
@@ -1499,7 +1508,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
     break;
   }
   if(impact>70 && !(v.impactT>0)){
-    v.impactT=.35;if(isPlayer){recordIncident(G,'collision');(v.def.boat?G.audio.splash||G.audio.crash:G.audio.crash)(impact/200);addShake(G,Math.min(9,impact/24));}
+    v.impactT=.35;if(isPlayer){recordIncident(G,'collision');if(G.audio.contact)G.audio.contact({speed:impact,material:v.def.boat?'hull':'concrete',source:v,x:v.x,y:v.y});else G.audio.crash();addShake(G,Math.min(9,impact/24));}
     damageVeh(G,v,impact/(v.def.boat?18:12),isPlayer,impactPoint);
     for(let i=0;i<(G.settings.quality==='low'?3:8);i++)G.particles.push({kind:v.def.boat?'splash':'spark',x:v.x,y:v.y,vx:(Math.random()-.5)*160,vy:(Math.random()-.5)*160,life:.25});
   }
@@ -1598,16 +1607,16 @@ function tickCollisions(G) {
         const imp = Math.abs(rv);
         for (const v of [a, b]) {
           if (v.isVan && imp > 50) v.loose = true;
-          if (v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
+          if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
           if (v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
         }
         if (imp > 50) {
           if(playerImpact>50 && playerImpact>otherImpact)recordIncident(G,'collision');
           const atFault=playerImpact>50&&playerImpact>otherImpact;
           damageVeh(G,a,imp/14,atFault,{x:a.x+best.nx*a.r,y:a.y+best.ny*a.r});damageVeh(G,b,imp/14,atFault,{x:b.x-best.nx*b.r,y:b.y-best.ny*b.r});
-          if (a === P || b === P) { G.audio.crash(); addShake(G, Math.min(12, imp / 22)); }
+          if (a === P || b === P) { if(G.audio.contact)G.audio.contact({speed:imp,material:a.def.boat||b.def.boat?'hull':'body',source:P,x:(a.x+b.x)/2,y:(a.y+b.y)/2});else G.audio.crash();addShake(G, Math.min(12, imp / 22)); }
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
-          for (let k = 0; k < 8; k++) G.particles.push({ kind: "spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
+          for (let k = 0; k < (G.settings.quality==='low'?3:8); k++) G.particles.push({ kind: a.def.boat||b.def.boat?"splash":"spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
           // only the player's fault if they were the one ramming (cops pinning you is not a new crime)
           if ((a === P && b.cop) || (b === P && a.cop)) {
             const cop = a === P ? b : a, ps = Math.hypot(P.vx, P.vy), cs = Math.hypot(cop.vx, cop.vy);
@@ -2053,12 +2062,19 @@ function tickVehicles(G, dt) {
       continue;
     }
     if (v.role === "ambulance" && v.target) {
-      const n = Math.hypot(v.target.x - v.x, v.target.y - v.y);
-      const ang = Math.atan2(v.target.x - v.x, -(v.target.y - v.y));
-      tickDrive(G, v, { x: clamp(angNorm(ang - v.rot) * 2, -1, 1), y: n < 120 ? 0.2 : 0.8 }, dt, false);
-      v.siren = true;
-      if (n < 60) { v.target = null; v.siren = false; v.loose = true; }
-      continue;
+      // Emergency vehicles use the same lanes and turn clearance as traffic.
+      // Direct steering at a casualty used to leave a diagonal roadblock.
+      v.responseAge=(v.responseAge||0)+dt;
+      if(v.traffic&&v.tr){
+        const n=Math.hypot(v.target.x-v.x,v.target.y-v.y);
+        if(n<180&&!v.tr.turn&&v.serviceLeft==null)v.serviceLeft=8;
+        if(v.serviceLeft!=null){v.serviceLeft-=dt;v.cruise=0;}
+        if(v.serviceLeft!=null&&v.serviceLeft<=0||v.responseAge>75){v.target=null;v.siren=false;v.cruise=v.responseCruise||100;v.serviceLeft=null;}
+        if(v.burning||v.health<45)tickVehDamage(G,v,dt);
+        continue;
+      }
+      // A collision interrupts the response and leaves ordinary coasting physics.
+      v.target=null;v.siren=false;v.loose=true;
     }
     if (v.loose && !v.traffic) {
       // knocked loose / abandoned: coast to a stop with physics
@@ -2128,7 +2144,7 @@ function callAmbulance(G, x, y) {
   G._ambT = 25;
   const v = G.traffic.spawnCar({ x, y }, 500, 1100, "ambulance");
   if (!v) return;
-  v.traffic = false; v.tr = null; v.role = "ambulance"; v.target = { x, y }; v.siren = true; v.ambient = true;
+  v.role="ambulance";v.target={x,y};v.siren=true;v.ambient=true;v.responseAge=0;v.responseCruise=v.cruise;v.serviceLeft=null;
 }
 
 function lightHeld(G, rd, pos) {
@@ -2163,7 +2179,7 @@ function tickPeds(G, dt) {
   const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
   for (const p of G.peds) {
     if (p.dead) { p.deadT = (p.deadT || 0) + dt; if(p.deadT<.75){const x=p.x+(p.vx||0)*dt,y=p.y+(p.vy||0)*dt;if(!G.solidAt(x,y)){p.x=x;p.y=y;}p.vx*=Math.exp(-5*dt);p.vy*=Math.exp(-5*dt);}continue; }
-    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240) continue;
+    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&G.surfaceAt(p.x,p.y)!=='road') continue;
     const dx = p.x - pl.x, dy = p.y - pl.y;
     const dist = Math.hypot(dx, dy);
     // Impacts are resolved before a pedestrian's dodge; a dive is never invulnerability.

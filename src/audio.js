@@ -1,4 +1,4 @@
-import {createEffects} from './sound_effects.js';
+import {createEffects,createContactPlayer,surfaceMotion} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
 /** Crown City sound design: original arranged radio plus synthesized spatial effects.
  *  Buses: sfx / music / ambience -> glue compressor -> limiter -> master.
@@ -17,7 +17,7 @@ export function createAudio() {
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;
-  let soundtrack=null, effects=null;
+  let soundtrack=null, effects=null,contactSound=null,listener=null;const rollingMix={};
   const STYLES = {
     score: { bpm: 96, root: 45, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 6], swing: 0 },
     synth: { bpm: 104, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 2, 6], swing: 0 },
@@ -50,7 +50,7 @@ export function createAudio() {
     { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
     brownBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
     { const d = brownBuf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; } }
-    effects=createEffects(ctx,sfx);buildMusic(); buildLoops();
+    effects=createEffects(ctx,sfx);contactSound=createContactPlayer(()=>ctx.currentTime,effects);buildMusic(); buildLoops();
   }
   const now = () => ctx.currentTime;
   const noiseSrc = (buf = noiseBuf, loop = false) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = loop; if (!loop) s.playbackRate.value = 0.9 + Math.random() * 0.2; return s; };
@@ -112,8 +112,18 @@ export function createAudio() {
   A.exit = () => { noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); tone(140, 0.06, "sine", 0.1, -50); };
   A.hit = () => effects?.('impact',.4);
   A.shot = (pan=0,far=0,kind='pistol') => {effects?.(kind,.5*(1-far*.65),pan);};
-  A.crash = (amount=1) => {effects?.('metal',Math.min(.65,.25+amount*.2));};
-  A.splash = (amount=1) => effects?.('water',Math.min(.55,.2+amount*.2));
+  A.contact=(event={})=>{
+    if(!contactSound||ctx.state!=='running'||A.sfxVol<=0)return false;
+    const P=listener?.player,x=event.x??event.source?.x,y=event.y??event.source?.y;
+    let gain=1,pan=event.pan||0;
+    if(P&&Number.isFinite(x)&&Number.isFinite(y)){
+      const dx=x-P.x,dy=y-P.y,d=Math.hypot(dx,dy),rot=listener.cam?.rot||0;
+      gain=Math.max(0,1-d/950)**1.5;pan=Math.max(-.9,Math.min(.9,(dx*Math.cos(rot)-dy*Math.sin(rot))/430));
+    }
+    return contactSound({...event,gain,pan});
+  };
+  A.crash=(amount=1)=>A.contact({speed:amount*200,material:'body'});
+  A.splash=(amount=1)=>A.contact({speed:amount*180,material:'water'});
   A.boom = () => {
     noiseHit({ dur: 1.6, vol: 0.9, type: "lowpass", f: 2200, f2: 80, rate: 0.6 });
     noiseHit({ dur: 2.2, vol: 0.4, type: "lowpass", f: 600, f2: 60, out: verbSend || sfx, a: 0.02 });
@@ -162,6 +172,8 @@ export function createAudio() {
     const rumble = loopNoise(brownBuf, "lowpass", 180, 1, sfx, 0);
     L.engine = { o1, o2, o3, f: ef, g: eg, rumble };
     L.tyre = loopNoise(noiseBuf, "bandpass", 1900, 6, sfx, 0);
+    L.road=loopNoise(brownBuf,'bandpass',650,.65,sfx,0);
+    L.wake=loopNoise(noiseBuf,'lowpass',1200,.5,sfx,0);
     // siren: square through bandpass, pitch LFO handled in update for wail/yelp patterns
     const so = ctx.createOscillator(); so.type = "square"; so.frequency.value = 700;
     const sf = ctx.createBiquadFilter(); sf.type = "bandpass"; sf.frequency.value = 1100; sf.Q.value = 1.2;
@@ -272,6 +284,7 @@ export function createAudio() {
   let stepDist = 0, gullT = 3, dingT = 2, railT=0;
   A.update = (G, dt) => {
     if (!ctx || ctx.state !== "running") return;
+    listener=G;
     const P = G.player, play = G.scene === "play";
     if(G.scene==='train'&&(railT-=dt)<0){railT=.68;A.transit('rail');}
     // intensity: 0 calm, 1 mission/active, 2 wanted 1-2, 3 chase (3+ or seen)
@@ -298,16 +311,19 @@ export function createAudio() {
       const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind] || ENG.sedan;
       const spd = Math.hypot(P.vx, P.vy), top = P.def.max || 300;
       const gearN = 4, k = Math.min(1, spd / top), gear = Math.min(gearN - 1, (k * gearN) | 0), inG = (k * gearN) - gear;
-      const rpm = 0.25 + 0.75 * (gear === 0 ? k * gearN : 0.35 + 0.65 * inG) * (G.input.y > 0.1 || G.input.touchJoy?.active ? 1 : 0.8);
+      const load=G.input.brake?0:G.input.y>.1||G.input.touchJoy?.active?1:.55;
+      // Launches have a continuous propeller load, not four road-car gears.
+      const rpm=P.def.boat?.22+.68*k+.10*load:.25+.75*(gear===0?k*gearN:.35+.65*inG)*(.7+.3*load);
       const f = c[0] + (c[1] - c[0]) * rpm;
       set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
       set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
       set(E.g.gain, 0.05 + 0.07 * rpm, 0.08); set(E.rumble.g.gain, 0.12 * c[3], 0.1); set(E.rumble.f.frequency, 120 + 200 * rpm, 0.1);
-      // tyres: slip = sideways speed
-      const side = Math.abs(P.vx * Math.cos(P.rot) + P.vy * Math.sin(P.rot));
-      const slip = Math.max(A._skid, Math.min(1, Math.max(0, side - 70) / 160) * (P.def.boat ? 0 : 1));
-      set(L.tyre.g.gain, slip * 0.22, 0.05); set(L.tyre.f.frequency, 1500 + 900 * slip, 0.1);
     } else { set(E.g.gain, 0, 0.15); set(E.rumble.g.gain, 0, 0.2); set(L.tyre.g.gain, 0, 0.05); }
+    const surface=inCar?(G.surfaceAt?.(P.x,P.y)||'road'):'walk';surfaceMotion(inCar?P:{type:'foot'},surface,G.wet||0,rollingMix);
+    const skid=inCar&&!P.def.boat&&!P.def.aircraft&&['road','walk','lot','track'].includes(surface)?A._skid*.18:0;
+    set(L.tyre.g.gain,Math.max(skid,rollingMix.tyre),.07);set(L.tyre.f.frequency,1400+rollingMix.tyre*4500,.15);
+    set(L.road.g.gain,rollingMix.roll,.16);set(L.road.f.frequency,rollingMix.frequency,.2);
+    set(L.wake.g.gain,rollingMix.wake,.22);set(L.wake.f.frequency,rollingMix.frequency,.2);
     A._skid = Math.max(0, A._skid - dt * 2.5);
     // nearest siren with pan + doppler
     let best = null, bd = 1400;
@@ -321,7 +337,7 @@ export function createAudio() {
       const dop = Math.max(0.85, Math.min(1.15, 1 - rel / 1200));
       set(S.o.frequency, (620 + 520 * wail) * dop, 0.03);
       set(S.g.gain, 0.09 * Math.pow(1 - bd / 1400, 1.6), 0.08);
-      if(S.p.pan){const rot=G.cam.rot||0,screenX=(best.x-P.x)*Math.cos(rot)+(best.y-P.y)*Math.sin(rot);set(S.p.pan,Math.max(-.9,Math.min(.9,screenX/600)),.1);}
+      if(S.p.pan){const rot=G.cam.rot||0,screenX=(best.x-P.x)*Math.cos(rot)-(best.y-P.y)*Math.sin(rot);set(S.p.pan,Math.max(-.9,Math.min(.9,screenX/600)),.1);}
     } else set(S.g.gain, 0, 0.2);
     // ambience by district / place
     const dist = (G.district || "").toUpperCase();
