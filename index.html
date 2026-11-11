@@ -9,7 +9,7 @@
   <title>METAWINNERS: CROWN CITY</title>
   <meta name="description" content="Fan-made top-down heist in Crown City. Play as Chaos. Click, drive, race, and crack the Palace. Play chips only. Not affiliated with MetaWin.">
   <meta property="og:title" content="METAWINNERS: CROWN CITY">
-  <meta property="og:description" content="A fan-made classic top-down city heist. Chaos, a casino city, and play chips only.">
+  <meta property="og:description" content="A fan-made classic top-down heist. Chaos, a casino city, and play chips only.">
   <meta property="og:image" content="assets/ui/title.jpg">
   <link rel="icon" href="assets/ui/icon.png">
   <link rel="stylesheet" href="css/game.css">
@@ -17,14 +17,19 @@
 <body>
   <div id="wrap">
     <canvas id="c" width="1280" height="720"></canvas>
-    <div id="touch" class="hidden">
-      <div class="joy" id="joy"><div class="knob" id="knob"></div></div>
-      <button class="btn enter" id="tEnter" type="button">E</button>
-      <button class="btn brake" id="tBrake" type="button">BRAKE</button>
-      <button class="btn fire" id="tFire" type="button">FIRE</button>
-      <button class="btn pause" id="tPause" type="button">II</button>
-      <button class="btn fs" id="tFs" type="button">FS</button>
+    <div id="touch" class="hidden foot">
+      <div id="joyZone"><div class="joy" id="joy"><div class="knob" id="knob"></div></div><div class="hintL" id="hintL">DRAG TO MOVE</div></div>
+      <div class="cluster">
+        <button class="btn act" id="tEnter" type="button"><svg viewBox="0 0 24 24"><path d="M5 16l1.5-5.2A2 2 0 0 1 8.4 9.3h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="tEnterL">CAR</span></button>
+        <button class="btn fire" id="tFire" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>FIRE</span></button>
+        <button class="btn brake drive-only" id="tBrake" type="button"><span>BRAKE</span></button>
+        <button class="btn hand drive-only" id="tHand" type="button"><span>DRIFT</span></button>
+        <button class="btn boost drive-only" id="tBoost" type="button"><span>BOOST</span></button>
+        <button class="btn sprint foot-only" id="tSprint" type="button"><span>RUN</span></button>
+      </div>
+      <button class="btn pause" id="tPause" type="button" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
     </div>
+    <div id="safe"></div>
   </div>
   <script type="module" src="src/main.js"></script>
 </body>
