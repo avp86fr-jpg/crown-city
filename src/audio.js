@@ -1,4 +1,5 @@
-/** Crown City sound design: fully synthesized Web Audio (no samples, no copyrighted music).
+import {createSoundtrack,TRACKS} from './soundtrack.js';
+/** Crown City sound design: original arranged radio plus synthesized spatial effects.
  *  Buses: sfx / music / ambience -> glue compressor -> limiter -> master.
  *  Dynamic score: a step sequencer with stems (pad, arp, bass, kick, snare, hats, lead) whose
  *  levels follow an intensity value driven by wanted level / chases / missions. In cars the
@@ -9,12 +10,13 @@ export function createAudio() {
     sfxVol: 0.8, musVol: 0.6, masterVol: 0.9,
     station: 0, radio: false, intensity: 0, _int: 0, _skid: 0,
     stations: [
-      { name: "VEIL FM", style: "synth" },
-      { name: "CHIP RADIO", style: "house" },
-      { name: "NIGHT SHIFT", style: "lofi" },
+      { name: TRACKS[0].station, style: "synth" },
+      { name: TRACKS[1].station, style: "lofi" },
+      { name: TRACKS[2].station, style: "house" },
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;
+  let soundtrack=null;
   const STYLES = {
     score: { bpm: 96, root: 45, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 6], swing: 0 },
     synth: { bpm: 104, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 2, 6], swing: 0 },
@@ -82,13 +84,24 @@ export function createAudio() {
   }
 
   /* ---------------- SFX ---------------- */
-  A.unlock = () => { ensure(); if (ctx.state === "suspended") ctx.resume(); startMusic(); };
+  A.unlock = () => {
+    try {
+      if (!(window.AudioContext || window.webkitAudioContext)) return false;
+      ensure(); if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if(!soundtrack && typeof Audio!=='undefined' && ctx.createMediaElementSource) {try{soundtrack=createSoundtrack(ctx,mus);}catch{soundtrack=null;}}
+      soundtrack?.start();startMusic(); return true;
+    } catch (e) { console.warn('Audio is unavailable; continuing silently.'); return false; }
+  };
   A.setSfx = (v) => { A.sfxVol = v; if (sfx) { sfx.gain.value = v; amb.gain.value = 0.55 * v; } };
   A.setMus = (v) => { A.musVol = v; if (mus) mus.gain.setTargetAtTime(v * musLevel, now(), 0.1); };
   A.setMaster = (v) => { A.masterVol = v; if (master) master.gain.value = v; };
   A.ui = () => { tone(880, 0.05, "triangle", 0.05); tone(1320, 0.06, "triangle", 0.035, 0, sfx, ctx && now() + 0.035); };
   A.click = () => tone(1400, 0.025, "square", 0.025);
   A.type = () => tone(1800 + Math.random() * 300, 0.012, "square", 0.012);
+  A.reload = () => { noiseHit({dur:.16,vol:.12,type:'bandpass',f:3200,q:2});tone(130,.06,'triangle',.06); };
+  A.cock = () => noiseHit({dur:.055,vol:.16,type:'highpass',f:2800});
+  A.dodge = () => noiseHit({dur:.23,vol:.17,type:'lowpass',f:1200,f2:280});
+  A.radioChirp = () => {tone(1100,.04,'sine',.022);tone(1600,.05,'sine',.018,0,sfx,ctx&&now()+.06);};
   A.pickup = () => { if (!ctx) return; const t = now(); [0, 4, 7, 12].forEach((s, i) => tone(mtof(84 + s), 0.12, "triangle", 0.05, 0, sfx, t + i * 0.045)); };
   A.star = () => { if (!ctx) return; const t = now(); tone(988, 0.09, "square", 0.04, 0, sfx, t); tone(740, 0.12, "square", 0.04, 0, sfx, t + 0.1); };
   A.enter = () => { noiseHit({ dur: 0.08, vol: 0.25, type: "lowpass", f: 600 }); tone(110, 0.08, "sine", 0.12, -40); };
@@ -204,6 +217,7 @@ export function createAudio() {
   }
   function schedule() {
     if (!ctx || ctx.state !== "running") return;
+    if(A.recordedMusic){seqT=now()+.1;return;}
     const S = STYLES[style];
     const spb = 60 / S.bpm / 4; // 16th
     while (seqT < now() + 0.25) {
@@ -269,9 +283,11 @@ export function createAudio() {
     let target = play ? (G.wanted >= 3 ? 3 : G.wanted > 0 ? 2.2 : (G._flow ? 1 : 0.4)) : G.scene === "title" ? 0.9 : 0.3;
     if (G.scene === "vn" || G.scene === "brief") target = 0.2;
     A._int += (target - A._int) * Math.min(1, dt * 0.6);
-    applyMix(A._int);
+    A.recordedMusic=soundtrack?.update(G,A.station)||false;
+    A.trackTitle=soundtrack?.title||'CROWN CITY / LIVE SCORE';
+    if(A.recordedMusic){for(const s of Object.keys(MIX[0]))set(stems[s].gain,0,.35);}else applyMix(A._int);
     const inCar = play && P.type === "veh";
-    wantStyle(G.wanted >= 3 ? "chase" : inCar && A.radio ? A.stations[A.station].style : "score");
+    if(!A.recordedMusic)wantStyle(G.wanted >= 3 ? "chase" : inCar && A.radio ? A.stations[A.station].style : "score");
     musLevel = G.scene === "title" ? 0.85 : 1;
     // engine
     const E = L.engine;

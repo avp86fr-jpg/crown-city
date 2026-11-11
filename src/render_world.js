@@ -2,17 +2,12 @@
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
-export function loadImg(src) {
-  const im = new Image();
-  im.decoding = "async";
-  im.src = src;
-  return im.decode().then(() => im);
-}
+import { loadImage as loadImg } from "./assets.js";
 
 export class TileLayer {
   constructor(name, keys, size, ext = "webp") {
     this.name = name; this.keys = new Set(keys); this.size = size; this.ext = ext;
-    this.img = new Map(); this.pending = new Set(); this.used = new Map();
+    this.img = new Map(); this.pending = new Map(); this.used = new Map(); this.retryAt = new Map();
   }
   get(tx, ty, frame) {
     const k = tx + "_" + ty;
@@ -20,13 +15,23 @@ export class TileLayer {
     this.used.set(k, frame);
     const im = this.img.get(k);
     if (im) return im;
-    if (!this.pending.has(k)) {
-      this.pending.add(k);
-      loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`).then((i) => { this.img.set(k, i); this.pending.delete(k); }).catch(() => this.pending.delete(k));
-    }
+    this.request(k, frame);
     return null;
   }
-  preload(keys) { return Promise.all([...keys].filter((k) => this.keys.has(k)).map((k) => loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`).then((i) => this.img.set(k, i)).catch(() => {}))); }
+  request(k, frame = 0) {
+    if (this.img.has(k)) return Promise.resolve(this.img.get(k));
+    if (this.pending.has(k)) return this.pending.get(k);
+    if ((this.retryAt.get(k) || 0) > frame) return Promise.resolve(null);
+    const promise = loadImg(`assets/tiles/${this.name}/${k}.${this.ext}`)
+      .then(im => { this.img.set(k, im); this.retryAt.delete(k); return im; })
+      .catch(() => { this.retryAt.set(k, frame + 600); return null; })
+      .finally(() => this.pending.delete(k));
+    this.pending.set(k, promise);
+    return promise;
+  }
+  preload(keys) {
+    return Promise.all([...keys].filter(k => this.keys.has(k)).map(k => { this.used.set(k, 0); return this.request(k, 0); }));
+  }
   draw(ctx, r, frame) {
     const T = this.size;
     const tx0 = Math.max(0, Math.floor(r.x0 / T)), ty0 = Math.max(0, Math.floor(r.y0 / T));
@@ -53,7 +58,6 @@ export class TileLayer {
     return ok;
   }
   evict(frame, keep = 600) {
-    if (this.img.size < 10) return;
     for (const [k, f] of this.used) if (frame - f > keep && this.img.has(k)) { this.img.delete(k); this.used.delete(k); }
   }
 }
@@ -62,7 +66,6 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const order = [];
   const pats = {};
   const scratch = document.createElement("canvas").getContext("2d");
   for (const k of Object.keys(tex)) pats[k] = scratch.createPattern(tex[k], "repeat");
@@ -245,6 +248,7 @@ export function makeGround(W, tex, codeAt) {
     return c;
   }
   return {
+    maxChunks:64,
     draw(ctx, r, frame) {
       const ix0 = Math.max(0, Math.floor(r.x0 / CH)), iy0 = Math.max(0, Math.floor(r.y0 / CH));
       const ix1 = Math.min(WORLD_W / CH - 1, Math.floor(r.x1 / CH)), iy1 = Math.min(WORLD_H / CH - 1, Math.floor(r.y1 / CH));
@@ -255,13 +259,14 @@ export function makeGround(W, tex, codeAt) {
         if (!e) {
           if (built >= 2 && frame > 2) continue; // budget per frame
           e = { c: render(ix, iy), f: frame }; built++;
-          cache.set(k, e); order.push(k);
+          cache.set(k, e);
         }
         e.f = frame;
         if (e.c) ctx.drawImage(e.c, ix * CH, iy * CH);
       }
-      if (cache.size > 70) {
-        for (const [k, e] of cache) if (frame - e.f > 240) cache.delete(k);
+      if (cache.size > this.maxChunks) {
+        const cold=[...cache].filter(([,e])=>e.f!==frame).sort((a,b)=>a[1].f-b[1].f);
+        for(const [key,e] of cold){if(cache.size<=this.maxChunks)break;cache.delete(key);if(e.c)e.c.width=e.c.height=1;}
       }
     },
     warm(r) { this.draw({ drawImage() {} }, r, 0); },
@@ -504,6 +509,9 @@ export function makeBuildings(W, tex, coreRoofs) {
         const x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
         const P = (px, py) => project(cam, D, px, py, h);
         const r00 = P(x0, y0), r10 = P(x1, y0), r11 = P(x1, y1), r01 = P(x0, y1);
+        const hero=opts.player;
+        const covered=hero?.type==='foot' && hero.x>r00[0]-12 && hero.x<r11[0]+12 && hero.y-22>r00[1] && hero.y-22<r11[1];
+        ctx.save();if(covered)ctx.globalAlpha*=.24;
         const col = wallCol(b);
         const fp = !opts.low && b.kind !== "container" && b.kind !== "hangar" ? (b.wall === "glass" ? fac.glass : fac.day) : null;
         if (cam.y > y1) wall(ctx, [x0, y1], [x1, y1], r01, r11, col[0], h, fp, sun, 0, 1);
@@ -528,6 +536,7 @@ export function makeBuildings(W, tex, coreRoofs) {
           }
         }
         // ambient occlusion at the base of tall buildings
+        ctx.restore();
       }
     },
     drawLit(ctx, cam, r, night) {
@@ -572,11 +581,19 @@ export function makeBuildings(W, tex, coreRoofs) {
       const D = 980 / Math.max(0.45, cam.scale);
       for (const t of inViewTrees(r)) {
         const k = 28 / D;
-        const x = t.x + (t.x - cam.x) * k, y = t.y + (t.y - cam.y) * k;
+        const wind = opts.time ? Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012) * 1.6 : 0;
+        const x = t.x + (t.x - cam.x) * k + wind, y = t.y + (t.y - cam.y) * k + wind * .35;
         ctx.fillStyle = "#4a3422"; ctx.fillRect(t.x - 2, t.y - 2, 4, 4);
         const g = t.t === 0 ? ["#2f5a26", "#4d8a37", "#6fb04a"] : t.t === 1 ? ["#2a4f2c", "#3f7a3c", "#5f9e52"] : ["#3c5a22", "#5f8a2e", "#86b04a"];
-        ctx.fillStyle = g[0]; ctx.beginPath(); ctx.arc(x, y, t.r, 0, TAU); ctx.fill();
-        ctx.fillStyle = g[1]; ctx.beginPath(); ctx.arc(x - t.r * 0.18, y - t.r * 0.18, t.r * 0.74, 0, TAU); ctx.fill();
+        const crown = ctx.createRadialGradient(x - t.r * .3, y - t.r * .35, 1, x, y, t.r);
+        crown.addColorStop(0, g[2]); crown.addColorStop(.5, g[1]); crown.addColorStop(1, g[0]);
+        ctx.fillStyle = crown; ctx.beginPath(); ctx.arc(x, y, t.r, 0, TAU); ctx.fill();
+        if (!opts.low) for (let i = 0; i < 6; i++) {
+          const a = i * TAU / 6 + t.x, radius = t.r * .48;
+          ctx.fillStyle = i % 2 ? g[1] : g[0]; ctx.globalAlpha = .35;
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * radius, y + Math.sin(a) * radius, t.r * .43, 0, TAU); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
         if (!opts.low) { ctx.fillStyle = g[2]; ctx.beginPath(); ctx.arc(x - t.r * 0.32, y - t.r * 0.34, t.r * 0.36, 0, TAU); ctx.fill(); }
       }
     },

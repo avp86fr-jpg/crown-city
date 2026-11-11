@@ -1,4 +1,5 @@
 /** Visual novel script + mission definitions. Text never sits over faces. */
+import {directStory} from './screenplay.js';
 export const CHAR = {
   chaos: { name: "CHAOS", color: "#9d5cff", portrait: "assets/portraits/chaos.jpg", side: "left" },
   hunter: { name: "HUNTER", color: "#5aaf40", portrait: "assets/portraits/hunter.jpg", side: "right" },
@@ -6,7 +7,7 @@ export const CHAR = {
   neural: { name: "NEURAL", color: "#c040ff", portrait: "assets/portraits/neural.jpg", side: "right" },
   mask: { name: "MASK", color: "#c0c0c8", portrait: "assets/portraits/mask.jpg", side: "right" },
   gold_mage: { name: "GOLD MAGE", color: "#f2c14e", portrait: "assets/portraits/gold_mage.jpg", side: "right" },
-  vera: { name: "VERA VALE", color: "#e31b23", portrait: "assets/vera/vera_mic.png", side: "right" },
+  vera: { name: "VERA VALE", color: "#e31b23", portrait: "assets/vera/vera_mic_hd.webp", side: "right" },
 };
 
 export const MISSIONS = [
@@ -70,7 +71,7 @@ export const VN = {
 
   m2_intro: {
     bg: "strip_night", left: "chaos", right: "fire", speaker: "fire",
-    text: "Cred is a leaderboard, Chaos. You want a crew, you burn gas on the Crown Loop. Pink slip energy. I don't do participation trophies.",
+    text: "Two laps of the Crown Loop. Hit every gold gate, then cross the start line. You want a crew, Chaos? Show me you can drive.",
     next: "m2_intro2",
   },
   m2_intro2: {
@@ -96,8 +97,11 @@ export const VN = {
   },
   m3_intro2: {
     bg: "loft", left: "chaos", right: "neural", speaker: "chaos",
-    text: "A cop car and a tip. That's a shopping list, not a prophecy.",
-    next: "play",
+    text: "Six hundred play chips. I can pay now, or you take it from the vault cut. Either way, we need that scrambler.",
+    choices: [
+      { label: "Pay now. Keep the vault cut clean.", set: { finance: "upfront" }, next: "play" },
+      { label: "Take 600 from the vault cut.", set: { finance: "credit" }, next: "play" },
+    ],
   },
   m3_win: {
     bg: "loft", left: "chaos", right: "neural", speaker: "neural",
@@ -157,7 +161,7 @@ export const VN = {
 
   m6_intro: {
     bg: "desert", left: "chaos", right: "gold_mage", speaker: "gold_mage",
-    text: "Double or nothing. Bring the bag back to the highway, or I rug the crew you just bought with races and jokes.",
+    text: "Your crew left a Nyx at the marina. Bring the bag to the east highway, Chaos. Metro is already on its way.",
     next: "play",
   },
   m6_end_safe: {
@@ -189,8 +193,8 @@ export function missionFlow(id, flags) {
         startVN: "intro_news",
         objectives: [
           { id: "enter_car", kind: "enter", near: "garage", hint: "Get in the Riot V8 on the garage lot. (E)" },
-          { id: "hit_van", kind: "goto", at: "van", r: 90, hint: "Catch the seed van heading down the Strip." },
-          { id: "grab", kind: "collect", at: "van", r: 80, hint: "Ram or grab the crate." },
+          { id: "hit_van", kind: "intercept", at: "van", r: 170, hint: "Disable the convoy van. Ram it or shoot its engine." },
+          { id: "grab", kind: "collect", at: "van", r: 80, hint: "Stop close to the van and press E to take the crate." },
           { id: "lose_heat", kind: "loseWanted", hint: "Lose the Metro heat." },
           { id: "stash", kind: "goto", at: "garage", r: 90, hint: "Take the crate back to Hunter's garage." },
         ],
@@ -202,8 +206,8 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m2_intro",
         objectives: [
-          { id: "to_track", kind: "goto", at: "raceStart", r: 80, hint: "Meet Fire at the Crown Loop." },
-          { id: "race", kind: "race", laps: 1, hint: "Win the Crown Loop. Hit every checkpoint." },
+          { id: "to_track", kind: "goto", at: "raceStart", r: 80, vehicle: true, hint: "Meet Fire at the Crown Loop." },
+          { id: "race", kind: "race", laps: 2, hint: "Beat Fire over two laps. Follow every glowing gate." },
         ],
         winVN: "m2_win",
         loseVN: "m2_lose",
@@ -213,20 +217,20 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m3_intro",
         objectives: [
-          { id: "pay", kind: "goto", at: "neural", r: 70, hint: "See Neural at the loft. Bring play chips." },
+          { id: "pay", kind: "goto", at: "neural", r: 70, hint: "Meet Neural at the loft. Settle the 600-chip fee or defer it." },
           { id: "lift", kind: "stealCop", at: "pd", r: 140, hint: "Jack a Metro PD cruiser or lift the scrambler near the precinct." },
-          { id: "back", kind: "goto", at: "neural", r: 70, hint: "Deliver the scrambler to Neural." },
+          { id: "back", kind: "goto", at: "neural", r: 70, clearHeat: true, hint: "Lose the heat, then deliver the scrambler to Neural." },
         ],
         winVN: "m3_win",
-        onPay: { chips: -600 },
+
         onWin: { chips: 400, unlock: ["metro"], flags: { scrambler: true } },
       };
     case "the_tell":
       return {
         startVN: "m4_intro",
         objectives: [
-          { id: "case", kind: "goto", at: "casinoDoor", r: 80, hint: "Case the Crown Palace south doors." },
-          { id: "lot", kind: "goto", at: "casino", r: 100, hint: "Walk the Palace lot. Learn the exit." },
+          { id: "case", kind: "goto", at: "casinoDoor", r: 80, foot: true, hold: 2, hint: "On foot: case the Crown Palace south doors." },
+          { id: "lot", kind: "goto", at: "casinoLot", r: 100, foot: true, hold: 2, hint: "On foot: walk the Palace lot. Learn the exit." },
           { id: "exit", kind: "goto", at: "marina", r: 100, hint: "Trace the getaway to the marina." },
         ],
         winVN: "m4_win",
@@ -236,26 +240,30 @@ export function missionFlow(id, flags) {
         startVN: "m5_intro",
         objectives: [
           { id: "door", kind: "goto", at: "casinoDoor", r: 70, hint: "Hit the Palace south doors." },
-          { id: "vault", kind: "collect", at: "casino", r: 90, hint: "Grab the vault bag." },
+          { id: "vault", kind: "collect", at: "casino", r: 90, hack: 3, hint: "Stop at the archive. Press E, then stay still for the transfer." },
           { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the bag to the marina." },
           { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in a boat." },
           { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Run the harbour to the drop island." },
         ],
         midVN: { after: "vault", page: "m5_mid" },
         winVN: "m5_win",
-        onVault: { chips: 5000, wanted: 4 },
+        onWin: { unlock: ["nyx"] },
       };
     case "double":
       return {
         startVN: "m6_intro",
         objectives: [
+          { id: "return", kind: "goto", at: "marina", r: 100, hint: "Return to the marina. Your final getaway car is waiting." },
+          { id: "getaway", kind: "enter", near: "marina", vehicle: "nyx", hint: "Get into the Nyx at the marina. (E)" },
           { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the bag out the east highway to the city limits." },
           { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat." },
         ],
         winVN: () => (flags.stash === "flip" ? "m6_end_flip" : "m6_end_safe"),
-        onStart: { wanted: 3 },
+        onStart: { wanted: 3, unlock: ["nyx"] },
       };
     default:
       return null;
   }
 }
+
+directStory(VN, MISSIONS);
