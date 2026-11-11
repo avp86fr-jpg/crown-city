@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-11",
+  "baseline_commit": "c5db89eddbae9027352b328b1554ab4f3e81592d",
+  "environment": {
+    "browser": "headless Chromium",
+    "viewport_css": [
+      844,
+      390
+    ],
+    "device_pixel_ratio": 2,
+    "cpu_throttle": 4,
+    "quality": "low",
+    "auto_resolution": false,
+    "weather": "rain",
+    "hour": 21,
+    "seed": 77123,
+    "warmup_seconds": 4.5,
+    "scenario": "Hold W in the mission Riot for approximately 4 seconds with radio playing."
+  },
+  "limitations": "One controlled before/after sample on a shared host. Boot timing and population differ slightly. Not physical Redmi hardware and not a promised device frame rate.",
+  "before": {
+    "seconds": 4.239400000002235,
+    "frames": 43,
+    "ticks": 192,
+    "peds": 112,
+    "vehicles": 301,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "smoothed_work_ms": {
+      "tick": 22.40492869764044,
+      "render": 8.017098412808874,
+      "hud": 2.9974696117139503
+    },
+    "presented_frames_per_second": 10.142944756328095,
+    "sampled_crowd_separation_ms": 95.616
+  },
+  "after": {
+    "seconds": 4.164300000000745,
+    "frames": 68,
+    "ticks": 211,
+    "peds": 111,
+    "vehicles": 304,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "smoothed_work_ms": {
+      "tick": 11.048590885621362,
+      "render": 6.542825982895488,
+      "hud": 2.3254378261682693
+    },
+    "presented_frames_per_second": 16.329275028213104,
+    "sampled_crowd_separation_ms": 28.948
+  },
+  "reduction_percent": {
+    "tick": 50.686783989698945,
+    "render": 18.389102316094174
+  }
+}

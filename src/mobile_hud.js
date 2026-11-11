@@ -28,7 +28,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  if(G.race){text(G.race.countdown>0?'READY / '+Math.ceil(G.race.countdown):'GATE '+Math.min(G.race.i+1,G.race.pts.length)+' / '+G.race.pts.length+' · '+G.race.t.toFixed(1)+'s',mx+8*d,yy,11,'#d2dfc1');yy+=19*d;}
  if(A.contract){const job=CONTRACTS.find(j=>j.id===A.contract.id);text(job.title+' / '+Math.ceil(A.contract.t)+'s',mx+8*d,yy,8,'#9ed5cf');}
  // Put the current radio message in the space above thumbs, never under the action buttons.
- const message=G.toastT>0?{name:'CROWN CITY',text:G.toast}:A.messageT>0?A.message:null;
+ const message=G.contactTalk&&G.contactNear?null:G.toastT>0?{name:'CROWN CITY',text:G.toast}:A.messageT>0?A.message:null;
  if(message){
   const ww=portrait?W-32*d:Math.min(330*d,W*.42),xx=(W-ww)/2;
   c.font=font(11*d,600);const rows=wrap(c,message.text,ww-24*d,portrait?5:4),hh=(29+rows.length*15)*d;

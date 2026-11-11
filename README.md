@@ -12,7 +12,7 @@ Serve this directory with any static HTTP server; the game has no build step or 
 | --- | --- | --- |
 | Walk / drive | WASD / arrows | Left stick |
 | Sprint / Nyx boost | Shift | RUN / BOOST |
-| Interact / enter / exit | E | CAR / EXIT / TAKE |
+| Interact / enter / exit / station | E | CAR / EXIT / TAKE / TALK / RAIL |
 | Shoot / aim | K / J / click to aim | Hold AIM / FIRE; drag to aim independently |
 | Change weapon | Q | WEAPON |
 | Reload | X | RELOAD |
@@ -41,13 +41,13 @@ FREE RIDE starts immediately from the title screen, unlocks the vehicle roster a
 
 Four illustrated atlases cover six cars, a bus, ambulance, armored van, two motorcycles, speedboat, Chaos locomotion/aiming and civilian/police walking. Aiming can animate stepping legs independently; reloads and mounted riders have additional visible motion. Vehicles have steering, suspension, wipers, entry doors, damage and respray feedback. The city adds cafés, market carts, bus shelters, newsstands, loading bays, roof fans/ducts/solar panels, pavement wear, workshop forecourts and pedestrian gestures. Residents visit actual venues, reserve queue positions, stop for conversations, wait at shelters and board stopped buses. Traffic yields to pedestrians and emergency vehicles; civilians react to approaching vehicles and nearby threats. Spatial queries and decisions are throttled independently from movement. Population budgets scale by graphics quality. Roofs fade when they cover the on-foot player. The collision-aligned illustrated city remains the base; the larger yacht retains its earlier art.
 
-Four original arrangements total about five minutes: an on-foot noir score, funk/brass night driving, swung electric-key street music and a faster pursuit track. They stream through the game's Web Audio master bus, crossfade for chases/stations and duck during dialogue/menus. Inactive stations pause; crossfades use at most two streams. Ogg and MP3 variants support different browsers. Weapon, impact, reload and water effects use a bounded reusable PCM bank. Synthesized fallback score and spatial city/vehicle effects remain available. New reload, weapon-change, dodge and radio cues support the action.
+Five original arrangements total about six minutes: an on-foot noir score, funk/brass night driving, swung electric-key street music, a faster pursuit track and a dedicated rail journey score. The current 44.1 kHz masters add percussion variation, subsonic filtering and headroom. They stream through the game's Web Audio master bus, crossfade for chases/stations and duck during dialogue/menus. Inactive stations pause; crossfades use at most two streams. Ogg and MP3 variants support different browsers. Weapon, impact, reload and water effects use a bounded reusable PCM bank. Synthesized fallback score and spatial city/vehicle effects remain available. New reload, weapon-change, dodge and radio cues support the action.
 
 [MetaWinners character references and art/audio provenance](docs/character-references.md) · [Implementation and validation notes](docs/improvement-pass.md)
 
 [720p After Hours trailer](about/assets/crown-city-trailer-720p.mp4) · [Release page](https://avp86fr-jpg.github.io/crown-city/about/) · [Media notes](docs/release-media.md) · [Gameplay capture with sound](docs/previews/afterhours-preview.mp4) · [City](docs/previews/afterhours-city.webp) · [Mobile HUD](docs/previews/afterhours-mobile.webp) · [Title](docs/previews/afterhours-title.webp)
 
-Performance mode composes static city tiles once into a 12-tile cache, uses smaller mobile atlases, bounds effects and skips the full light-map pipeline. On touch devices, Chrome composites separate city and HUD canvases, preserving a sharp UI at up to 2× device pixel density. Battery Saver targets 30 presentation frames per second with a 60 Hz simulation step. Hidden tabs stop frame rendering and suspend audio. World and street-detail caches have explicit limits; obsolete crowd image requests no longer load at boot.
+Performance mode uses baked day/night city tiles with smooth dusk transitions, smaller mobile atlases, bounded effects and a simpler lighting pipeline. Core tiles use a 16–32 tile cache; the expanded-world cache follows the visible working set with a hard limit of 96 tiles (24 MiB of bitmap pixels). Rotated views cull off-screen corners before building tiles. On touch devices, Chrome composites separate city and HUD canvases, preserving a sharp UI at up to 2× device pixel density. Battery Saver targets 30 presentation frames per second with a 60 Hz simulation step. Hidden tabs stop frame rendering and suspend audio. World and street-detail caches have explicit limits; obsolete crowd image requests no longer load at boot.
 
 ## Validation
 
@@ -60,3 +60,16 @@ The browser suite covers keyboard and emulated multi-touch controls, responsive 
 For the release page, run `npm run test:about` against the local server. `CC_ABOUT_URL` selects another deployment. This verifies responsive layouts, assets, gallery focus/navigation, links, 720p video/audio decoding and captions.
 
 Vehicle collisions use oriented bodies matching the artwork and swept shoreline checks. Bullets resolve the nearest vehicle, person or wall along their path. Cars and bikes can hit citizens and the player on foot; diving does not grant traffic invulnerability. Parked cars and local character separation block overlap. Boats require nearby reachable land for ordinary disembarking; emergency ejection remains possible. See [mobile and collision pass](docs/mobile-collision-pass.md).
+
+
+## Crown Transit and the wider world
+
+Nine stations connect the subway and elevated regional railway. Approach an M/R entrance on foot and press E or tap RAIL, then choose a destination for 25 chips. Police checks prevent boarding while wanted. Trains accelerate, stop and open their doors; a platform/interior journey leads to a collision-checked street exit. Skip becomes available after boarding and still advances time and any active contract deadline. Train history survives saves; busted/death recovery clears unfinished boarding state.
+
+The city canal, outdoor MetaWin casino, Red Mesa desert, Pinewatch forest, Sierra mountains and airport add road, water and air routes. Use LAND in a plane to assist runway alignment, descent and braking; cancel the approach to go around. Boat BRAKE overrides the forward stick. Directional panel damage persists and reduces handling and power; wrecks retain their vehicle type and remain solid.
+
+Find Chief at East Port station, Ice at Sierra Junction and Steampunk beside Midtown Metro for three new stories. The crew menu now contains 13 repeatable contracts, including canal, casino and helicopter jobs. The Last Witness and Borrowed Minutes require actual train travel. Six wildlife species populate local habitats: deer, foxes, dogs, cats, gulls and pigeons react to nearby traffic, movement and gunfire.
+
+Gold Mage’s portrait is the exact user-supplied reference, also used as the face/armor texture in his world character. [Character provenance](docs/character-references.md) records the reference hash and verified collectible links for Chief, Ice and Steampunk.
+
+Additional browser checks: `npm run test:metro`, `npm run test:vehicles`, `npm run test:flight`, and `npm run test:frontier`. Set `CC_URL` to test another deployment. [Metro, wildlife and vehicle release notes](docs/metro-wildlife-pass.md) include the measured mobile-emulation comparison and limitations.

@@ -7,9 +7,12 @@ The upgraded game keeps its illustrated overhead camera. Character identities us
 - Collection: https://opensea.io/collection/metawinners-1
 - CHAOS, token 2: https://opensea.io/item/ethereum/0x74f70713b0515e9f520d6c764352e45e227839b7/2
 - GOLD MAGE, token 1761: https://opensea.io/item/ethereum/0x74f70713b0515e9f520d6c764352e45e227839b7/1761
+- CHIEF, token 3: https://opensea.io/item/ethereum/0x74f70713b0515e9f520d6c764352e45e227839b7/3
+- ICE, token 4: https://opensea.io/item/ethereum/0x74f70713b0515e9f520d6c764352e45e227839b7/4
+- STEAMPUNK, token 5: https://opensea.io/item/ethereum/0x74f70713b0515e9f520d6c764352e45e227839b7/5
 - Collection trait list: https://opensea.io/collection/metawinners-1/traits
 
-The individual Chaos and Gold Mage identities were checked on OpenSea. The existing portraits of Hunter, Fire, Neural and Mask were inspected locally and retained. Their specific token numbers were not independently established in this pass; none are invented here. Vera Vale is an original Crown City character.
+The individual Chaos and Gold Mage identities were checked on OpenSea. The user supplied the definitive Gold Mage image for the current release; earlier retained imagery was incorrect. The existing portraits of Hunter, Fire, Neural and Mask were inspected locally and retained. Their specific token numbers were not independently established in this pass; none are invented here. Vera Vale is an original Crown City character.
 
 ## Art used in gameplay
 
@@ -23,20 +26,29 @@ All four atlases were generated with the built-in image-generation tool and comp
 
 ## Original score
 
-`tools/compose-score.py` synthesizes three authored arrangements from original note/drum patterns, without external samples or music:
+`tools/compose-score.py` synthesizes five authored arrangements at 44.1 kHz stereo from original note/drum patterns, without external samples or music:
 
 - VEIL FM 98.6: **Afterhours**, approximately 71 seconds, funk bass/guitar/brass.
 - CHIP RADIO 104.2: **Sidewalk Stories**, approximately 83 seconds, swung drums and electric keys.
 - NIGHT SHIFT 107.7: **No Clean Exit**, approximately 58 seconds, faster pursuit arrangement.
 
-The browser streams the Ogg tracks into the game's Web Audio master bus, fades between stations/pursuit, and ducks music during dialogue and menus. Synthesized score fallback remains available when a media stream cannot start. The three files total approximately 1.8 MB; they do not block boot.
+The browser streams the Ogg tracks into the game's Web Audio master bus, fades between stations/pursuit, and ducks music during dialogue and menus. Synthesized score fallback remains available when a media stream cannot start. The five Ogg files total approximately 5.1 MB; MP3 fallbacks are available. Tracks stream on demand and do not block boot.
+
+- CITY SCORE: **Midnight Receipts**, approximately 89 seconds.
+- CROWN TRANSIT: **Last Train Home**, approximately 82 seconds.
+
+The current master uses a subsonic high-pass filter, gentle saturation, humanized percussion velocities and peak headroom. Only two streams may overlap during a transition.
 
 ## Release cover and trailer
 
-The corrected About/title cover depicts Chaos and a single complete red muscle coupe. It does not contain a generated Gold Mage. Gold Mage’s About card and story scenes use the original `assets/portraits/gold_mage.jpg`, unchanged. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.
+The corrected About/title cover depicts Chaos and a single complete red muscle coupe. It does not contain a generated Gold Mage. Gold Mage’s About card and story scenes use `assets/portraits/gold_mage_reference.jpg`, byte-identical to the user’s supplied 1280×1280 JPEG. Its SHA-256 is `a21d3e414f5885c2ae84eeed318735c8ad15d8d3d63b5c158e82a5a7a7039a05`. The new filename also avoids stale browser image caches. The old retained image was altered; earlier documentation calling it original was incorrect. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.
 
 ## Frontier cast and scenery
 
-The five columns of `assets/premium/frontier-cast.webp` are Hunter, Gold Mage, Neural, Mask and Fire, generated directly from the five retained portraits for their in-world encounters. These full-body adaptations add subtle breathing; the floating portrait markers and dialogue/crew portraits use the original images. In particular, Gold Mage’s original portrait file is unchanged. No additional individual token identities were claimed.
+`assets/premium/frontier-cast.webp` retains generated adaptations of Hunter, Neural, Mask and Fire. Its old Gold Mage column is **never drawn**. Gold Mage instead uses the supplied reference pixels as a silhouette-clipped face/armor texture over a small runtime robe. No helmet or face regeneration is involved. His contact-panel portrait and all story portraits show the complete supplied image. Chief, Ice and Steampunk also use their collectible portrait pixels for the face and armor; their full portraits remain visible at encounters.
+
+The new portraits were downloaded from the collectible image URLs embedded in the corresponding public OpenSea pages on 2026-11-11. Their identity/type names and token IDs were checked there. Story roles and dialogue are original fiction.
+
+`wildlife.webp` is a generated 4×6 atlas: deer, fox, dog, cat, gull and pigeon, with four poses each. A second image-tool pass removed the background. `transit.webp` is a generated atlas of the subway entrance, train roof, regional platform canopy and side-view carriage. Runtime doors, train timetables, route movement, shadows and station signage remain separate from the artwork. WebP conversion and resizing are mechanical exports.
 
 `frontier-terrain.webp` supplies forest floor, sand, slate and casino paving. `frontier-scenery.webp` supplies a painted pine, slate outcrop, red mesa and cactus cluster. Both are original generated environmental atlases. Mechanical resizing and WebP compression retain alpha where present.

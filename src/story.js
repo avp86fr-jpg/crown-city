@@ -6,7 +6,10 @@ export const CHAR = {
   fire: { name: "FIRE", color: "#ff6a20", portrait: "assets/portraits/fire.jpg", side: "right" },
   neural: { name: "NEURAL", color: "#c040ff", portrait: "assets/portraits/neural.jpg", side: "right" },
   mask: { name: "MASK", color: "#c0c0c8", portrait: "assets/portraits/mask.jpg", side: "right" },
-  gold_mage: { name: "GOLD MAGE", color: "#f2c14e", portrait: "assets/portraits/gold_mage.jpg", side: "right" },
+  gold_mage: { name: "GOLD MAGE", color: "#f2c14e", portrait: "assets/portraits/gold_mage_reference.jpg", side: "right" },
+  chief: { name: "CHIEF", color: "#c8c58c", portrait: "assets/portraits/chief.jpg", side: "right" },
+  ice: { name: "ICE", color: "#95dce5", portrait: "assets/portraits/ice.jpg", side: "right" },
+  steampunk: { name: "STEAMPUNK", color: "#d6ab76", portrait: "assets/portraits/steampunk.jpg", side: "right" },
   vera: { name: "VERA VALE", color: "#e31b23", portrait: "assets/vera/vera_mic_hd.webp", side: "right" },
 };
 

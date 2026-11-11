@@ -13,7 +13,7 @@ export function drawActionHUD(G,L,y,width){
  if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));}
  const service=nearService(G);
  if(service&&!G.race&&!G.input.touchJoy.active){c.font=font(11*u,800);c.textAlign='center';c.fillStyle='#edd3a1';c.fillText(service.name+' / '+(G.touch?'CREW → WORKSHOP':'C WORKSHOP'),W*.5,H-(G.touch?222:82)*u,W-32*u);}
- if(A.message&&A.messageT>0&&G.scene==='play'){
+ if(A.message&&A.messageT>0&&G.scene==='play'&&!(G.contactTalk&&G.contactNear)){
   const narrow=W/u<640,ww=Math.min(W-32*u,(narrow?300:430)*u),xx=(W-ww)/2;
   c.font=font(11*u,600);const lines=textLines(c,A.message.text,ww-32*u).slice(0,4);
   const hh=(38+lines.length*15)*u,by=G.touch?H-(narrow?230:225)*G.dpr-hh:H-126*u-hh;
@@ -37,7 +37,7 @@ export function drawCrew(G,{button,panel,save}){
  const jobs=CONTRACTS.slice(page*3,page*3+3);
  jobs.forEach((d,i)=>{
   const x=left+(portrait?0:i*(cw+gap)),y=78*u+(portrait?i*(ch+gap):0);
-  const portraitArt=G.assets.sprites['port_'+({NEURAL:'neural',MASK:'mask',FIRE:'fire',HUNTER:'hunter',VERA:'vera','GOLD MAGE':'gold_mage'}[d.contact])];
+  const portraitArt=G.assets.sprites['port_'+({NEURAL:'neural',MASK:'mask',FIRE:'fire',HUNTER:'hunter',VERA:'vera','GOLD MAGE':'gold_mage',CHIEF:'chief',ICE:'ice',STEAMPUNK:'steampunk'}[d.contact])];
   panel(c,x,y,cw,ch,8*u,{fill:'rgba(31,42,47,.8)',stroke:'rgba(213,188,143,.25)'});
   if(portraitArt){
     c.save();c.beginPath();c.roundRect(x+1,y+1,cw-2,ch-2,8*u);c.clip();c.globalAlpha=.22;c.drawImage(portraitArt,x+cw*.35,y+ch*.18,cw*.7,cw*.7);c.globalAlpha=1;
@@ -50,7 +50,7 @@ export function drawCrew(G,{button,panel,save}){
   const active=A.contract?.id===d.id,label=active?'CANCEL CONTRACT':A.contract?'CONTRACT ACTIVE':'TAKE JOB / +'+d.reward;
   button(G,x+12*u,y+ch-39*u,cw-24*u,29*u,label,()=>{if(active){A.contract=null;G.waypoint=null;G.gps=null;}else if(startContract(G,d.id))G.scene='play';save(G);},{primary:!A.contract,size:10*u});
  });
- button(G,left,H-99*u,cw*columns+(columns-1)*gap,30*u,page===0?'MORE JOBS / HUNTER + VERA ›':page===1?'FRONTIER / CANAL + CASINO + FLIGHT ›':page===2?'FRONTIER / RED MESA ›':'‹ STREET CONTRACTS',()=>{G.crewPage=(page+1)%pages;G.menuSel=0;},{size:10*u});
+ button(G,left,H-99*u,cw*columns+(columns-1)*gap,30*u,page===0?'MORE JOBS / HUNTER + VERA ›':page===1?'FRONTIER / CANAL + CASINO + FLIGHT ›':page===2?'RAIL / CHIEF + ICE + STEAMPUNK ›':page<pages-1?'MORE CREW JOBS ›':'‹ STREET CONTRACTS',()=>{G.crewPage=(page+1)%pages;G.menuSel=0;},{size:10*u});
  const by=H-57*u,bw=Math.min(190*u,(W-margin*2-gap)/2);
  button(G,margin,by,bw,35*u,'WORKSHOP',()=>{G.scene='garage';G.menuSel=0;},{size:11*u});
  button(G,W-margin-bw,by,bw,35*u,'BACK TO CITY',()=>{G.scene='play';},{primary:true,size:11*u});

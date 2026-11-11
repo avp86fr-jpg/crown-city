@@ -1,9 +1,11 @@
 /* Ground coordinates and altitude are separate: the same aircraft exists on the
    apron, in flight, in a save, and in the collision/render passes. */
+import {vehicleCondition,drawVehicleDamage} from './vehicle_dynamics.js';
 import { WORLD_W, WORLD_H } from './world.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const num=(v,d,a=-Infinity,b=Infinity)=>Number.isFinite(v)?clamp(v,a,b):d;
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
+const LAND_SURFACES=new Set(['grass','sand','dirt','lot','track']);
 export const AIRCRAFT_DEFS={
  heli:{name:'Crown Sparrow',kind:'helicopter',sprite:'heli',aircraft:true,helicopter:true,accel:110,max:310,steer:1.7,brake:150,grip:.8,mass:2.2,r:38},
  plane:{name:'Crown Skylark',kind:'airplane',sprite:'plane',aircraft:true,airplane:true,accel:105,max:540,steer:.75,brake:130,grip:.8,mass:3.8,r:52},
@@ -17,16 +19,16 @@ export function landingZone(G,v){
  if(pad)return pad.name||'HELIPAD';
  if(onRunway(G,v))return 'AIRFIELD';
  // Helicopters may set down in a genuine clearing, with clearance for the rotor.
- const safe=new Set(['grass','sand','dirt','lot','track']);
- for(let i=0;i<9;i++){const a=i*Math.PI/4,r=i===8?0:55;if(!safe.has(G.surfaceAt(v.x+Math.cos(a)*r,v.y+Math.sin(a)*r)))return null;}
+ for(let i=0;i<9;i++){const a=i*Math.PI/4,r=i===8?0:55;if(!LAND_SURFACES.has(G.surfaceAt(v.x+Math.cos(a)*r,v.y+Math.sin(a)*r)))return null;}
  return 'CLEARING';
 }
 export function canExitAircraft(v){return !v.def?.aircraft||((v.altitude||0)<=1&&Math.hypot(v.vx||0,v.vy||0)<12);}
-export function aircraftSnapshot(v){return v?.def?.aircraft?{id:v.aircraftId,altitude:v.altitude||0,verticalSpeed:v.verticalSpeed||0,airspeed:v.airspeed||0,vx:v.vx,vy:v.vy,landing:!!v.landing,rotor:v.rotor||0}:null;}
+export function aircraftSnapshot(v){return v?.def?.aircraft?{id:v.aircraftId,altitude:v.altitude||0,verticalSpeed:v.verticalSpeed||0,airspeed:v.airspeed||0,vx:v.vx,vy:v.vy,landing:!!v.landing,rotor:v.rotor||0,approachDirection:v.approachDirection||0,autoBrake:!!v.autoBrake}:null;}
 export function restoreAircraft(v,s={}){
  v.altitude=num(s?.altitude,0,0,420);v.verticalSpeed=num(s?.verticalSpeed,0,-85,65);
  v.airspeed=num(s?.airspeed,0,0,v.def.max);v.vx=num(s?.vx,0,-v.def.max,v.def.max);v.vy=num(s?.vy,0,-v.def.max,v.def.max);
  v.landing=s?.landing===true;v.rotor=num(s?.rotor,0,0,1);v.aircraftId=typeof s?.id==='string'?s.id:v.aircraftId;
+ v.approachDirection=s?.approachDirection===-1?-1:s?.approachDirection===1?1:0;v.autoBrake=s?.autoBrake===true;
  v.flightState=v.altitude>1?'CRUISE':'PARKED';v.stall=false;
 }
 export function spawnAircraft(G,makeVeh){
@@ -60,16 +62,18 @@ export function obstacleHeight(G,x,y,r=30){
 export function tickAircraft(G,v,I,dt,hooks={}){
  if(v.dead)return;
  dt=clamp(dt,0,.1);v.groundLock=Math.max(0,(v.groundLock||0)-dt);v.prevX=v.x;v.prevY=v.y;v.altitude=num(v.altitude,0,0,420);
- const helicopter=v.def.helicopter,up=!!(I.boost||I.sprint),down=!!(I.brake||I.hand),throttle=clamp(I.y||0,-1,1),steer=clamp(I.x||0,-1,1);
+ const condition=vehicleCondition(v);
+ const helicopter=v.def.helicopter,up=!!(I.boost||I.sprint),down=!!(I.brake||I.hand),throttle=clamp(I.y||0,-1,1);
+ let steer=clamp(I.x||0,-1,1);
  const notice=s=>{if(v.notice!==s||(G.ticks||0)>(v.noticeAt||0)+180){hooks.notice?.(s);v.notice=s;v.noticeAt=G.ticks||0;}};
- if(I.enterP&&!canExitAircraft(v)){v.landing=!v.landing;notice(v.landing?'Landing approach. Line up with a runway or clear helipad.':'Landing cancelled.');}
- if(up){v.landing=false;}
+ if(I.enterP&&!canExitAircraft(v)){v.landing=!v.landing;v.approachDirection=Math.sin(v.rot)>=0?1:-1;notice(v.landing?helicopter?'Landing approach. Hold over a clear helipad.':'Runway assist armed. Fly alongside the runway; release steering to align.':'Landing cancelled.');}
+ if(up){v.landing=false;v.autoBrake=false;}
  v.rotor=clamp((v.rotor||0)+dt*((v===G.player||v.driver==='player')?.8:-.35),0,1);
  const oldAltitude=v.altitude,oldX=v.x,oldY=v.y;
  let speed=Math.hypot(v.vx||0,v.vy||0),vertical=0;
  if(helicopter){
   v.rot=angle(v.rot+steer*1.7*dt);v.lean=steer*.15;
-  const moving=throttle>0.08, target=moving?throttle*v.def.max:throttle*75;
+  const moving=throttle>0.08, target=moving?throttle*v.def.max*condition.top:throttle*75;
   // Release the stick to hold a stable hover; horizontal flight requires lift first.
   const fly=v.altitude>8,blend=1-Math.exp(-(moving?1.25:3.1)*dt);
   v.vx=(v.vx||0)+(Math.sin(v.rot)*(fly?target:0)-(v.vx||0))*blend;
@@ -80,16 +84,28 @@ export function tickAircraft(G,v,I,dt,hooks={}){
  }else{
   speed=num(v.airspeed,speed,0,v.def.max);
   const ground=v.altitude===0;
+  if(ground&&throttle>.15&&!v.groundLock)v.autoBrake=false;
+  if(v.landing&&!ground){
+   const r=runway(G),dir=v.approachDirection||(Math.sin(v.rot)>=0?1:-1),center=r.y+r.h/2;
+   const along=dir>0?v.x-r.x:r.x+r.w-v.x,remaining=r.w-along;
+   v.runwayRemaining=Math.max(0,remaining);
+   // Localizer assistance only near the runway; the pilot retains steering.
+   const close=along>-1000&&along<r.w+200&&Math.abs(v.y-center)<500;
+   v.runwayAligned=onRunway(G,v)&&Math.abs(Math.cos(v.rot))<.2;
+   if(close&&Math.abs(steer)<.12){const desired=dir*Math.PI/2-dir*Math.atan2(v.y-center,520);steer=clamp(angle(desired-v.rot)*2.6,-1,1);}
+   if(remaining<Math.max(180,v.altitude*4)&&along>0){v.landing=false;notice('Go around — too little runway. Climb and approach the opposite end.');}
+  }
   if(!ground&&(down||v.landing)&&throttle>=0){
    // Approach power holds a flyable speed while the pilot aligns the runway.
    speed+=clamp(210-speed,-60,60)*dt;
-  }else speed+=((throttle>0?throttle*105:ground?-23:-8)-(down&&ground?150:0)-(throttle<0?-throttle*120:0))*dt;
-  speed=clamp(speed,0,v.def.max);v.airspeed=speed;
-  v.rot=angle(v.rot+steer*(ground?.65:.62)*clamp(speed/120,.1,1)*dt);v.lean=steer*.25;
+  }else if(!ground&&I.touchFlight&&throttle===0&&!up){speed+=clamp(240-speed,-25,25)*dt;}
+  else speed+=((throttle>0?throttle*105*condition.power:ground?-23:-8)-((down||v.autoBrake)&&ground?150:0)-(throttle<0?-throttle*120:0))*dt;
+  speed=clamp(speed,0,v.def.max*condition.top);v.airspeed=speed;
+  v.rot=angle(v.rot+steer*(ground?1.15:.74)*clamp(speed/120,.1,1)*dt);v.lean=steer*.25;
   v.vx=Math.sin(v.rot)*speed;v.vy=-Math.cos(v.rot)*speed;
   v.stall=!ground&&speed<155;
   if(ground&&throttle>0&&!v.groundLock&&speed>=185&&onRunway(G,v)&&Math.abs(Math.cos(v.rot))<.35&&!down){vertical=38;v.altitude=1.1;}
-  else if(!ground){vertical=v.stall?-Math.max(24,(155-speed)*.65):down||v.landing?-26:up?48:v.altitude<155?30:0;}
+  else if(!ground){vertical=v.stall?-Math.max(24,(155-speed)*.65):down?-26:v.landing?(v.runwayAligned?-Math.min(40,Math.max(22,v.altitude*speed/Math.max(300,v.runwayRemaining-250))):v.altitude<95?28:0):up?48:v.altitude<155?30:0;}
   if(v.stall)notice('STALL — add throttle; regain 155 airspeed.');
   if(ground&&speed>170&&!onRunway(G,v))notice('Takeoff needs the marked runway.');
  }
@@ -98,15 +114,15 @@ export function tickAircraft(G,v,I,dt,hooks={}){
  const height=obstacleHeight(G,nx,ny,helicopter?24:46);
  if(height&&v.altitude<height+18){
   v.vx*= -.12;v.vy*= -.12;v.airspeed=0;nx=oldX;ny=oldY;
-  if(obstacleHeight(G,oldX,oldY,helicopter?24:46)>0)v.altitude=Math.max(oldAltitude,height+18);
+  if(oldAltitude>=height+18)v.altitude=oldAltitude;
   if(!(v.airImpactT>0)){hooks.damage?.(v,Math.max(8,speed/7));v.airImpactT=.8;notice('Obstacle ahead — gain altitude before crossing rooftops.');}
  }
  v.airImpactT=Math.max(0,(v.airImpactT||0)-dt);v.x=nx;v.y=ny;
- const zone=landingZone(G,v),nowSpeed=Math.hypot(v.vx,v.vy);
+ const zone=vertical<0&&v.altitude<12?landingZone(G,v):null,nowSpeed=Math.hypot(v.vx,v.vy);
  if(vertical<0&&v.altitude<12&&oldAltitude>0){
   const safe=zone&&(helicopter?nowSpeed<45:nowSpeed>=115&&nowSpeed<270&&!v.stall);
   if(safe){
-   if(v.altitude<=.8){v.altitude=0;v.verticalSpeed=0;v.landing=false;v.groundLock=2;v.flightState='LANDED';if(helicopter){v.vx=v.vy=0;}notice('Touchdown — '+zone+'. Stop, then exit.');}
+   if(v.altitude<=.8){v.altitude=0;v.verticalSpeed=0;v.landing=false;v.groundLock=2;v.autoBrake=!helicopter;v.flightState='LANDED';if(helicopter){v.vx=v.vy=0;}notice('Touchdown — '+zone+'. Stop, then exit.');}
   }else if(!v.stall){v.altitude=Math.max(12,oldAltitude);v.verticalSpeed=0;notice(helicopter?'Hold a hover over a helipad or open clearing to land.':'Align with the runway at 115–270 airspeed to land.');}
   else if(v.altitude===0){hooks.damage?.(v,110);notice('Hard landing.');}
  }
@@ -118,7 +134,7 @@ export function tickAircraft(G,v,I,dt,hooks={}){
 }
 export function aviationHint(G){
  const v=G.player;if(!v?.def?.aircraft)return '';
- const controls=G.touch?'Stick: fly · UP: climb · DOWN: descend · LAND':'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: land';
+ const controls=G.touch?(v.def.airplane?'Stick: throttle / turn · UP: climb · DOWN: descend · LAND: runway assist':'Stick: fly · UP: climb · DOWN: descend · LAND'):(v.def.airplane?'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: runway assist':'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: land');
  return `${v.def.name.toUpperCase()} / ${v.flightState||'PARKED'} · ALT ${Math.round(v.altitude||0)} · SPD ${Math.round(v.airspeed||0)}\n${controls}`;
 }
 export function drawAircraft(G,v){
@@ -151,5 +167,6 @@ export function drawAircraft(G,v){
   c.fillStyle='#cda64f';c.fillRect(-8,30,16,5);c.fillStyle='#203b4b';c.font='bold 7px sans-serif';c.textAlign='center';c.fillText('CW',0,18);
   path([[0,25],[-3,60],[3,60]],'#264c60');
  }
+ drawVehicleDamage(c,v);
  c.fillStyle='#e45d62';c.beginPath();c.arc(heli?-22:-87,heli?4:10,2.5,0,Math.PI*2);c.fill();c.fillStyle='#84f2c4';c.beginPath();c.arc(heli?22:87,heli?4:10,2.5,0,Math.PI*2);c.fill();c.restore();
 }

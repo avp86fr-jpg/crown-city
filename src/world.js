@@ -1,6 +1,7 @@
 /* Crown City world: painted core (tiled, streamed) + procedural outer districts.
    One collision grid, one road graph, chunked ground renderer, extruded buildings. */
 import {applyExpansion,terrainRegion} from './expansion_world.js';
+import {applyTransitWorld} from './transit.js';
 export const CORE = 4096;
 export const WORLD_W = 12288;
 export const WORLD_H = 10240;
@@ -360,6 +361,7 @@ export function buildWorld(meta, coreMask, coreMS) {
   }
   // core buildings join the extruded set (heights from meta), roof painted layer is reused
   applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H});
+  applyTransitWorld(W,{CODE});
   W.coreBuildings = (meta.buildings || []).map((b) => ({ ...b, core: true }));
   return W;
 }
