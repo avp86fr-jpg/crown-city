@@ -1,4 +1,5 @@
 /* Crown City action systems: weapons, stamina, crew work and vehicle workshops. */
+import {STREET_JOBS,streetJobTarget,tickStreetJob} from './side_jobs.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const number=(v,d,a,b)=>Number.isFinite(v)?clamp(v,a,b):d;
 export const WEAPONS=[
@@ -10,7 +11,7 @@ export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift'].includes(s.contract.id)?{...s.contract,t:number(s.contract.t,0,0,240),progress:number(s.contract.progress,0,0,1e6)}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,s.contract.id==='signal'?3:1)),t:number(s.contract.t,0,0,240),progress:number(s.contract.progress,0,0,1e6)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
 export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
@@ -62,14 +63,16 @@ export const CONTRACTS=[
  {id:'courier',title:'NIGHT SHIFT',contact:'NEURAL',text:'Carry a sealed drive from Southside to the loft. 100 seconds. No wanted stars at delivery.',reward:650,time:100},
  {id:'ghost',title:'GHOST DRIVER',contact:'MASK',text:'Lift a marked black box near Metro, then disappear. Reach the marker and lose two stars.',reward:850,time:150},
  {id:'drift',title:'SMOKE SIGNAL',contact:'FIRE',text:'Bank 1,200 drift points in a car. Keep the speed up. You have 90 seconds.',reward:700,time:90},
+ ...STREET_JOBS,
 ];
 export function startContract(G,id) {
  const A=G.action;if(A.contract)return false;
  const c=CONTRACTS.find(c=>c.id===id);if(!c)return false;
  A.contract={id,t:c.time,progress:0,stage:0};
- message(G,c.contact,id==='courier'?"The drive is at Hunter's garage. Pick it up. The clock starts when you do.":id==='ghost'?'Black box is marked blue. Pick it up, then make the city forget you.':'Show me a long slide, not an expensive crash.');
+ message(G,c.contact,id==='courier'?"The drive is at Hunter's garage. Pick it up. The clock starts when you do.":id==='ghost'?'Black box is marked blue. Pick it up, then make the city forget you.':id==='drift'?'Show me a long slide, not an expensive crash.':c.text);
  if(id==='courier'){const at=G.meta.spawns.garage;G.waypoint={x:at[0],y:at[1]};}
  if(id==='ghost'){const at=G.meta.interactions.pd;G.waypoint={x:at[0],y:at[1]};}
+ const target=streetJobTarget(G,A.contract);if(target)G.waypoint=target;
  G.gps=null;return true;
 }
 export function tickAction(G,dt,hooks) {
@@ -102,20 +105,13 @@ export function tickAction(G,dt,hooks) {
   }
   if(c.id==='ghost'){const a=G.meta.interactions.pd;if(!c.stage&&Math.hypot(P.x-a[0],P.y-a[1])<100){c.stage=1;G.wanted=Math.max(2,G.wanted);G.seenT=0;G.waypoint=null;G.gps=null;message(G,'MASK','Metro noticed. Find an alley. Do not lead them back to me.');}done=c.stage===1&&G.wanted===0;}
   if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
+  if(c.id==='rescue'||c.id==='signal')done=tickStreetJob(G,c,dt,message);
+  if(c.t===0)done=false;
   if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;message(G,def.contact,'CONTRACT COMPLETE / +'+def.reward+' chips. Your name is travelling.','#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
   else if(c.t===0){message(G,def.contact,'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}
  }
  A.comboT=Math.max(0,A.comboT-dt);if(!A.comboT)A.combo=0;
- // Radio chatter follows real mission transitions, once per objective.
- const key=G.missionIndex+':'+G.objectiveIndex;
- if(A.lastObjective!==key&&G._flow){A.lastObjective=key;const barks=[
-  ['HUNTER','The van carries a ledger, Chaos. The plate is just camouflage. Bring it home.'],
-  ['FIRE','Win my race and I will open my old Palace service route. Lose, and we never met.'],
-  ['NEURAL','Gold Mage owns the cameras, the debt, and half the uniforms. We need a blind spot.'],
-  ['MASK','One civilian gets hurt and this stops being a rescue. Keep your hands steady.'],
-  ['NEURAL','The vault has names. Mine. Yours. Everybody the Palace erased. Take the archive.'],
-  ['VERA VALE','My transmitter is ready. Get that evidence clear of the city. I only need one clean signal.']
- ];if(G.objectiveIndex===0&&barks[G.missionIndex])message(G,...barks[G.missionIndex]);}
+
 }
 export function applyTune(G,v) {
  const level=G.action?.upgrades||0;if(v.def.boat||v.tunedLevel===level)return;

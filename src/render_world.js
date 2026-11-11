@@ -66,7 +66,6 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const order = [];
   const pats = {};
   const scratch = document.createElement("canvas").getContext("2d");
   for (const k of Object.keys(tex)) pats[k] = scratch.createPattern(tex[k], "repeat");
@@ -249,6 +248,7 @@ export function makeGround(W, tex, codeAt) {
     return c;
   }
   return {
+    maxChunks:64,
     draw(ctx, r, frame) {
       const ix0 = Math.max(0, Math.floor(r.x0 / CH)), iy0 = Math.max(0, Math.floor(r.y0 / CH));
       const ix1 = Math.min(WORLD_W / CH - 1, Math.floor(r.x1 / CH)), iy1 = Math.min(WORLD_H / CH - 1, Math.floor(r.y1 / CH));
@@ -259,13 +259,14 @@ export function makeGround(W, tex, codeAt) {
         if (!e) {
           if (built >= 2 && frame > 2) continue; // budget per frame
           e = { c: render(ix, iy), f: frame }; built++;
-          cache.set(k, e); order.push(k);
+          cache.set(k, e);
         }
         e.f = frame;
         if (e.c) ctx.drawImage(e.c, ix * CH, iy * CH);
       }
-      if (cache.size > 70) {
-        for (const [k, e] of cache) if (frame - e.f > 240) cache.delete(k);
+      if (cache.size > this.maxChunks) {
+        const cold=[...cache].filter(([,e])=>e.f!==frame).sort((a,b)=>a[1].f-b[1].f);
+        for(const [key,e] of cold){if(cache.size<=this.maxChunks)break;cache.delete(key);if(e.c)e.c.width=e.c.height=1;}
       }
     },
     warm(r) { this.draw({ drawImage() {} }, r, 0); },

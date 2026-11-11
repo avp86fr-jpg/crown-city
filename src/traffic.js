@@ -1,6 +1,18 @@
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
 const TAU = Math.PI * 2;
+// Population placement uses the visible world, independent of display pixel density.
+export function streetViewport(G){
+ const w=G.cssW||G.canvas.width/(G.dpr||1),h=G.cssH||G.canvas.height/(G.dpr||1);
+ const scale=(G.cam.scale||1)*Math.sqrt(w*h/(1280*720))*(Math.min(w,h)<520?1.12:1)*(G.zoomMul||1);
+ return {halfW:w/2/scale,halfH:h/2/scale};
+}
+function visibleSpawn(G,x,y){
+ if(!G.ticks)return false;
+ const {halfW,halfH}=streetViewport(G),angle=-(G.cam.rot||0),dx=x-G.cam.x,dy=y-G.cam.y;
+ return Math.abs(dx*Math.cos(angle)-dy*Math.sin(angle))<halfW+35&&Math.abs(dx*Math.sin(angle)+dy*Math.cos(angle))<halfH+35;
+}
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -111,6 +123,7 @@ export function createTraffic(G) {
         const p = edgePoint(e, fwd, s, lane);
         const d = Math.hypot(p.x - near.x, p.y - near.y);
         if (d < minD || d > maxD) continue;
+        if(visibleSpawn(G,p.x,p.y))continue;
         if (G.vehicles.some((v) => Math.abs(v.x - p.x) < 90 && Math.abs(v.y - p.y) < 90)) continue;
         const kinds = ["fare", "fare", "dart", "riot", "taxi", "fare", "dart", "bus", "fare", "taxi", "stitch", "hog"];
         const k = kind || kinds[(Math.random() * kinds.length) | 0];
@@ -127,7 +140,7 @@ export function createTraffic(G) {
       let n = 0;
       for (const v of G.vehicles) if (v.traffic && v.tr) n++;
       if (G.ticks % 15 === 0) {
-        { const vw = G.canvas.width / (G.cam.scale || 1) * 0.55, vh = G.canvas.height / (G.cam.scale || 1) * 0.55; const minD = Math.hypot(vw, vh) + 60; for (let k = 0; k < 3 && n + k < T.target; k++) T.spawnCar(P, minD, minD + 900); }
+        { const {halfW,halfH}=streetViewport(G); const minD=Math.min(halfW,halfH)+80; for (let k = 0; k < 3 && n + k < T.target; k++) T.spawnCar(P, minD, minD + 900); }
         G.vehicles = G.vehicles.filter((v) => {
           if (v === P || v.mission || v.isVan || v.role === "boat" || v.chasing || v.pdCar || v.keep) return true;
           if (!v.ambient && !v.loose) return true;
@@ -168,6 +181,7 @@ export function createTraffic(G) {
         v.blockedT = gap < 70 ? (v.blockedT || 0) + dt : 0;
         if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
         if (v.blockedT < 0.5) v.honked = false;
+        want = G.cityAI?.trafficSpeed(v, want) ?? want;
         const e = tr.e;
         if (!tr.turn) {
           const end = tr.fwd ? e.B : e.A;
@@ -239,6 +253,7 @@ export function createPeds(G) {
         const a = Math.random() * TAU, d = minD + Math.random() * (maxD - minD);
         const x = near.x + Math.cos(a) * d, y = near.y + Math.sin(a) * d;
         if (surf(x, y) !== "walk") continue;
+        if(visibleSpawn(G,x,y))continue;
         // orient along the sidewalk
         const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => surf(x + dx * 40, y + dy * 40) === "walk");
         const dd = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [1, 0];
@@ -258,7 +273,7 @@ export function createPeds(G) {
       const pl = G.player;
       if (G.ticks % 10 === 0) {
         const live = G.peds.filter((p) => !p.dead && p.ambient).length;
-        if (live < P.target) { const vw = G.canvas.width / (G.cam.scale || 1) * 0.55, vh = G.canvas.height / (G.cam.scale || 1) * 0.55; const minD = Math.hypot(vw, vh) + 40; for (let k = 0; k < 3 && live + k < P.target; k++) P.spawn(pl, minD, minD + 600); }
+        if (live < P.target) { const {halfW,halfH}=streetViewport(G); const minD=Math.min(halfW,halfH)+60; for (let k = 0; k < 3 && live + k < P.target; k++) P.spawn(pl, minD, minD + 600); }
         G.peds = G.peds.filter((p) => !p.ambient || Math.hypot(p.x - pl.x, p.y - pl.y) < 1700 || (p.dead && p.deadT < 30));
       }
     },

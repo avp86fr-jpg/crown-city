@@ -25,7 +25,7 @@
       <div id="joyZone"><div class="joy" id="joy"><div class="knob" id="knob"></div></div><div class="hintL" id="hintL">DRAG TO MOVE</div></div>
       <div class="cluster">
         <button class="btn act" id="tEnter" type="button"><svg viewBox="0 0 24 24"><path d="M5 16l1.5-5.2A2 2 0 0 1 8.4 9.3h7.2a2 2 0 0 1 1.9 1.5L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="tEnterL">CAR</span></button>
-        <button class="btn fire" id="tFire" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>FIRE</span></button>
+        <button class="btn fire" id="tFire" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>AIM / FIRE</span></button>
         <button class="btn brake drive-only" id="tBrake" type="button"><span>BRAKE</span></button>
         <button class="btn hand drive-only" id="tHand" type="button"><span>DRIFT</span></button>
         <button class="btn boost drive-only" id="tBoost" type="button"><span>BOOST</span></button>
@@ -34,11 +34,12 @@
         <button class="btn reload" id="tReload" type="button" aria-label="Reload"><span>RELOAD</span></button>
         <button class="btn dodge foot-only" id="tDodge" type="button" aria-label="Dodge roll"><span>ROLL</span></button>
       </div>
-      <button class="btn fsb" id="tFS" type="button" aria-label="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+
       <button class="btn map" id="tMap" type="button" aria-label="City map"><span>MAP</span></button>
       <button class="btn crew" id="tCrew" type="button" aria-label="Crew contracts and workshops"><span>CREW</span></button>
       <button class="btn pause" id="tPause" type="button" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
     </div>
+    <div id="screenTools">      <button class="fullscreen-button" id="tFS" type="button" aria-label="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="fsLabel">FULLSCREEN</span></button></div>
     <div id="safe"></div>
   </div>
   <script type="module" src="src/main.js"></script>

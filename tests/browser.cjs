@@ -15,7 +15,7 @@ async function step(page, n = 1) {
 async function button(page, label, touch = false) {
   const at = await page.evaluate(label => {
     const G = __CC.G, b = G.buttons.find(b => b.label === label);
-    if (!b) throw Error('Button missing: ' + label);
+    if (!b) throw Error('Button missing: ' + label + ' in ' + G.scene + ': ' + G.buttons.map(b=>b.label).join(', '));
     return { x: (b.x + b.w / 2) / G.canvas.width * innerWidth, y: (b.y + b.h / 2) / G.canvas.height * innerHeight };
   }, label);
   if (touch) await page.touchscreen.tap(at.x, at.y); else await page.mouse.click(at.x, at.y);
@@ -108,12 +108,21 @@ async function dialogue(page, choices) {
     await check('desktop and phone menus stay in bounds with Continue available', async () => {
       for (const [width, height] of [[1280,720],[844,390],[390,844],[667,375]]) {
         await page.setViewportSize({width,height});
-        for (const scene of ['title','pause','map','settings','brief','crew','garage']) {
+        for (const scene of ['title','pause','map','settings','brief','crew','garage','dossier']) {
           await page.evaluate(scene => { const G = __CC.G; G.scene = scene; G.pausedFrom = 'play'; T.fit(G); T.render(G); }, scene);
           assert.deepEqual(await page.evaluate(() => { const G = __CC.G; return G.buttons.filter(b => b.x < 0 || b.y < 0 || b.x + b.w > G.canvas.width + 1 || b.y + b.h > G.canvas.height + 1).map(b => b.label); }), []);
           if (['title','settings','crew','garage'].includes(scene)) await page.screenshot({path:path.join(output,`${scene}-${width}.png`)});
         }
       }
+    });
+    await check('Chrome fullscreen enters and exits through real click and F gestures',async()=>{
+      await page.setViewportSize({width:1280,height:720});await page.evaluate(()=>{const G=__CC.G;G.scene='play';T.fit(G);T.render(G);G._syncTouch();});
+      await page.locator('#tFS').click();await page.waitForFunction(()=>!!document.fullscreenElement,null,{polling:100});
+      assert.equal(await page.locator('#tFS').getAttribute('aria-pressed'),'true');
+      await page.keyboard.press('KeyF');await page.waitForFunction(()=>!document.fullscreenElement,null,{polling:100});
+      assert.equal(await page.locator('#tFS').getAttribute('aria-pressed'),'false');
+      await page.keyboard.press('KeyF');await page.waitForFunction(()=>!!document.fullscreenElement,null,{polling:100});
+      await page.locator('#tFS').click();await page.waitForFunction(()=>!document.fullscreenElement,null,{polling:100});
     });
     const { page: phone, context: mobile } = await setup(browser, {viewport:{width:390,height:844},hasTouch:true,isMobile:true,deviceScaleFactor:2});
     await phone.evaluate(() => { __CC.startNew(); __CC.skipAllVN(); __CC.startPlay(); T.render(__CC.G); });
@@ -123,7 +132,8 @@ async function dialogue(page, choices) {
       const start = await phone.evaluate(() => { const G = __CC.G, a = T.findSafe(G,2108,2400,10,true); G.player = T.makeFoot(G,a.x,a.y,0); return G.player.y; });
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:70,y:650,id:1}]});
       await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:70,y:585,id:1}]});
-      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:70,y:585,id:1},{x:175,y:794,id:2}]});
+      const run=await phone.locator('#tSprint').boundingBox();
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:70,y:585,id:1},{x:run.x+run.width/2,y:run.y+run.height/2,id:2}]});
       await step(phone,30);
       assert.ok(await phone.evaluate(start => __CC.G.player.y < start - 20, start));
       assert.equal(await phone.evaluate(() => __CC.G.input.tSprint),true);
@@ -143,6 +153,27 @@ async function dialogue(page, choices) {
       await phone.locator('#tReload').tap();await step(phone);assert.ok(await phone.evaluate(()=>__CC.G.action.reloadT>0));
       await phone.locator('#tDodge').tap();await step(phone);assert.ok(await phone.evaluate(()=>__CC.G.action.dodgeT>0));await step(phone,25);
       await phone.locator('#tCrew').tap();await step(phone);assert.equal(await phone.evaluate(()=>__CC.G.scene),'crew');await button(phone,'BACK TO CITY',true);
+    });
+    await check('mobile dual-stick aiming changes shot direction while movement remains independent',async()=>{
+      await phone.evaluate(()=>{const G=__CC.G;G.scene='play';G.settings.aimAssist=false;G.player=T.makeFoot(G,2108,2400,0);G.action.shotT=G.action.reloadT=G.action.dodgeT=0;G.action.ammo[1]=28;G.action.messageT=0;G.action.messages=[];G._syncTouch();T.render(G);});
+      const fire=await phone.locator('#tFire').boundingBox(),x=fire.x+fire.width/2,y=fire.y+fire.height/2,cdp=await mobile.newCDPSession(phone);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:65,y:650,id:31},{x,y,id:32}]});
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:65,y:600,id:31},{x:x+45,y,id:32}]});await step(phone,15);
+      const state=await phone.evaluate(()=>({angle:__CC.G.player.aimRot,joy:__CC.G.input.touchJoy.active,aim:__CC.G.input.touchAim.aiming}));
+      assert.ok(Math.abs(state.angle-Math.PI/2)<.15);assert.ok(state.joy&&state.aim);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await step(phone);assert.equal(await phone.evaluate(()=>__CC.G.input.touchAim.active||__CC.G.input.tFire),false);
+    });
+    await check('mobile layout, opacity and aim settings persist; dossier and new contracts open',async()=>{
+      await phone.locator('#tPause').tap();await step(phone);await button(phone,'SETTINGS',true);await button(phone,'CONTROLS',true);
+      await button(phone,'THUMB LAYOUT',true);await button(phone,'CONTROL OPACITY',true);await button(phone,'CONTROL SIZE',true);
+      assert.equal(await phone.evaluate(()=>__CC.G.settings.leftHanded),true);assert.equal(await phone.locator('body').evaluate(e=>e.classList.contains('left-handed')),true);
+      assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('mw_crown_city_settings')).leftHanded),true);
+      await button(phone,'BACK',true);await button(phone,'STORY / DOSSIER',true);assert.equal(await phone.evaluate(()=>__CC.G.scene),'dossier');await button(phone,'BACK TO CITY',true);
+      await phone.locator('#tCrew').tap();await step(phone);await button(phone,'MORE JOBS / HUNTER + VERA ›',true);
+      await button(phone,'TAKE JOB / +950',true);assert.equal(await phone.evaluate(()=>__CC.G.action.contract.id),'rescue');
+      await phone.evaluate(()=>{__CC.save();T.loadSave(__CC.G);T.render(__CC.G)});assert.ok(await phone.evaluate(()=>__CC.G.waypoint));
+      await phone.locator('#tCrew').tap();await step(phone);await button(phone,'CANCEL CONTRACT',true);await button(phone,'BACK TO CITY',true);
+      await phone.evaluate(()=>{const G=__CC.G;G.settings.leftHanded=false;G.settings.controlSize=1;G._syncTouch();});
     });
     await check('touch HUD clears the DOM controls at both phone orientations', async () => {
       for (const [width,height] of [[390,844],[844,390]]) {
@@ -204,13 +235,25 @@ async function dialogue(page, choices) {
       const result = await live.evaluate(async () => {
         const G = __CC.G;
         G.resScale = 1; G.settings.autoRes = true; G._ar = { t: 2, n: 10, sum: 1 };
-        const before = G.canvas.width;
+        const before = G.worldWidth, uiBefore=G.canvas.width;
         return new Promise(resolve => requestAnimationFrame(() => {
           const pixels = G.ctx.getImageData(0, 0, G.canvas.width, G.canvas.height).data;
-          resolve({ resized: before !== G.canvas.width, painted: pixels.some((v, i) => i % 4 !== 3 && v > 30) });
+          resolve({ resized: before !== G.worldWidth, sharpUI:uiBefore===G.canvas.width, painted: pixels.some((v, i) => i % 4 !== 3 && v > 30) });
         }));
       });
-      assert.equal(result.resized, true); assert.equal(result.painted, true); await live.close();
+      assert.equal(result.resized, true); assert.equal(result.sharpUI,true); assert.equal(result.painted, true); await live.close();
+    });
+    await check('battery saver lowers presentation rate while simulation and sharp phone UI continue',async()=>{
+      const live=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,hasTouch:true,isMobile:true});
+      live.on('pageerror',e=>failures.push(e.message));await live.goto(base);await live.waitForFunction(()=>!!window.__CC);
+      const result=await live.evaluate(async()=>{
+        const G=__CC.G;__CC.startNew();__CC.skipAllVN();__CC.startPlay();G.settings.batterySaver=true;G.settings.quality='low';G.settings.autoRes=false;G.resScale=.7;
+        const T=(await import('/src/game.js')).testing;T.fit(G);T.render(G);
+        const ui=G.canvas.width,world=G.worldWidth,tick=G.ticks,frames=G.renderCount;
+        await new Promise(r=>setTimeout(r,1200));return {ui,world,frames:G.renderCount-frames,ticks:G.ticks-tick};
+      });
+      assert.equal(result.ui,780);assert.ok(result.world<result.ui);assert.ok(result.frames>=10&&result.frames<=42);assert.ok(result.ticks>result.frames*1.5);
+      console.log('Battery sample:',JSON.stringify(result));await live.close();
     });
     await check('arranged music streams, changes station and yields to the pursuit track',async()=>{
       await page.evaluate(()=>{const G=__CC.G;G.audio.unlock();G.audio.update(G,.1)});

@@ -79,7 +79,8 @@ function roadArt(G,ix,iy){
   }else if(j%4===2){oval(x,px,py,9,3,'rgba(12,16,20,.12)');}
   else{ x.save();x.translate(px,py);x.rotate(hash(seed+9)*6);panel(x,-2,-2,4,3,'rgba(199,189,163,.4)');x.restore();}
  }
- if(G.street.roadCache.size>64)G.street.roadCache.delete(G.street.roadCache.keys().next().value);
+ const limit=G.settings.quality==='low'?12:G.settings.quality==='med'?24:48;
+ if(G.street.roadCache.size>=limit){const oldest=G.street.roadCache.keys().next().value;const old=G.street.roadCache.get(oldest);G.street.roadCache.delete(oldest);old.width=old.height=1;}
  G.street.roadCache.set(key,c);return c;
 }
 export function drawStreetScene(G,r){
@@ -123,12 +124,12 @@ export function drawRoofDetail(G,r){
  }
 }
 export function drawAmbientGesture(G,p){
- if(p.dead||p.copPed||p.flee>0||(p.speed||0)>20)return;
+ if(p.dead||p.copPed||p.flee>0||((p.speed||0)>20&&p.cityActivity!=='shopping'))return;
  const c=G.ctx,t=G.settings.reducedMotion?0:G.ticks/60,seed=hash(p.x+p.y);
  c.save();c.rotate(p.rot||0);
- if(seed<.34){ // phone screen
+ if(p.cityActivity==='bus'||p.cityActivity==='news'||(!p.cityActivity&&seed<.34)){ // phone screen
   c.translate(8,-9);c.rotate(Math.sin(t*.8+seed)*.1);panel(c,-2,-3,4,7,'#16272e');c.fillStyle='#83b7bb';c.fillRect(-1,-2,2,4);
- }else if(seed<.67){ // cup / conversation gesture
+ }else if(p.cityActivity==='coffee'||p.cityActivity==='conversation'||(!p.cityActivity&&seed<.67)){ // cup / conversation gesture
   const wave=Math.sin(t*2+seed*19)*2;oval(c,10+wave,-8,2.7,2,'#ddd1b8');c.strokeStyle='#e6d8c3';c.lineWidth=.7;c.beginPath();c.arc(13+wave,-8,1.5,0,TAU);c.stroke();
  }else{ // small shopping bag
   panel(c,-13,1,8,10,'#a28659');c.strokeStyle='#d6c5a3';c.lineWidth=1;c.beginPath();c.arc(-9,2,3,Math.PI,TAU);c.stroke();

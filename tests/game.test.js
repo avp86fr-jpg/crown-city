@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import { harness, root } from './harness.js';
 import { VN, MISSIONS, missionFlow } from '../src/story.js';
 import { readJSON, settingsFrom, flagsFrom, raceCourse, screenToWorld } from '../src/session.js';
-import {actionState} from '../src/action.js';
+import {actionState,startContract} from '../src/action.js';
+import {directorState} from '../src/mission_director.js';
 let h, G, T;
 before(async () => { h = await harness({ stored: { mw_crown_city_settings: '{broken' } }); ({ G, T } = h); });
 function mission(index, flags = {}) {
@@ -75,6 +76,22 @@ test('mission anchors are reachable on the actual collision map', () => {
   }
   assert.ok(Math.hypot(G.meta.interactions.casinoLot[0] - G.meta.interactions.casinoDoor[0],
     G.meta.interactions.casinoLot[1] - G.meta.interactions.casinoDoor[1]) > 150);
+});
+test('campaign objective transitions retain the active crew route',()=>{
+ mission(0);startContract(G,'rescue');const marker={...G.waypoint};
+ const car=G.vehicles.find(v=>v.mission&&v.kind==='riot');T.enterVeh(G,car,true);T.tickMission(G,1/60);
+ assert.deepEqual(G.waypoint,marker);assert.equal(G.action.contract.id,'rescue');
+ T.beginMission(G,1);assert.deepEqual(G.waypoint,marker);
+});
+test('civilian explosion casualties count only when the player caused ignition',()=>{
+ G.director=directorState();mission(0);G.player=T.makeFoot(G,2108,2400,0);G.peds=[];G.vehicles=[];
+ const baseline=G.director.active.civilianHarm;
+ for(const byPlayer of [false,true]){
+  const car=T.makeVeh('fare',2108,2200,0);G.vehicles=[car];
+  G.peds=[{x:2108,y:2205,hp:30,dead:false,speed:0,rot:0,dist:0,walk:30}];
+  T.damageVeh(G,car,95,byPlayer);assert.equal(car.playerIgnited,byPlayer);T.explode(G,car);
+  assert.equal(G.director.active.civilianHarm,baseline+(byPlayer?1:0));
+ }
 });
 
 test('collecting a package requires deliberate interaction and a slow vehicle', () => {

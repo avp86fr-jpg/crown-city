@@ -16,6 +16,11 @@ export function settingsFrom(value, touch = false) {
     master: finite(s.master, 0.9, 0, 1), sfx: finite(s.sfx, 0.8, 0, 1), mus: finite(s.mus, 0.6, 0, 1),
     autoRes: s.autoRes !== false, autoFS: s.autoFS !== false,
     showFps: s.showFps === true, reducedMotion: s.reducedMotion === true,
+    leftHanded: s.leftHanded === true, aimAssist: s.aimAssist !== false,
+    haptics: s.haptics !== false, showTips: s.showTips !== false,
+    controlSize: [.9, 1, 1.15].includes(s.controlSize) ? s.controlSize : 1,
+    controlOpacity: [.55, .8, 1].includes(s.controlOpacity) ? s.controlOpacity : .8,
+    batterySaver: s.batterySaver === true,
   };
 }
 export function flagsFrom(value) {
@@ -46,4 +51,5 @@ export function resetInput(I) {
   I.x = I.y = 0;
   I.mouse.down = I.mouse.fire = false;
   I.touchJoy = { x: 0, y: 0, active: false };
+  I.touchAim = { x: 0, y: 0, active: false, aiming: false };
 }

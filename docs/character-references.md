@@ -17,9 +17,9 @@ The individual Chaos and Gold Mage identities were checked on OpenSea. The exist
 
 `assets/premium/crowd.webp` provides illustrated civilian and police walk/idle views in a nine-column, eight-direction sheet. These original city residents replace the old block-style civilian sprites. The atlas uses two walking poses and one idle pose per archetype.
 
-`assets/premium/vehicles.webp` is a new six-car atlas: red striped muscle coupe, violet-black hypercar, teal sports coupe, navy/white pursuit sedan, mustard taxi and graphite sedan. Designs are unbranded. Wheel steering, suspension, wipers, entry/exit doors, damage, paint changes and vehicle lights remain runtime effects. Existing bike, boat and utility-vehicle art is retained.
+`assets/premium/vehicles.webp` is a new six-car atlas: red striped muscle coupe, violet-black hypercar, teal sports coupe, navy/white pursuit sedan, mustard taxi and graphite sedan. Designs are unbranded. Wheel steering, suspension, wipers, entry/exit doors, damage, paint changes and vehicle lights remain runtime effects. `assets/premium/city-fleet.webp` adds a matching bus, ambulance, armored Palace courier van, sport motorcycle, cruiser and speedboat. It was generated from the first vehicle atlas as a style reference; the larger yacht retains its earlier art.
 
-All three atlases were generated with the built-in image-generation tool and compressed to WebP. The regular cell grids are used directly; no claim of 3D models or skeletal animation is made. Sprite anchors and direction transitions still warrant physical-device/manual art review.
+All four atlases were generated with the built-in image-generation tool and compressed to WebP. The regular cell grids are used directly; no claim of 3D models or skeletal animation is made. Sprite anchors and direction transitions still warrant physical-device/manual art review.
 
 ## Original score
 

@@ -53,3 +53,42 @@ body.isfs #touch .btn.fsb, #touch.menu .fsb { display: none; }
 #bootError p { max-width: 36em; }
 #bootError button { min-height: 48px; min-width: 160px; border: 0; border-radius: 12px; background: #f2c14e; color: #1a1206; font: 800 16px system-ui; cursor: pointer; }
 #bootError a { color: #67e7ff; }
+
+/* Compact thumb zones. The fire button is also a directional aiming stick. */
+:root { --control-scale: 1; --control-opacity: .8; }
+#touch .cluster { width: 210px; height: 210px; transform: scale(var(--control-scale)); transform-origin: right bottom; }
+#touch .btn { background: rgb(12 23 28 / var(--control-opacity)); border: 1.5px solid #b4cbc16b; color: #e9ecdf; box-shadow: 0 3px 12px #0006; }
+#touch .btn.act { width:58px; height:58px; right:0; bottom:84px; border-color:#dfbf7a; background:#8d6a356b; }
+#touch .btn.fire { width:80px; height:80px; right:60px; bottom:14px; border-color:#eaa98d; background:#753e347d; }
+#touch .btn.fire svg { transform:translate(var(--aim-x,0px),var(--aim-y,0px)); }
+#touch .btn.fire.down { transform:none; border-color:#fff0d0; box-shadow:0 0 0 10px #eaa98d22; }
+#touch .btn.weapon { width:54px; height:54px; right:66px; bottom:110px; font-size:8px; }
+#touch .btn.reload { width:54px; height:54px; right:128px; bottom:104px; font-size:8px; }
+#touch .btn.sprint, #touch .btn.hand { width:44px; height:44px; right:148px; bottom:12px; font-size:8px; }
+#touch .btn.dodge, #touch .btn.brake { width:54px; height:54px; right:0; bottom:6px; font-size:9px; }
+#touch .btn.boost { width:54px; height:54px; right:128px; bottom:70px; }
+#touch.drive .btn.weapon, #touch.drive .btn.reload { width:44px; height:44px; bottom:156px; }
+#touch.drive .btn.weapon { right:64px; }
+#touch.drive .btn.reload { right:118px; }
+#joyZone { width:44%; height:58%; }
+#joyZone .joy { width:120px; height:120px; margin:-60px 0 0 -60px; left:calc(82px + var(--sal)); top:calc(100% - 88px - var(--sab)); border:1.5px solid #d7ddc873; background:radial-gradient(circle,#14252c44,#acc1b51c); }
+#joyZone .knob { width:50px; height:50px; left:34px; top:34px; background:radial-gradient(circle at 30% 25%,#c7d6c0,#507d78); border:1px solid #c7d6c080; }
+#joyZone .hintL { left:30px; bottom:164px; font-size:9px; letter-spacing:.11em; }
+#screenTools { position:absolute; right:calc(12px + var(--sar)); bottom:calc(12px + var(--sab)); z-index:8; }
+.fullscreen-button { height:44px; min-width:44px; padding:0 13px; display:flex; align-items:center; justify-content:center; gap:8px; color:#dfe6db; background:#102027df; border:1px solid #a6beb05c; border-radius:10px; font:700 9px system-ui; letter-spacing:.08em; cursor:pointer; touch-action:manipulation; }
+.fullscreen-button svg { width:19px; height:19px; }
+.fullscreen-button:hover { background:#27423f; }
+.fullscreen-button:focus-visible { outline:3px solid #efca82; outline-offset:3px; }
+.fullscreen-button[hidden] { display:none; }
+body.touch-input #screenTools { top:calc(62px + var(--sat)); bottom:auto; right:calc(10px + var(--sar)); }
+body.touch-input .fullscreen-button { width:44px; padding:0; border-radius:12px; }
+body.touch-input #fsLabel { display:none; }
+body.game-menu #screenTools { top:calc(10px + var(--sat)); bottom:auto; }
+body.game-menu:not([data-scene="title"]) #screenTools { display:none; }
+body.left-handed #joyZone { left:auto; right:0; }
+body.left-handed #joyZone .joy { left:calc(100% - 82px - var(--sar)); }
+body.left-handed #joyZone .hintL { left:auto; right:30px; }
+body.left-handed #touch .cluster { right:auto; left:calc(14px + var(--sal)); transform-origin:left bottom; }
+@media (max-width:440px) { #touch .cluster { transform:scale(min(var(--control-scale),1)); } }
+@media (max-width:350px) { #touch .cluster { right:8px; transform:scale(.88); } #joyZone .joy { left:70px; width:110px; height:110px; margin:-55px 0 0 -55px; } #joyZone .knob { left:29px;top:29px; } }
+@media (max-height:380px) { #touch .cluster { transform:scale(min(var(--control-scale),.9)); } }

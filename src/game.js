@@ -10,6 +10,12 @@ import { createLighting, ambientAt, darkness, sunAt, timeLabel, LIGHT } from "./
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
+import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from './controls.js';
+import { createCityAI } from './city_ai.js';
+import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
+import { drawMobileHUD } from './mobile_hud.js';
+import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
+import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
 const SAVE_KEY = "mw_crown_city_v1";
 const WORLD = 4096; // painted core size
@@ -96,13 +102,14 @@ export async function boot() {
 
   const sprites = {};
   const vehNames = ["nyx", "riot", "dart", "fare", "metro", "stitch", "hog", "wake", "gulf", "taxi", "ambulance", "bus", "fare_wreck", "metro_wreck"];
-  const charNames = ["chaos", "hunter", "fire", "cop", "m1", "m2", "m3", "m4", "valet", "cabbie", "worker", "guest", "synth", "prime"];
+  const charNames = ["chaos", "hunter", "fire"];
   const propNames = ["hydrant", "bin", "cone", "newsstand", "planter", "mailbox", "palm"];
   await Promise.all([
     ...vehNames.map((n) => loadImg(`assets/sprites/veh_${n}.png`).then((i) => (sprites["veh_" + n] = i))),
     ...charNames.map((n) => loadImg(n === 'chaos' ? 'assets/premium/chaos.webp' : `assets/sprites/char_${n}.png`).then((i) => (sprites["char_" + n] = i))),
     loadImg('assets/premium/vehicles.webp').then(i => (sprites.vehicle_atlas = i)),
     loadImg('assets/premium/crowd.webp').then(i => (sprites.crowd_atlas = i)),
+    loadImg('assets/premium/city-fleet.webp').then(i => (sprites.city_fleet = i)),
     ...propNames.map((n) => loadImg(`assets/sprites/prop_${n}.png`).then((i) => (sprites["prop_" + n] = i))),
     loadImg("assets/fx/explosion.png").then((i) => (sprites.explosion = i)),
     loadImg("assets/fx/smoke.png").then((i) => (sprites.smoke = i)),
@@ -157,6 +164,7 @@ export async function boot() {
     storyLoads: new Map(),
     touch: false, missionState: {}, vnQueue: [], checkpoint: null, waypoint: null,
     action: actionState(),
+    director: directorState(),
   };
   G.makeVeh = makeVeh;
   G.ground = makeGround(world, tex, codeAt);
@@ -189,6 +197,7 @@ export async function boot() {
   spawnWorld(G);
   G.findSafeAction = (x,y) => findSafe(G,x,y,10,true);
   servicePoints(G); buildStreetScene(G);
+  G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
   seedPickups(G);
   // warm the title flyover tiles
@@ -199,10 +208,11 @@ export async function boot() {
   window.addEventListener("touchend", () => G.audio.unlock(), { once: true });
   window.addEventListener("keydown", () => G.audio.unlock(), { once: true });
 
-  let acc = 0, last = now();
+  let acc = 0, last = now(), lastRender = 0;
   const STEP = 1 / 60;
   function frame() {
     const t = now();
+    if(document.hidden){last=t;acc=0;requestAnimationFrame(frame);return;}
     let dt = Math.min(0.1, t - last);
     last = t;
     acc += dt;
@@ -216,11 +226,13 @@ export async function boot() {
     }
     if (acc > STEP * 6) acc = 0;
     const _t1 = performance.now();
-    // Resizing clears the canvas; adapt before drawing to avoid a black frame.
-    adaptRes(G, dt);
-    render(G);
-    const _t2 = performance.now();
-    prof(G, "tick", _t1 - _t0); prof(G, "render", _t2 - _t1);
+    // The simulation stays at 60 Hz; battery mode presents at 30 Hz.
+    if(!G.settings.batterySaver || t-lastRender>=1/30-.002 || G.scene!==G._renderScene){
+      const elapsed=lastRender?t-lastRender:dt;lastRender=t;G._renderScene=G.scene;
+      adaptRes(G, dt);render(G);G.presentFps=lerp(G.presentFps||60,1/Math.max(.001,elapsed),.1);
+      prof(G,'render',performance.now()-_t1);
+    }
+    prof(G, "tick", _t1 - _t0);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -435,7 +447,7 @@ function bindKeys(G) {
     if (k === "KeyE" || k === "KeyF" && false) I.enterP = true;
     if (k === "KeyK" || k === "KeyJ" || k === "ControlLeft") I.fireP = true;
     if (k === "Escape" || k === "KeyP") I.pauseP = true;
-    if (k === "KeyF") I.fsP = true;
+    if (k === "KeyF") { e.preventDefault(); G.toggleFS(); }
     if (k === "KeyM" || k === "Tab") I.mapP = true;
     if (k === "Enter" || k === "Space") { I.skipP = true; I.confirmP = true; }
     if (k === "KeyR") I.radioP = true;
@@ -457,7 +469,7 @@ function bindKeys(G) {
   };
   window.addEventListener("blur", release);
   window.addEventListener("pointercancel", () => resetInput(I));
-  document.addEventListener("visibilitychange", () => { if (document.hidden) release(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) {release();G.audio.ctx?.suspend?.().catch(()=>{});} else if(G.audio.ctx?.state==='suspended')G.audio.ctx.resume().catch(()=>{}); });
   const pulse = () => {
     I.sprint = down.has("ShiftLeft") || down.has("ShiftRight") || I.tSprint || I.tBoost;
     I.boost = down.has("ShiftLeft") || down.has("ShiftRight") || I.tBoost;
@@ -561,7 +573,7 @@ function setupTouch(G) {
   window.addEventListener("blur", () => end({ pointerId: joyId }));
   const hold = (id, fn) => {
     const el = document.getElementById(id);
-    el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); G.touch = true; G.firstTap && G.firstTap(); G.audio.unlock(); el.classList.add("down"); el.setPointerCapture(e.pointerId); fn(true); if (navigator.vibrate) try { navigator.vibrate(8); } catch {} });
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); G.touch = true; G.firstTap && G.firstTap(); G.audio.unlock(); el.classList.add("down"); el.setPointerCapture(e.pointerId); fn(true); if (G.settings.haptics && navigator.vibrate) try { navigator.vibrate(8); } catch {} });
     ["pointerup", "pointercancel", "lostpointercapture"].forEach((ev) => el.addEventListener(ev, () => { el.classList.remove("down"); fn(false); }));
   };
   hold("tEnter", (d) => { if (d) G.input.enterP = true; });
@@ -569,7 +581,7 @@ function setupTouch(G) {
   hold("tHand", (d) => { G.input.tHand = d; });
   hold("tBoost", (d) => { G.input.tBoost = d; });
   hold("tSprint", (d) => { G.input.tSprint = d; });
-  hold("tFire", (d) => { G.input.tFire = d; if (d) G.input.fireP = true; });
+  bindTouchAim(G, document.getElementById('tFire'));
   hold("tMap", (d) => { if (d) G.input.mapP = true; });
   hold("tPause", (d) => { if (d) G.input.pauseP = true; });
   hold('tWeapon', d => { if(d) G.input.weaponP=true; });
@@ -579,13 +591,14 @@ function setupTouch(G) {
   const enterL = document.getElementById("tEnterL"), enterB = document.getElementById("tEnter"), boostB = document.getElementById("tBoost");
   let lastMode = "";
   G._syncTouch = () => {
+    syncControlStyle(G);
     const show = G.touch;
     touch.classList.toggle("hidden", !show);
     if (!show) return;
     const inPlay = G.scene === "play";
     const drive = inPlay && G.player && G.player.type === "veh";
     const mode = !inPlay ? "menu" : drive ? "drive" : "foot";
-    if (mode !== lastMode) { touch.classList.remove("menu", "drive", "foot"); touch.classList.add(mode); lastMode = mode; }
+    if (mode !== lastMode) { touch.classList.remove("menu", "drive", "foot"); touch.classList.add(mode); lastMode = mode; if (!inPlay) { G.releaseAim?.(); resetInput(G.input); } }
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 72);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
@@ -599,44 +612,9 @@ function setupTouch(G) {
 }
 
 function hookFullscreen(G) {
-  const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
-  G.fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
-  G.isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  G.standalone = matchMedia("(display-mode: fullscreen)").matches || matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-  G.isFS = isFS;
-  let pending = 0;
-  G.toggleFS = async (want) => {
-    const el = document.documentElement;
-    if (performance.now() - pending < 600) return; // first-tap auto FS + button tap in the same gesture
-    pending = performance.now();
-    if (want === true && isFS()) return;
-    if (!G.fsSupported) { if (G.isIOS) toast(G, "iPhone: tap Share, then Add to Home Screen to play full screen."); return; }
-    try {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: "hide" });
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        if (screen.orientation && screen.orientation.lock) { try { await screen.orientation.lock("landscape"); } catch {} }
-      } else if (document.exitFullscreen) await document.exitFullscreen();
-    } catch {}
-    setTimeout(() => fit(G), 120);
-  };
-  // first tap on a phone: go full screen + try landscape (browsers require a gesture)
-  let tried = false;
-  G.firstTap = () => {
-    if (tried || !G.touch) return;
-    tried = true;
-    if (!isFS() && G.settings.autoFS !== false && G.fsSupported) G.toggleFS(true);
-  };
-  const fsB = document.getElementById("tFS");
-  const syncFS = () => { document.body.classList.toggle("isfs", isFS() || G.standalone || !G.fsSupported); setTimeout(() => fit(G), 120); };
-  document.addEventListener("fullscreenchange", syncFS); document.addEventListener("webkitfullscreenchange", syncFS); syncFS();
-  if (fsB) fsB.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); G.audio.unlock(); G.audio.click && G.audio.click(); pending = 0; G.toggleFS(); });
-  window.addEventListener("resize", () => fit(G));
-  window.addEventListener("orientationchange", () => setTimeout(() => fit(G), 200));
-  document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-  document.addEventListener("gesturestart", (e) => e.preventDefault());
-  document.addEventListener("dblclick", (e) => e.preventDefault());
-  fit(G);
+  installFullscreen(G, {fit, toast});
+  document.addEventListener('touchmove', e => e.preventDefault(), {passive:false});
+  document.addEventListener('gesturestart', e => e.preventDefault());
 }
 
 function fit(G) {
@@ -645,7 +623,9 @@ function fit(G) {
   const h = window.innerHeight || G.wrap.clientHeight;
   const q = G.settings ? G.settings.quality : "high";
   const maxDpr = q === "low" ? 1.15 : q === "med" ? 1.5 : 2;
-  const dpr = Math.max(G.dprFloor || 0.6, Math.min(maxDpr, window.devicePixelRatio || 1) * (G.resScale || 1));
+  const dpr = Math.min(2,window.devicePixelRatio||1);
+  G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1));
+  G.worldWidth=Math.round(w*G.worldDpr);G.worldHeight=Math.round(h*G.worldDpr);
   const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
   if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
   G.dpr = dpr; G.cssW = w; G.cssH = h;
@@ -656,7 +636,7 @@ function fit(G) {
     const cs = getComputedStyle(sEl);
     G.safe = { t: parseFloat(cs.paddingTop) * dpr || 0, r: parseFloat(cs.paddingRight) * dpr || 0, b: parseFloat(cs.paddingBottom) * dpr || 0, l: parseFloat(cs.paddingLeft) * dpr || 0 };
   } else G.safe = { t: 0, r: 0, b: 0, l: 0 };
-  if (G.light) G.light.resize(c.width, c.height, G.settings.quality);
+  if (G.light) G.light.resize(G.worldWidth, G.worldHeight, G.settings.quality);
 }
 
 /* -------------------- Save -------------------- */
@@ -664,6 +644,7 @@ function snapshot(G) {
   return {
     v: 3,
     action: actionSave(G.action),
+    director: directorSave(G.director),
     freeRoam: G.freeRoam === true,
     flags: G.flags,
     missionIndex: G.missionIndex,
@@ -694,6 +675,7 @@ function loadSave(G) {
 }
 function restoreState(G, d) {
   G.action = actionState(d.action);
+  G.director = directorState(d.director);
   G.freeRoam = d.freeRoam === true && d.missionIndex >= MISSIONS.length;
   G.waypoint=null;
   G.flags = flagsFrom(d.flags);
@@ -737,6 +719,7 @@ function restoreState(G, d) {
     }
   }
   G.cam.x = G.player.x; G.cam.y = G.player.y;
+  restoreStreetRoute(G);
   if(G.action.contract?.id==='courier' || G.action.contract?.id==='ghost' && !G.action.contract.stage) {
     const point=G.action.contract.id==='courier'&&!G.action.contract.stage?G.meta.spawns.garage:G.meta.interactions[G.action.contract.id==='courier'?'neural':'pd'];G.waypoint={x:point[0],y:point[1]};
   }
@@ -755,6 +738,7 @@ function restoreState(G, d) {
   else if (G.needsBegin && !G.ended) beginMission(G, G.missionIndex);
   else G.scene = G.ended && !G.freeRoam ? 'end' : 'play';
   setHint(G);
+  beginJob(G);
   return true;
 }
 function retryObjective(G) {
@@ -827,12 +811,11 @@ function tickPickups(G, dt) {
 /* -------------------- Tick -------------------- */
 function tick(G, dt) {
   G._pulseInput();
-  if (G.input.fsP) { G.toggleFS(); G.input.fsP = false; }
   if (G.scene === "title") tickTitle(G, dt);
   else if (G.scene === "settings") tickSettings(G, dt);
   else if (G.scene === "vn") tickVN(G, dt);
   else if (G.scene === "end") tickEnd(G, dt);
-  else if (['pause','map','crew','garage'].includes(G.scene)) tickPause(G, dt);
+  else if (['pause','map','crew','garage','dossier'].includes(G.scene)) tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
   else tickPlay(G, dt);
   if ((G.ticks & 7) === 0 || G._lastScene !== G.scene) { G._syncTouch && G._syncTouch(); G._lastScene = G.scene; }
@@ -856,6 +839,7 @@ function tickTitle(G, dt) {
   G.time = 19.9;
   G.weather = "clear";
   G.ticks++;
+  G.cityAI?.begin(dt);
   G.traffic.tick(dt);
   tickVehicles(G, dt);
   G.pedsys.tick(dt);
@@ -878,6 +862,7 @@ function menuKeys(G) {
 
 function startNew(G) {
   G.action = actionState();
+  G.director = directorState();
   G.freeRoam=false;
   G.flags = flagsFrom({});
   G.missionState = {}; G.vnQueue = []; G.checkpoint = null; G.race = null; G.van = null; G.waypoint = null;
@@ -893,6 +878,7 @@ function startNew(G) {
   G.tipStep = null; G.tipsDone = false; G.walked = 0; G.drove = 0;
   spawnWorld(G);
   buildStreetScene(G);
+  G.cityAI=createCityAI(G);
   const s = G.meta.spawns.player;
   G.player = makeFoot(G, s[0], s[1], 0);
   G.cam.x = s[0]; G.cam.y = s[1];
@@ -990,9 +976,11 @@ function beginMission(G, idx) {
   const flow = missionFlow(MISSIONS[idx].id, G.flags);
   G._flow = flow;
   G.gps = null; G.waypoint = null;
+  restoreStreetRoute(G);
   if (flow && flow.onStart) applyEffects(G, flow.onStart);
   if (flow && flow.onStart && flow.onStart.spawnVan) spawnVan(G);
   if (idx === 4) ensureGetawayBoat(G);
+  beginJob(G);
   setHint(G);
   G.scene = "brief";
   G.briefT = 0;
@@ -1012,6 +1000,7 @@ function startPlayFromBrief(G) {
 }
 // first-mission onboarding tips, driven by what the player actually does
 function tickTips(G, dt) {
+  if(G.settings.showTips===false){G.tip=null;return;}
   if (G.missionIndex !== 0 || G.tipStep == null || G.tipsDone) { G.tip = ""; return; }
   const P = G.player, touch = G.touch;
   const steps = [
@@ -1092,6 +1081,7 @@ function advanceObjective(G) {
   }
   G.objectiveIndex++;
   G.gps = null; G.waypoint = null;
+  restoreStreetRoute(G);
   G.audio.pickup();
   if (G.objectiveIndex >= flow.objectives.length) {
     completeMission(G, true);
@@ -1106,6 +1096,7 @@ function advanceObjective(G) {
 function completeMission(G, won) {
   const flow = G._flow;
   if (!flow) return;
+  const debrief=finishJob(G,won);
   if (G.race && G.race.rival) G.vehicles = G.vehicles.filter(v => v !== G.race.rival);
   G.race = null;
   if (!won) {
@@ -1116,7 +1107,7 @@ function completeMission(G, won) {
     save(G); return;
   }
   if (flow.onWin) applyEffects(G, flow.onWin);
-  showBanner(G, 'JOB DONE', MISSIONS[G.missionIndex]?.title || 'JOB', 'win');
+  showBanner(G, 'JOB DONE', (MISSIONS[G.missionIndex]?.title || 'JOB')+(debrief?.bonus?' / CREW BONUS +'+debrief.bonus:''), 'win');
   G.missionIndex++; G.objectiveIndex = 0; G.needsBegin = G.missionIndex < MISSIONS.length;
   const win = typeof flow.winVN === 'function' ? flow.winVN() : flow.winVN;
   const next = G.needsBegin ? missionFlow(MISSIONS[G.missionIndex].id, G.flags)?.startVN : null;
@@ -1144,6 +1135,7 @@ function tickPlay(G, dt) {
   if (G.input.radioP && G.player.type === "veh") { G.radioName = G.audio.nextStation(); G.radioT = 2.5; }
   G.ticks++;
   tickAction(G,dt,{moveFoot});
+  G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);
   if(G.scene !== 'play') return;
   const speed = [0, 1, 0.5, 0.25][G.settings.timeSpeed ?? 1] ?? 1;
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
@@ -1152,6 +1144,7 @@ function tickPlay(G, dt) {
     G.interactP = true; G.input.enterP = false;
   }
   tickPlayer(G, dt);
+  G.cityAI?.begin(dt);
   G.traffic.tick(dt);
   tickVehicles(G, dt);
   tickCollisions(G);
@@ -1168,6 +1161,8 @@ function tickPlay(G, dt) {
   tickParticles(G, dt);
   tickPickups(G, dt);
   tickCamera(G, dt);
+  const guidance=tickDirector(G,dt);
+  if(guidance)message(G,guidance.name,guidance.text);
   tickMission(G, dt);
   G.interactP = false;
   tickTips(G, dt);
@@ -1423,10 +1418,10 @@ function tickDrive(G, v, input, dt, isPlayer) {
     let guard = 0; while (carHit(G, v, nx, ny) && guard++ < 12) { nx += hit.nx * 2; ny += hit.ny * 2; }
     const impact = Math.abs(vn);
     if (impact > 70) {
-      if (isPlayer) { G.audio.crash(); addShake(G, Math.min(14, impact / 18)); }
+      if (isPlayer) { recordIncident(G,'collision'); G.audio.crash(); addShake(G, Math.min(14, impact / 18)); }
       G.particles.push({ kind: "flash", x: nx - hit.nx * 20, y: ny - hit.ny * 20, life: 0.1, a: 1 });
       for (let i = 0; i < 10; i++) G.particles.push({ kind: "spark", x: nx - hit.nx * 20, y: ny - hit.ny * 20, vx: (Math.random() - 0.5) * 300, vy: (Math.random() - 0.5) * 300, life: 0.18 + Math.random() * 0.2 });
-      damageVeh(G, v, impact / 9);
+      damageVeh(G, v, impact / 9, isPlayer);
       scarePeds(G, nx, ny, 200);
     }
     // spin a little from glancing hits
@@ -1457,11 +1452,11 @@ function carHit(G, v, x, y) {
   return { nx: nx / m, ny: ny / m, n };
 }
 
-function damageVeh(G, v, amt) {
+function damageVeh(G, v, amt, byPlayer=false) {
   if (amt <= 0 || v.dead) return;
   v.health = (v.health ?? 100) - amt;
   if (v.health < 35 && !v.wrecked) { v.wrecked = true; }
-  if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; }
+  if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; v.playerIgnited=byPlayer; }
   if (v.cop && v === G.player) return;
 }
 function tickVehDamage(G, v, dt) {
@@ -1484,9 +1479,9 @@ function explode(G, v) {
   scarePeds(G, v.x, v.y, 420);
   if (G.player === v) { exitVeh(G); G.health -= 60; if (G.health <= 0) wasted(G); }
   else if (G.player.type === "foot" && Math.hypot(G.player.x - v.x, G.player.y - v.y) < 70) { G.health -= 45; if (G.health <= 0) wasted(G); }
-  for (const p of G.peds) if (!p.dead && Math.hypot(p.x - v.x, p.y - v.y) < 70) killPed(G, p, false);
-  for (const o of G.vehicles) if (o !== v && !o.dead && Math.hypot(o.x - v.x, o.y - v.y) < 90) damageVeh(G, o, 40);
-  if (v.cop) crime(G, 1, v.x, v.y, true);
+  for (const p of G.peds) if (!p.dead && Math.hypot(p.x - v.x, p.y - v.y) < 70) {if(v.playerIgnited&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,!!v.playerIgnited);}
+  for (const o of G.vehicles) if (o !== v && !o.dead && Math.hypot(o.x - v.x, o.y - v.y) < 90) damageVeh(G, o, 40,!!v.playerIgnited);
+  if (v.cop&&v.playerIgnited) crime(G, 1, v.x, v.y, true);
 }
 
 // vehicle vs vehicle: two circles per car along its length, impulse by mass
@@ -1524,6 +1519,8 @@ function tickCollisions(G) {
         const tx = -best.ny, ty = best.nx, sg = ((a.x - b.x) * tx + (a.y - b.y) * ty) >= 0 ? 1 : -1;
         a.x += tx * sg * best.pen * 0.5; a.y += ty * sg * best.pen * 0.5; b.x -= tx * sg * best.pen * 0.5; b.y -= ty * sg * best.pen * 0.5;
       }
+      const playerImpact = a===P ? a.vx*best.nx+a.vy*best.ny : b===P ? -b.vx*best.nx-b.vy*best.ny : 0;
+      const otherImpact = a===P ? -b.vx*best.nx-b.vy*best.ny : b===P ? a.vx*best.nx+a.vy*best.ny : Infinity;
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
       if (rv < 0) {
         const jimp = -(1.3) * rv / (1 / ma + 1 / mb);
@@ -1536,7 +1533,9 @@ function tickCollisions(G) {
           if (v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
         }
         if (imp > 50) {
-          damageVeh(G, a, imp / 14); damageVeh(G, b, imp / 14);
+          if(playerImpact>50 && playerImpact>otherImpact)recordIncident(G,'collision');
+          const atFault=playerImpact>50&&playerImpact>otherImpact;
+          damageVeh(G, a, imp / 14,atFault); damageVeh(G, b, imp / 14,atFault);
           if (a === P || b === P) { G.audio.crash(); addShake(G, Math.min(12, imp / 22)); }
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
           for (let k = 0; k < 8; k++) G.particles.push({ kind: "spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
@@ -1652,6 +1651,7 @@ function shoot(G, from, onFoot) {
   from.shotTick = G.ticks;
   G.lastShot = now();
   let rot = from.rot;
+  if (G.touch) rot = aimDirection(G.input, rot, G.cam.rot);
   if (onFoot && G.input.mouse.fire && !G.touch) {
     const aim = screenToWorld(G, G.input.mouse.x, G.input.mouse.y);
     rot = Math.atan2(aim.x - from.x, -(aim.y - from.y));
@@ -1661,16 +1661,19 @@ function shoot(G, from, onFoot) {
   const speed = weapon.speed;
   // light auto-aim on foot: snap to the nearest target in a narrow cone
   let ax = h.x, ay = h.y;
-  if (onFoot) {
+  if (onFoot && G.settings.aimAssist !== false) {
     let best = null, bd = 320;
-    for (const t of G.cops.concat(G.peds.filter((p) => p.copPed && !p.dead))) {
+    const targets = G.cops.concat(G.peds.filter((p) => p.copPed && !p.dead));
+    if (G._flow?.objectives[G.objectiveIndex]?.kind === 'intercept' && G.van && !G.van.dead) targets.push(G.van);
+    for (const t of targets) {
       const dx = t.x - from.x, dy = t.y - from.y, d = Math.hypot(dx, dy);
-      if (d > 0 && d < bd && G.nav.clearLine(from.x, from.y, t.x, t.y) && (dx * h.x + dy * h.y) / d > 0.9) { bd = d; best = { x: dx / d, y: dy / d }; }
+      if (!t.dead && d > 0 && d < bd && G.nav.clearLine(from.x, from.y, t.x, t.y) && (dx * h.x + dy * h.y) / d > (G.touch ? .8 : .94)) { bd = d; best = { x: dx / d, y: dy / d }; }
     }
     if (best) { ax = best.x; ay = best.y; }
   }
   const sx = from.x + ax * (onFoot ? 18 : 30), sy = from.y + ay * (onFoot ? 18 : 30);
   const angle=Math.atan2(ax,-ay);
+  from.aimRot=angle;
   for(let i=0;i<weapon.pellets;i++) {
     const a=angle+(Math.random()-.5)*weapon.spread;
     G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:.7,friend:true,damage:weapon.damage,carDamage:weapon.carDamage });
@@ -1695,6 +1698,8 @@ function tickBullets(G, dt) {
       for (const p of G.peds) {
         if (p.dead || Math.abs(p.x - b.x) > 14 || Math.abs(p.y - b.y) > 14) continue;
         p.hp -= b.damage || 20; p.flee = 4; b.life = 0;
+        G.hitConfirmT=.14;
+        if(!p.copPed)recordIncident(G,'civilian_harm');
         G.particles.push({ kind: "blood", x: p.x, y: p.y, life: 0.4 });
         if (p.hp <= 0) killPed(G, p, true);
         break;
@@ -1702,7 +1707,7 @@ function tickBullets(G, dt) {
       if (b.life <= 0) continue;
       for (const v of G.vehicles) {
         if (v === G.player || v.dead || Math.abs(v.x - b.x) > v.r || Math.abs(v.y - b.y) > v.r) continue;
-        if (Math.hypot(v.x - b.x, v.y - b.y) < v.r * 0.8) { damageVeh(G, v, b.carDamage || 6); b.life = 0; G.particles.push({ kind: "spark", x: b.x, y: b.y, vx: 0, vy: 0, life: 0.12 }); if (v.cop) crime(G, 1, v.x, v.y, true); break; }
+        if (Math.hypot(v.x - b.x, v.y - b.y) < v.r * 0.8) { damageVeh(G, v, b.carDamage || 6,true); b.life = 0; G.particles.push({ kind: "spark", x: b.x, y: b.y, vx: 0, vy: 0, life: 0.12 }); if (v.cop) crime(G, 1, v.x, v.y, true); break; }
       }
     } else if (Math.hypot(G.player.x - b.x, G.player.y - b.y) < (G.player.type === "veh" ? 22 : 13)) {
       b.life = 0;
@@ -1714,11 +1719,11 @@ function tickBullets(G, dt) {
 }
 
 function respawn(G) { wasted(G); }
-function killPed(G, p, byGun) {
+function killPed(G, p, byGun, attributed=true) {
   if (p.dead) return;
   p.dead = true; p.deadT = 0; p.speed = 0;
   G.audio.hit();
-  if (p.copPed) crime(G, 2, p.x, p.y, true); else crime(G, 1, p.x, p.y, false);
+  if(attributed){if (p.copPed) crime(G, 2, p.x, p.y, true); else crime(G, 1, p.x, p.y, false);}
   scarePeds(G, p.x, p.y, 320);
   if (Math.random() < 0.5) G.pickups.push({ x: p.x + 6, y: p.y + 4, v: 5 + ((Math.random() * 20) | 0), drop: true });
   callAmbulance(G, p.x, p.y);
@@ -1730,6 +1735,7 @@ function wasted(G) {
 function busted(G) { endLife(G, "BUSTED", "Metro took your piece and some chips.", "pd"); }
 function endLife(G, title, sub, where) {
   if (G._endT > 0) return;
+  recordIncident(G,'death');
   G._endT = 2.2;
   G.health = 100;
   const lost = Math.min(G.chips, Math.round(G.chips * 0.08));
@@ -1974,6 +1980,7 @@ function tickLife(G, dt) {
 }
 
 function scarePeds(G, x, y, r) {
+  G.cityAI?.emit('gunshot', x, y, {radius:r});
   for (const p of G.peds) {
     if (p.dead || p.copPed || p.gather && r < 200) continue;
     if (Math.abs(p.x - x) < r && Math.abs(p.y - y) < r && Math.hypot(p.x - x, p.y - y) < r) {
@@ -2032,7 +2039,7 @@ function tickPeds(G, dt) {
       p.vx *= 0.9; p.vy *= 0.9; p.speed = 80; p.dist += 40 * dt;
       continue;
     }
-    if (pl.type === "veh" && dist < pl.r * 0.75 && pSpd > 80) { killPed(G, p, false); p.vx = pl.vx * 0.5; p.vy = pl.vy * 0.5; continue; }
+    if (pl.type === "veh" && dist < pl.r * 0.75 && pSpd > 80) { if(!p.copPed)recordIncident(G,'civilian_harm'); killPed(G, p, false); p.vx = pl.vx * 0.5; p.vy = pl.vy * 0.5; continue; }
     if (p.flee > 0) {
       p.flee -= dt;
       const tx = p.threatX ?? pl.x, ty = p.threatY ?? pl.y;
@@ -2045,6 +2052,7 @@ function tickPeds(G, dt) {
       if (p.flee <= 0) { p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1; }
       continue;
     }
+    if (G.cityAI?.steerPed(p, dt)) continue;
     if (p.gather) {
       const g = p.gather;
       const d = Math.hypot(p.x - g.x, p.y - g.y);
@@ -2212,12 +2220,14 @@ function tickTitleDummy() {}
 
 /* -------------------- Render -------------------- */
 function render(G) {
+  G.renderCount=(G.renderCount||0)+1;
   const { ctx, canvas } = G;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = "#07060a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   G.buttons = [];
+  if(G._presentScene!==G.scene){G._presentScene=G.scene;syncControlStyle(G);}
   G._nav = [];
   if (G.scene === "title" || (G.scene === "settings" && G.pausedFrom === "title")) {
     drawTitle(G);
@@ -2225,7 +2235,7 @@ function render(G) {
   } else if (G.scene === "vn") { if (G.vn.pending) drawBoot(ctx, canvas, 0.9, "Loading scene art…"); else drawVN(G); }
   else if (G.scene === "end") drawEnd(G);
   else {
-    const frozen = ['pause', 'map', 'settings','crew','garage'].includes(G.scene);
+    const frozen = ['pause', 'map', 'settings','crew','garage','dossier'].includes(G.scene);
     if (frozen && G.frozenWorld && G.frozenWorld.width === canvas.width && G.frozenWorld.height === canvas.height) {
       ctx.drawImage(G.frozenWorld, 0, 0);
     } else {
@@ -2241,9 +2251,10 @@ function render(G) {
     if (G.scene === "map") drawMap(G);
     if (G.scene === "settings") drawSettings(G);
     if (G.scene === 'crew') {
-      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask'});}
+      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask',right:'hunter'});ensureStoryAssets(G,{bg:'news',right:'vera'});}
       drawCrew(G,{button:uiButton,panel:uiPanel,save});
     }
+    if (G.scene === 'dossier') drawDossier(G,{button:uiButton,panel:uiPanel});
     if (G.scene === 'garage') drawWorkshop(G,{button:uiButton,panel:uiPanel,save});
   }
   G.navButtons = G._nav;
@@ -2284,6 +2295,7 @@ function applyQuality(G) {
   const q = G.settings.quality;
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
+  if (G.ground) G.ground.maxChunks=q==='low'?24:q==='med'?40:64;
 }
 function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
@@ -2545,6 +2557,16 @@ function drawBuildingHeight(G, cam) {
 }
 
 function drawWorld(G) {
+  const canvas=G.canvas,ctx=G.ctx;
+  if(!G.worldWidth || G.worldWidth===canvas.width && G.worldHeight===canvas.height)return renderWorldLayer(G);
+  const off=G.worldCanvas||(G.worldCanvas=document.createElement('canvas'));
+  if(off.width!==G.worldWidth||off.height!==G.worldHeight){off.width=G.worldWidth;off.height=G.worldHeight;}
+  G.canvas=off;G.ctx=off.getContext('2d',{alpha:false});
+  G.ctx.setTransform(1,0,0,1,0,0);G.ctx.globalAlpha=1;G.ctx.globalCompositeOperation='source-over';G.ctx.fillStyle='#0b151c';G.ctx.fillRect(0,0,off.width,off.height);
+  try{renderWorldLayer(G);}finally{G.canvas=canvas;G.ctx=ctx;}
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(off,0,0,canvas.width,canvas.height);
+}
+function renderWorldLayer(G) {
   const { ctx, canvas, cam, assets } = G;
   const low = G.settings.quality === "low";
   const sh = cam.shake || 0;
@@ -2663,6 +2685,8 @@ function drawWorld(G) {
   drawParticles(G, r, true);
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
+  drawStreetWaypoint(G);
+  drawAimGuide(G);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (G.fog > 0.05) { ctx.fillStyle = `rgba(160,170,180,${0.28 * G.fog})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
@@ -2927,12 +2951,18 @@ function drawVeh(G, v) {
   }
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); ctx.ellipse(3, 6, sprUse.width * sc * 0.38, sprUse.height * sc * 0.28, 0, 0, TAU); ctx.fill();
-  const atlas=G.assets.sprites.vehicle_atlas,slot={riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
+  const fleetSlot={bus:0,ambulance:1,van:2,stitch:3,hog:4,wake:5}[v.kind];
+  const atlas=fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas,slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
   if(atlas && slot!=null && !v.wrecked) {
     const cw=atlas.width/3,ch=atlas.height/2;
     if(v.paint)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
-    ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-58,-58,116,116);
-    ctx.filter='none';drawVehicleFinish(G,v,52,108,pose);
+    const length=v.kind==='bus'?150:v.def.bike?82:v.kind==='wake'?133:v.kind==='van'||v.kind==='ambulance'?128:116;
+    ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
+    ctx.filter='none';drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
+    if(v.def.bike && (v===G.player||v.traffic)){
+      ctx.save();ctx.rotate((v.turnSign||0)*.08);ctx.fillStyle=v===G.player?'#513d5e':'#34434b';ctx.beginPath();ctx.ellipse(0,2,8,14,0,0,TAU);ctx.fill();
+      ctx.fillStyle=v===G.player?'#d2c5ad':'#27343b';ctx.beginPath();ctx.ellipse(0,-12,6,7,0,0,TAU);ctx.fill();ctx.strokeStyle='#acb7a0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-6,-4);ctx.lineTo(-11,-11);ctx.moveTo(6,-4);ctx.lineTo(11,-11);ctx.stroke();ctx.restore();
+    }
   }else{
     ctx.drawImage(sprUse, -sprUse.width * sc / 2, -sprUse.height * sc / 2, sprUse.width * sc, sprUse.height * sc);
     drawVehicleFinish(G, v, sprUse.width * sc, sprUse.height * sc, pose);
@@ -2948,7 +2978,7 @@ function drawVeh(G, v) {
     ctx.fillStyle = "#f2c14e";
     ctx.font = "bold 9px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("SEED", 0, 4);
+    ctx.fillText("PALACE", 0, 4);
   }
   if (v.def.boat) {
     const spd = Math.hypot(v.vx || 0, v.vy || 0);
@@ -3093,6 +3123,16 @@ function drawChar(G, a) {
     ctx.restore();
   }
   ctx.drawImage(spr, col * fw, row * fh, fw, fh, dx, dy, dw, dh);
+  // Aim with the upper body while the locomotion frames keep the legs stepping.
+  if(a===G.player && moving && aiming && !G.settings.reducedMotion && !crowd){
+    const legRow=((((Math.round(a.rot/(Math.PI/4))+8)%8)+6)%8),legCol=Math.floor((a.dist||0)/9)%4;
+    ctx.save();ctx.beginPath();ctx.rect(dx,dy+dh*.69,dw,dh*.31);ctx.clip();
+    ctx.drawImage(spr,legCol*fw,legRow*fh,fw,fh,dx,dy,dw,dh);ctx.restore();
+  }
+  if(a===G.player && G.action?.reloadT>0){
+    const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload,wave=Math.sin(k*Math.PI);
+    ctx.save();ctx.rotate(a.rot);ctx.strokeStyle='#a0b59a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(9,-8);ctx.lineTo(5-wave*7,-3-wave*8);ctx.stroke();ctx.fillStyle='#202e32';ctx.fillRect(3-wave*7,-8-wave*8,4,7);ctx.restore();
+  }
   if(a!==G.player)drawAmbientGesture(G,a);
   if (isHero && nightC > 0.18 && !a.dead) {
     ctx.globalCompositeOperation = "lighter";
@@ -3106,11 +3146,37 @@ function drawChar(G, a) {
 }
 
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
+function drawAimGuide(G){
+  if(G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
+  const p=G.player,c=G.ctx,rot=p.aimRot??aimDirection(G.input,p.rot,G.cam.rot),h=headingVec(rot);
+  let length=200;for(let n=24;n<200;n+=12)if(G.solidAt(p.x+h.x*n,p.y+h.y*n)){length=n;break;}
+  const x=p.x+h.x*length,y=p.y+h.y*length;
+  c.save();c.strokeStyle=G.hitConfirmT>0?'#fff8e5':'rgba(224,203,158,.7)';c.lineWidth=1.2;c.setLineDash([3,7]);c.beginPath();c.moveTo(p.x+h.x*30,p.y+h.y*30);c.lineTo(x,y);c.stroke();c.setLineDash([]);
+  c.beginPath();c.arc(x,y,G.hitConfirmT>0?5:8,0,TAU);c.stroke();
+  c.beginPath();c.moveTo(x-12,y);c.lineTo(x-6,y);c.moveTo(x+6,y);c.lineTo(x+12,y);c.moveTo(x,y-12);c.lineTo(x,y-6);c.moveTo(x,y+6);c.lineTo(x,y+12);c.stroke();c.restore();
+}
+function drawStreetWaypoint(G){
+  const job=G.action?.contract,p=job?streetJobTarget(G,job)||G.waypoint:G.waypoint;
+  if(G.scene!=='play'||!p)return;
+  const c=G.ctx;
+  if(Math.hypot(p.x-G.cam.x,p.y-G.cam.y)>1100)return;
+  const pulse=G.settings.reducedMotion?1:1+Math.sin(G.ticks*.05)*.08;
+  c.save();c.translate(p.x,p.y);c.strokeStyle='#86d6d0';c.fillStyle='rgba(69,151,153,.12)';c.lineWidth=2;
+  c.beginPath();c.ellipse(0,0,34*pulse,23*pulse,0,0,TAU);c.fill();c.stroke();
+  c.font='800 9px system-ui';c.textAlign='center';c.fillStyle='#102a31';c.fillRect(-61,-53,122,21);c.fillStyle='#c3ece0';
+  c.fillText(job?.id==='rescue'?job.stage?'WITNESS DROP':'WITNESS PICKUP':job?.id==='signal'?job.stage===3?'TRANSMIT / 3 SEC':'DEAD DROP / ON FOOT':'BLUE WAYPOINT',0,-39);
+  if(job && job.progress>0 && ['rescue','signal'].includes(job.id)){c.fillStyle='#3c5d63';c.fillRect(-30,32,60,3);c.fillStyle='#b9e4cf';c.fillRect(-30,32,60*Math.min(1,job.progress/(job.id==='rescue'?!job.stage?3:2:job.stage===3?3:2)),3);}
+  c.restore();
+  if(job?.id==='rescue'&&!job.stage){
+    if(!G._witness||G._witness.markerX!==p.x){const s=findSafe(G,p.x+66,p.y,9,true,true);G._witness={...s,markerX:p.x,sprite:'worker',rot:-Math.PI/2,speed:0,dist:0};}
+    drawChar(G,G._witness);
+  }
+}
 function uiFont(px, w = 700, disp = false) { return `${w} ${Math.round(px)}px ${disp ? FONT_D : "Inter, system-ui, sans-serif"}`; }
 function uiPanel(ctx, x, y, w, h, r, opts = {}) {
   ctx.save();
   rounded(ctx, x, y, w, h, r);
-  ctx.fillStyle = opts.fill || "rgba(10,7,18,0.78)";
+  ctx.fillStyle = opts.fill || "rgba(9,22,28,0.85)";
   ctx.fill();
   ctx.lineWidth = Math.max(1, r * 0.12);
   ctx.strokeStyle = opts.stroke || "rgba(255,255,255,0.12)";
@@ -3127,8 +3193,8 @@ function uiButton(G, x, y, w, h, label, act, o = {}) {
   const sel = idx >= 0 && idx === (G.menuSel || 0) && !G.touch;
   ctx.save();
   rounded(ctx, x, y, w, h, Math.min(h / 2, 12 * u));
-  if (o.primary) { const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, "#ffd86b"); g.addColorStop(1, "#e0a92e"); ctx.fillStyle = g; }
-  else ctx.fillStyle = sel ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.07)";
+  if (o.primary) ctx.fillStyle='#dfc496';
+  else ctx.fillStyle = sel ? "rgba(162,199,181,0.2)" : "rgba(159,192,179,0.07)";
   ctx.fill();
   ctx.lineWidth = 1.5 * u;
   ctx.strokeStyle = o.primary ? "rgba(255,240,190,0.9)" : sel ? "rgba(242,193,78,0.9)" : "rgba(255,255,255,0.18)";
@@ -3136,7 +3202,7 @@ function uiButton(G, x, y, w, h, label, act, o = {}) {
   ctx.fillStyle = o.primary ? "#1a1206" : sel ? "#ffe27a" : "#fff";
   ctx.font = uiFont(o.size || Math.min(h * 0.38, 17 * u), 800);
   ctx.textAlign = o.align || "center"; ctx.textBaseline = "middle";
-  ctx.fillText(label, o.align === "left" ? x + 16 * u : x + w / 2, y + h / 2 + 1);
+  if(!o.hideLabel)ctx.fillText(label, o.align === "left" ? x + 16 * u : x + w / 2, y + h / 2 + 1,w-24*u);
   if (o.sub) { ctx.font = uiFont(11 * u, 600); ctx.fillStyle = o.primary ? "rgba(26,18,6,0.7)" : "rgba(255,255,255,0.55)"; ctx.textAlign = "right"; ctx.fillText(o.sub, x + w - 14 * u, y + h / 2 + 1); }
   ctx.textBaseline = "alphabetic";
   ctx.restore();
@@ -3202,6 +3268,7 @@ function drawMinimap(G, x, y, size, span) {
 }
 function drawHUD(G) {
   if (G.hideHUD) return;
+  if (G.touch) return drawMobileHUD(G,{minimap:drawMinimap,gps:updateGPS,objective:currentObjectivePos,screen:worldToScreen,missionTitle:MISSIONS[G.missionIndex]?.title,banner:drawBanner});
   const { ctx, canvas } = G;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const u = G.ui, sf = G.safe || { t: 0, r: 0, b: 0, l: 0 };
@@ -3373,9 +3440,9 @@ function drawHUD(G) {
   if (G.settings.showFps) {
     const P = G.prof || {};
     ctx.font = uiFont(10 * u, 800); ctx.textAlign = "right"; ctx.fillStyle = G.fps > 50 ? "#3ce06a" : G.fps > 28 ? "#ffd24a" : "#ff4a5a";
-    ctx.fillText(`${G.fps | 0} FPS · ${Math.round((G.resScale || 1) * 100)}% · ${canvas.width}×${canvas.height} · js ${((P.tick || 0) + (P.render || 0)).toFixed(1)}ms`, rr, T + 64 * u);
+    ctx.fillText(`${(G.presentFps || G.fps) | 0} FPS · ${Math.round((G.resScale || 1) * 100)}% · ${G.worldWidth}×${G.worldHeight} · js ${((P.tick || 0) + (P.render || 0)).toFixed(1)}ms`, rr, T + 64 * u);
   }
-  if (!G.touch) { ctx.font = uiFont(10 * u, 700); ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fillText("ESC pause · M map · E car · Space drift", R, H - 10 * u - sf.b); }
+  if (!G.touch) { ctx.font = uiFont(10 * u, 700); ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fillText("ESC pause · M map · E car · Space drift", R - (G.fsSupported ? 150 * G.dpr : 0), H - 10 * u - sf.b); }
 }
 function wrapLines(ctx, text, max) {
   const words = String(text).split(" "); const out = []; let line = "";
@@ -3409,73 +3476,14 @@ function drawBanner(G, W, H) {
 }
 
 function drawTitle(G) {
-  const { ctx, canvas, assets } = G;
   drawWorld(G);
-  const W = canvas.width, H = canvas.height, u = G.ui, sf = G.safe || { t: 0, r: 0, b: 0, l: 0 };
-  const portrait = H > W;
-  const compact = !portrait && H / u < 500;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  // grade: darken left for type, keep the hero area clean
-  const g = ctx.createLinearGradient(0, 0, W * (portrait ? 1 : 0.7), portrait ? H : 0);
-  g.addColorStop(0, "rgba(6,4,12,0.9)"); g.addColorStop(0.6, "rgba(6,4,12,0.45)"); g.addColorStop(1, "rgba(6,4,12,0.05)");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  const vg = ctx.createLinearGradient(0, H * 0.6, 0, H); vg.addColorStop(0, "rgba(6,4,12,0)"); vg.addColorStop(1, "rgba(6,4,12,0.85)");
-  ctx.fillStyle = vg; ctx.fillRect(0, H * 0.6, W, H * 0.4);
-  // hero
-  if (assets.hero) {
-    const im = assets.hero;
-    const hH = portrait ? H * 0.5 : H * 0.98;
-    const sc = hH / im.height, dw = im.width * sc, dh = im.height * sc;
-    const hx = portrait ? W - dw * 0.92 : W - dw - sf.r + 10 * u, hy = portrait ? H * 0.2 : H - dh + 6 * u;
-    ctx.save(); ctx.shadowColor = "rgba(255,45,155,0.45)"; ctx.shadowBlur = 40 * u;
-    ctx.drawImage(im, hx, hy, dw, dh); ctx.restore();
-  }
-  const x0 = sf.l + (portrait ? 24 : 48) * u;
-  const t = G.titleT || 0;
-  let y = sf.t + (portrait ? 70 : compact ? 30 : 54) * u;
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#ff2d9b"; ctx.font = uiFont(13 * u, 900);
-  ctx.fillText("M E T A W I N N E R S", x0, y);
-  ctx.fillStyle = "#f2c14e"; ctx.fillRect(x0, y + 8 * u, 90 * u, 3 * u);
-  const big = Math.min((compact ? 44 : 64) * u, W * (portrait ? 0.15 : 0.085));
-  ctx.font = uiFont(big, 900, true);
-  ctx.lineWidth = big * 0.12; ctx.strokeStyle = "rgba(0,0,0,0.9)";
-  const gl = ctx.createLinearGradient(0, y + 10 * u, 0, y + big * 2.1);
-  gl.addColorStop(0, "#fff2b0"); gl.addColorStop(0.5, "#ffd24a"); gl.addColorStop(1, "#e08a1e");
-  ctx.strokeText("CROWN", x0, y + big * 1.05); ctx.strokeText("CITY", x0, y + big * 2.0);
-  ctx.fillStyle = gl; ctx.fillText("CROWN", x0, y + big * 1.05); ctx.fillText("CITY", x0, y + big * 2.0);
-  // neon underline sweep
-  ctx.save(); ctx.globalCompositeOperation = "lighter";
-  const sw = ((t * 0.4) % 1);
-  const ug = ctx.createLinearGradient(x0, 0, x0 + big * 3.2, 0);
-  ug.addColorStop(Math.max(0, sw - 0.2), "rgba(41,240,255,0)"); ug.addColorStop(sw, "rgba(41,240,255,0.9)"); ug.addColorStop(Math.min(1, sw + 0.2), "rgba(41,240,255,0)");
-  ctx.fillStyle = ug; ctx.fillRect(x0, y + big * 2.15, big * 3.2, 3 * u);
-  ctx.restore();
-  y += big * 2.15 + 22 * u;
-  ctx.font = uiFont(13 * u, 600); ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.fillText("One city. Six jobs. Nobody gets out clean.", x0, y);
-  // menu
-  const items = [];
-  items.push(["NEW GAME", () => startNew(G), { primary: !G.saveExists }]);
-  if (G.saveExists) items.push(["CONTINUE", () => { if (loadSave(G)) { toast(G, "Welcome back to Crown City."); } }, { primary: true }]);
-  items.push(["SETTINGS", () => { G.pausedFrom = "title"; G.scene = "settings"; G.menuSel = 0; }, {}]);
-  if (!G.isFS() && !G.standalone && (G.fsSupported || G.isIOS)) items.push([G.fsSupported ? "FULL SCREEN" : "ADD TO HOME SCREEN", () => G.toggleFS(), {}]);
-  const bw = Math.min(portrait ? W - x0 * 2 : 280 * u, 320 * u), bh = 44 * u, gap = 10 * u;
-  let by = portrait ? H - sf.b - 30 * u - items.length * (bh + gap) : Math.max(y + 22 * u, H - sf.b - 34 * u - items.length * (bh + gap));
-  for (const [label, act, o] of items) { uiButton(G, x0, by, bw, bh, label, act, { ...o, align: "left" }); by += bh + gap; }
-  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = uiFont(10 * u, 600); ctx.textAlign = "left";
-  ctx.fillText("Fan-made. Play chips only. Not affiliated with MetaWin or any studio.", x0, H - sf.b - 12 * u, W - x0 - sf.r - 12 * u);
+  drawTitleScreen(G,{button:uiButton,startNew:()=>startNew(G),continueGame:()=>loadSave(G),settings:()=>{G.pausedFrom='title';G.scene='settings';G.menuSel=0;}});
 }
 
-
 function drawPause(G) {
-  const { ctx, canvas } = G;
-  const W = canvas.width, H = canvas.height, u = G.ui;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "rgba(4,2,10,0.72)"; ctx.fillRect(0, 0, W, H);
-  const pw = Math.min(W - 40 * u, 380 * u);
   const items = [
     ["RESUME", () => { G.scene = "play"; }, { primary: true }],
+    ["STORY / DOSSIER", () => {G.scene="dossier";G.menuSel=0;}, {}],
     ["CITY MAP", () => { G.scene = "map"; }, {}],
     ["CREW / CONTRACTS", () => { G.scene='crew';G.menuSel=0; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
@@ -3484,19 +3492,7 @@ function drawPause(G) {
     ...(G.fsSupported && !G.standalone ? [[G.isFS() ? "EXIT FULL SCREEN" : "FULL SCREEN", () => G.toggleFS(), {}]] : []),
     ["QUIT TO TITLE", () => { G.scene = "title"; G.menuSel = 0; G.saveExists = !!readJSON(localStorage, SAVE_KEY); }, {}],
   ];
-  const bh = Math.min(42 * u, (H - 150 * u) / items.length - 8 * u);
-  const ph = 96 * u + items.length * (bh + 8 * u);
-  const px = W / 2 - pw / 2, py = Math.max(10 * u, H / 2 - ph / 2);
-  uiPanel(ctx, px, py, pw, ph, 18 * u, { fill: "rgba(14,10,24,0.92)", stroke: "rgba(242,193,78,0.35)" });
-  ctx.textAlign = "center"; ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(24 * u, 900, true);
-  ctx.fillText("PAUSED", W / 2, py + 36 * u);
-  const m = MISSIONS[G.missionIndex];
-  ctx.font = uiFont(11 * u, 700); ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.fillText(m ? `JOB ${G.missionIndex + 1}/6 · ${m.title}` : "Free roam", W / 2, py + 58 * u);
-  ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = uiFont(10 * u, 600);
-  ctx.fillText(G.hint ? hintText(G, G.hint).slice(0, 64) : "", W / 2, py + 74 * u);
-  let y = py + 86 * u;
-  for (const [l, a, o] of items) { uiButton(G, px + 20 * u, y, pw - 40 * u, bh, l, a, o); y += bh + 8 * u; }
+  drawPauseScreen(G,{button:uiButton,panel:uiPanel,items});
 }
 function drawMap(G) {
   const { ctx, canvas } = G;
@@ -3531,68 +3527,11 @@ function drawMap(G) {
 }
 
 function drawSettings(G) {
-  const { ctx, canvas } = G;
-  const W = canvas.width, H = canvas.height, u = G.ui, S = G.settings;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "rgba(4,2,10,0.82)"; ctx.fillRect(0, 0, W, H);
-  const speeds = ["FROZEN", "NORMAL", "SLOW", "SLOWER"];
-  const rows = [
-    ["MASTER", `${Math.round((G.audio.masterVol ?? 0.9) * 100)}%`, (d) => { G.audio.setMaster(volStep(G.audio.masterVol ?? 0.9, d)); S.master = G.audio.masterVol; saveSettings(G); }],
-    ["SOUND FX", `${Math.round(G.audio.sfxVol * 100)}%`, (d) => { G.audio.setSfx(volStep(G.audio.sfxVol, d)); S.sfx = G.audio.sfxVol; saveSettings(G); }],
-    ["MUSIC", `${Math.round(G.audio.musVol * 100)}%`, (d) => { G.audio.setMus(volStep(G.audio.musVol, d)); S.mus = G.audio.musVol; saveSettings(G); }],
-    ["GRAPHICS", S.quality === "low" ? "PERFORMANCE" : S.quality === "med" ? "BALANCED" : "QUALITY", () => { S.quality = S.quality === "low" ? "med" : S.quality === "med" ? "high" : "low"; G.resScale = 1; saveSettings(G); fit(G); applyQuality(G); }],
-    ["AUTO RESOLUTION", S.autoRes ? "ON" : "OFF", () => { S.autoRes = !S.autoRes; saveSettings(G); }],
-    ["REDUCED MOTION", S.reducedMotion ? "ON" : "OFF", () => { S.reducedMotion = !S.reducedMotion; saveSettings(G); }],
-    ["FPS COUNTER", S.showFps ? "ON" : "OFF", () => { S.showFps = !S.showFps; saveSettings(G); }],
-    ["TIME OF DAY", speeds[S.timeSpeed ?? 1], (d) => { S.timeSpeed = ((S.timeSpeed ?? 1) + (d || 1) + 4) % 4; saveSettings(G); }],
-    ["SET CLOCK", timeLabel(G.time).text, (d) => { G.time = (G.time + (d || 1) * 3 + 24) % 24; }],
-    ["CAMERA", G.cam.northUp ? "NORTH UP" : "CHASE", () => { G.cam.northUp = !G.cam.northUp; }],
-    ["RADIO", G.audio.stations[G.audio.station].name, () => { toast(G, G.audio.nextStation()); }],
-  ];
-  const columns = W > 650 * u && H < 520 * u ? 2 : 1;
-  const rowCount = Math.ceil(rows.length / columns);
-  const pw = Math.min(W - 30 * u, (columns === 2 ? 860 : 440) * u);
-  const rh = Math.min(38 * u, (H - 100 * u) / (rowCount + 1) - 6 * u);
-  const ph = 70 * u + (rowCount + 1) * (rh + 6 * u);
-  const px = W / 2 - pw / 2, py = Math.max(8 * u, H / 2 - ph / 2);
-  uiPanel(ctx, px, py, pw, ph, 18 * u, { fill: "rgba(14,10,24,0.94)", stroke: "rgba(242,193,78,0.35)" });
-  ctx.textAlign = "center"; ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(20 * u, 900, true);
-  ctx.fillText("SETTINGS", W / 2, py + 34 * u);
-  let y = py + 50 * u;
-  for (let i = 0; i < rows.length; i++) {
-    const [label, val, fn] = rows[i];
-    const colWidth = (pw - 32 * u) / columns;
-    const bx = px + 16 * u + Math.floor(i / rowCount) * colWidth, bw = colWidth - (columns === 2 ? 6 * u : 0);
-    y = py + 50 * u + (i % rowCount) * (rh + 6 * u);
-    const b = uiButton(G, bx, y, bw, rh, label, () => fn(1), { align: "left", size: 12 * u, adj: fn });
-    ctx.textAlign = "right"; ctx.font = uiFont(12 * u, 800); ctx.fillStyle = "#29f0ff";
-    ctx.fillText(val, bx + bw - 50 * u, y + rh / 2 + 4 * u);
-    // − / + steppers for touch
-    uiButton(G, bx + bw - 42 * u, y + 4 * u, 34 * u, rh - 8 * u, "›", () => fn(1), { nav: false, size: 16 * u });
-    y += rh + 6 * u;
-  }
-  y = py + 50 * u + rowCount * (rh + 6 * u);
-  uiButton(G, px + 16 * u, y, pw - 32 * u, rh, "BACK", () => { G.scene = G.pausedFrom || "title"; G.menuSel = 0; }, { primary: true });
+  drawSettingsScreen(G,{button:uiButton,panel:uiPanel,save:saveSettings,quality:()=>{G.resScale=1;fit(G);applyQuality(G);},back:()=>{G.scene=G.pausedFrom||'title';G.menuSel=0;}});
 }
+
 function drawBrief(G) {
-  const { ctx, canvas } = G;
-  const W = canvas.width, H = canvas.height, u = G.ui, sf = G.safe || { b: 0, l: 0, r: 0 };
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const g = ctx.createLinearGradient(0, H * 0.3, 0, H);
-  g.addColorStop(0, "rgba(6,4,12,0)"); g.addColorStop(0.45, "rgba(6,4,12,0.82)"); g.addColorStop(1, "rgba(6,4,12,0.96)");
-  ctx.fillStyle = g; ctx.fillRect(0, H * 0.3, W, H * 0.7);
-  const m = MISSIONS[G.missionIndex] || { title: "", blurb: "" };
-  const k = clamp((G.briefT || 0) * 3, 0, 1);
-  ctx.globalAlpha = k;
-  const x0 = sf.l + 28 * u, y0 = H * 0.56;
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#ff2d9b"; ctx.font = uiFont(12 * u, 900); ctx.fillText(`JOB ${G.missionIndex + 1} OF ${MISSIONS.length}`, x0, y0);
-  ctx.fillStyle = "#ffe27a"; ctx.font = uiFont(Math.min(40 * u, W / 12), 900, true); ctx.fillText(m.title, x0, y0 + 40 * u);
-  ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = uiFont(14 * u, 600); ctx.fillText(m.blurb || "", x0, y0 + 64 * u);
-  ctx.fillStyle = "#29f0ff"; ctx.font = uiFont(12 * u, 800); ctx.fillText("▸ " + hintText(G, G.hint || ""), x0, y0 + 88 * u);
-  ctx.globalAlpha = 1;
-  const bw = 170 * u, bh = 48 * u;
-  uiButton(G, W - sf.r - bw - 28 * u, H - sf.b - bh - 22 * u, bw, bh, "START  ▶", () => startPlayFromBrief(G), { primary: true });
+  drawMissionBrief(G,{button:uiButton,panel:uiPanel,start:()=>startPlayFromBrief(G),brief:jobBrief(G.missionIndex)});
 }
 
 function drawVN(G) {
@@ -3787,6 +3726,6 @@ export const testing = {
   startNew, beginMission, advanceObjective, completeMission, startPlayFromBrief, openVN,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,
   findSafe, footClear, clearAt, carHit, nearbyInteraction, ensureMissionCar, ensureGetawayBoat, updateGPS, worldToScreen,
-  tickWanted, tickCops, crime, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
+  tickWanted, tickCops, crime, damageVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
   drawMap, drawSettings, drawPause, ensureStoryAssets, applyQuality,
 };

@@ -91,9 +91,9 @@
       <article><i>🚨</i><h3>Cops &amp; wanted levels</h3><p>Up to five stars. Patrols flood in, sirens wail and pan past you, and the chase only ends when you break line of sight long enough to lose them.</p></article>
       <article><i>🎧</i><h3>Original radio &amp; chase music</h3><p>Three arranged tracks with funk bass, brass, electric keys and pursuit drums. Cruise with VEIL FM, CHIP RADIO or NIGHT SHIFT; the mix fades into the chase track as the heat rises.</p></article>
       <article><i>🎰</i><h3>Six jobs. One dangerous archive.</h3><p>Gold Mage owns the city's debts and its cameras. Chaos and the crew want the originals. Disable the convoy, win Fire's trust, buy Neural's blackout, transfer the archive and escape. Protecting the evidence or selling a copy changes the ending.</p></article>
-      <article><i>🔧</i><h3>Crew work &amp; workshops</h3><p>Take timed courier, escape and drift contracts. Spend the chips on repairs, resprays and three tuning stages. Keep driving in free roam after the story.</p></article>
+      <article><i>🔧</i><h3>Crew work &amp; workshops</h3><p>Take courier, escape, drift, witness rescue and evidence-recovery contracts. Spend the chips on repairs, resprays and three tuning stages. Keep driving in free roam after the story.</p></article>
       <article><i>🎯</i><h3>Weapons, stamina &amp; cover</h3><p>Switch between a silenced .45, an SMG and a shotgun. Reload magazines, use a dodge roll to evade shots, and take cover beside walls. New illustrated civilians, police and Chaos animations bring the street action closer.</p></article>
-      <article><i>📱</i><h3>Made for your phone</h3><p>Touch stick, big context buttons, one-tap fullscreen in landscape, adaptive resolution and quality tiers so it stays smooth on mid-range phones.</p></article>
+      <article><i>📱</i><h3>Made for your phone</h3><p>Independent movement and drag-to-aim controls, left-handed layout, adjustable controls, Chrome fullscreen, sharp UI and a 30 fps battery option.</p></article>
       <article><i>♠️</i><h3>Play chips only</h3><p>No wallet, no wagering, no sign-up. Chips are just the score. It is a game, not a casino.</p></article>
     </div>
   </div>
@@ -137,9 +137,9 @@
         <div><b>MAP / Minimap</b><span>Open the map. Tap for a blue waypoint; JOB ROUTE restores the job marker.</span></div>
         <div><b>Left thumb</b><span>Drag anywhere to walk or drive. Push further to run</span></div>
         <div><b>CAR / EXIT / TAKE</b><span>Board a ride, get out, or take a nearby package</span></div>
-        <div><b>FIRE</b><span>Shoot</span></div>
+        <div><b>AIM / FIRE</b><span>Hold to fire; drag to aim</span></div>
         <div><b>BRAKE · DRIFT · BOOST</b><span>Driving buttons</span></div>
-        <div><b>⛶ button</b><span>Full screen; turns the game to landscape on Android</span></div>
+        <div><b>⛶ button</b><span>Enter or exit fullscreen; keep your preferred orientation</span></div>
         <div><b>Add to Home Screen</b><span>Launches full screen like an app (iPhone: Share → Add to Home Screen)</span></div>
       </div>
     </div>
@@ -180,10 +180,10 @@
   fsBtn.addEventListener("click", async () => {
     if (!can) { location.href = "../"; return; }
     fr.src = "../"; box.hidden = false; document.body.style.overflow = "hidden";
-    try { await (box.requestFullscreen ? box.requestFullscreen({ navigationUI: "hide" }) : box.webkitRequestFullscreen()); if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {}); } catch (e) {}
+    try { await (box.requestFullscreen ? box.requestFullscreen({ navigationUI: "hide" }) : box.webkitRequestFullscreen()); } catch (e) {}
     fr.focus();
   });
-  const onFs = () => { if (!document.fullscreenElement && !document.webkitFullscreenElement && !box.hidden) shut(); };
+  const onFs = () => { if (!document.fullscreenElement && !document.webkitFullscreenElement) box.classList.remove("is-fullscreen"); };
   document.addEventListener("fullscreenchange", onFs); document.addEventListener("webkitfullscreenchange", onFs);
   close.addEventListener("click", () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); shut(); });
 })();

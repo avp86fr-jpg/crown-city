@@ -21,7 +21,7 @@ export function createSoundtrack(ctx,bus){
   if(!started)return false;
   selected=G.scene==='play'&&G.wanted>=3?2:station%channels.length;
   const ready=channels[selected].ready&&!channels[selected].error;
-  const level=document.hidden?0:['pause','map','settings','crew','garage'].includes(G.scene)?.16:G.scene==='vn'?.28:G.scene==='brief'?.4:.8;
+  const level=document.hidden?0:['pause','map','settings','crew','garage','dossier'].includes(G.scene)?.16:G.scene==='vn'?.28:G.scene==='brief'?.4:.8;
   channels.forEach((c,i)=>{
    const target=ready&&i===selected?level:0;
    if(c.level!==target){c.level=target;c.gain.gain.cancelScheduledValues(ctx.currentTime);c.gain.gain.setTargetAtTime(target,ctx.currentTime,.65);}
