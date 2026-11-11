@@ -32,6 +32,8 @@ Completed contract IDs now persist in saves. Returning to each contact triggers 
 
 ## Mobile measurement
 
+Later profiling review: this older tool sent keyboard input in a touch-capable browser. Keyboard input switches the game to desktop HUD/input mode, so these samples do not measure the full touch-control path. The [world pass](vibrant-world-pass.md) uses CDP touch gestures and asserts that touch mode remains active. The historical numbers below are retained with that limitation.
+
 The pass bounds mobile vehicle collision work around the viewport and nearby player, rejects distant or stationary vehicles before expensive pedestrian impact checks, reuses particle/skid/actor buffers and caches radial effect textures. Local collision, police and mission behavior remain active. Sprite cropping removes redundant draws without changing source textures.
 
 Two fixed-seed before/after comparisons used headless Chromium, 844×390 CSS pixels, DPR 2, low quality, automatic resolution disabled, rain at 21:00 and 4× CPU throttling. Each includes a radio warmup and approximately four seconds of driving. The repeated sequential pair against published commit `217e28e1fcadb58087d26d5c827a5303ad4eecc5` measured:

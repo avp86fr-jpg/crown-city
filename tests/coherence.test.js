@@ -59,7 +59,7 @@ test('weather advances out of clear weather and its sequence survives save/resum
 });
 test('every regional carriage stays on its track when reversing at either terminus',()=>{
  const translate=G.ctx.translate,oldClock=G.transit.clock,r={x0:10200,x1:10400,y0:1000,y1:9700};
- function positions(t){const out=[];G.transit.clock=t;G.ctx.translate=(x,y)=>out.push([x,y]);drawTransitWorld(G,r,true);return out.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);}
+ function positions(t){const out=[];G.transit.clock=t;G.ctx.translate=(x,y)=>{if(x===10302||x===10338)out.push([x,y]);};drawTransitWorld(G,r,true);return out.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);}
  try{for(const clock of [99,198]){const before=positions(clock-.0001),after=positions(clock+.0001);assert.equal(before.length,6);assert.equal(after.length,6);for(let i=0;i<6;i++){assert.equal(before[i][0],after[i][0]);assert.ok(Math.abs(before[i][1]-after[i][1])<.1);assert.ok(after[i][1]-72>=G.world.transit.rail.y0);assert.ok(after[i][1]+72<=G.world.transit.rail.y1);}}}finally{G.ctx.translate=translate;G.transit.clock=oldClock;}
 });
 test('finished stories persist, contacts acknowledge them, and replay requires a second interaction',()=>{

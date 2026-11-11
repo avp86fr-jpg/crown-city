@@ -82,7 +82,7 @@ function text(c,s,x,y,size,col='#e9d7a8'){c.fillStyle=col;c.font=`800 ${size}px 
 export function drawExpansionGround(c,W,r,pats={}){
  const E=W.expansion;if(!E)return;
  const canal=E.canal;if(r.x1>canal.x-80&&r.x0<canal.x+canal.w+80&&r.y1>canal.y&&r.y0<6800){
-  c.fillStyle='#193e43';c.fillRect(canal.x,canal.y,canal.w,canal.h);
+  c.fillStyle=pats.water||'#193e43';c.fillRect(canal.x,canal.y,canal.w,canal.h);c.fillStyle='rgba(16,54,55,.62)';c.fillRect(canal.x,canal.y,canal.w,canal.h);
   for(const x of [canal.x-8,canal.x+canal.w]){box(c,x,canal.y,8,canal.h,'#716c5d');box(c,x+2,canal.y,2,canal.h,'#c2b89a');}
   c.strokeStyle='rgba(140,200,176,.15)';c.lineWidth=1.5;for(let y=Math.max(canal.y,Math.floor(r.y0/32)*32);y<Math.min(6800,r.y1);y+=32){c.beginPath();c.moveTo(canal.x+24,y);c.quadraticCurveTo(canal.x+100,y-9,canal.x+184,y+2);c.stroke();}
  }
@@ -107,11 +107,6 @@ export function drawExpansionGround(c,W,r,pats={}){
   else if(p.kind==='cactus'){c.strokeStyle='#69714a';c.lineWidth=8;c.lineCap='round';c.beginPath();c.moveTo(0,14);c.lineTo(0,-20);c.moveTo(0,-2);c.lineTo(-12,-2);c.lineTo(-12,-13);c.moveTo(0,4);c.lineTo(11,4);c.lineTo(11,-8);c.stroke();c.strokeStyle='#bac08b';c.lineWidth=1;c.beginPath();c.moveTo(-2,10);c.lineTo(-2,-19);c.stroke();}
   else if(p.kind==='scrub'){for(let k=0;k<5;k++)ellipse(c,Math.cos(k*2)*7,Math.sin(k*2)*5,5,3,k%2?'#847b50':'#78623e');}
   else if(p.kind==='rock'||p.kind==='mesa'){const w=p.w,h=p.h;ellipse(c,12,16,w*.6,h*.55,'rgba(29,25,27,.3)');c.fillStyle=pats.mountain||'#625e60';c.beginPath();c.moveTo(-w*.5,h*.28);c.lineTo(-w*.4,-h*.4);c.lineTo(w*.08,-h*.54);c.lineTo(w*.48,-h*.25);c.lineTo(w*.5,h*.4);c.lineTo(-w*.15,h*.5);c.closePath();c.fill();c.fillStyle='rgba(203,191,174,.32)';c.beginPath();c.moveTo(-w*.4,-h*.4);c.lineTo(w*.08,-h*.54);c.lineTo(w*.2,h*.1);c.lineTo(-w*.2,h*.2);c.closePath();c.fill();c.strokeStyle='#484b50';c.lineWidth=2;for(let k=0;k<4;k++){c.beginPath();c.moveTo(-w*.35+k*w*.12,-h*.32);c.lineTo(-w*.25+k*w*.12,h*.3);c.stroke();}}
-  else if(p.kind==='camp'||p.kind==='fuel'||p.kind==='rescue'){
-   text(c,p.kind==='camp'?'PINEWATCH / RANGER CAMP':p.kind==='fuel'?'RED MESA / LAST FUEL':'SIERRA / RESCUE STATION',p.w/2,24,16,'#d8c092');
-   if(p.kind==='camp'){for(let i=0;i<3;i++){c.fillStyle=i%2?'#9a8057':'#647760';c.beginPath();c.moveTo(30+i*105,130);c.lineTo(65+i*105,65);c.lineTo(102+i*105,130);c.closePath();c.fill();box(c,57+i*105,100,17,30,'#26382e');}}
-   if(p.kind==='fuel'){box(c,45,60,160,70,'#8a6b4c');box(c,35,53,180,13,'#715445');for(let i=0;i<3;i++){box(c,70+i*45,160,20,37,'#cc9d71');box(c,74+i*45,163,12,10,'#273b3c');}text(c,'FUEL / 24H',125,95,17);}
-  }
   c.restore();
  }
 }

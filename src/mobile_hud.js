@@ -1,6 +1,7 @@
 import { WEAPONS, CONTRACTS } from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px system-ui, sans-serif`;
-function wrap(c,text,width,max=4){const rows=[];let line='';for(const word of String(text||'').split(' ')){const n=line?line+' '+word:word;if(line&&c.measureText(n).width>width){rows.push(line);line=word;}else line=n;}if(line)rows.push(line);return rows.slice(0,max);}
+const wrapped=new Map();
+function wrap(c,text,width,max=4){const key=c.font+'|'+width+'|'+max+'|'+text,cached=wrapped.get(key);if(cached)return cached;const rows=[];let line='';for(const word of String(text||'').split(' ')){const n=line?line+' '+word:word;if(line&&c.measureText(n).width>width){rows.push(line);line=word;}else line=n;}if(line)rows.push(line);const result=rows.slice(0,max);if(wrapped.size>=24)wrapped.delete(wrapped.keys().next().value);wrapped.set(key,result);return result;}
 export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banner}){
  const c=G.ctx,W=G.canvas.width,H=G.canvas.height,d=G.dpr,portrait=H>W,sf=G.safe||{t:0,l:0,r:0,b:0};
  const L=12*d+sf.l,T=12*d+sf.t,R=W-64*d-sf.r,A=G.action,mm=(portrait?94:84)*d;

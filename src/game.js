@@ -848,7 +848,7 @@ function tick(G, dt) {
   else if (G.scene === "settings") tickSettings(G, dt);
   else if (G.scene === "vn") tickVN(G, dt);
   else if (G.scene === "end") tickEnd(G, dt);
-  else if (G.scene === "train") {tickJourney(G,dt,{makeFoot,save});menuKeys(G);}
+  else if (G.scene === "train") {tickJourney(G,dt,{makeFoot,save,tickWeather});menuKeys(G);}
   else if (G.scene === "transit") {if(G.input.pauseP)cancelTransit(G);else menuKeys(G);}
   else if (['pause','map','crew','garage','dossier'].includes(G.scene)) tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
@@ -1226,31 +1226,33 @@ function tickPlay(G, dt) {
 
 function nightFactor(G) { return nightMix(G.time); }
 
-function tickWeather(G, dt) {
+function tickWeather(G, dt, effects=true) {
   G.weatherT -= dt;
   if (G.weatherT <= 0) {
     const cycle = ["clear", "clear", "rain", "fog", "clear", "sand"];
     const previous=Number.isInteger(G.weatherIndex)&&cycle[G.weatherIndex]===G.weather?G.weatherIndex:Math.max(0,cycle.indexOf(G.weather));
     const i=(previous+1)%cycle.length;G.weatherIndex=i;
     G.weather = cycle[i];
-    G.weatherT = 50 + Math.random() * 50;
+    G.weatherT += 50 + Math.random() * 50;
     toast(G, G.weather === "clear" ? "Skies open over Crown City." : G.weather === "rain" ? "Rain on the Strip." : G.weather === "fog" ? "Fog rolls off the harbour." : "Sand off the east edge.");
   }
   const targetWet = G.weather === "rain" ? 1 : 0;
   const targetFog = G.weather === "fog" ? 0.65 : G.weather === "rain" ? 0.15 : 0;
   const targetSand = G.weather === "sand" ? 0.8 : 0;
   const targetRain = G.weather === "rain" ? 1 : 0;
-  G.wet = lerp(G.wet, targetWet, 0.3 * dt);
-  G.fog = lerp(G.fog, targetFog, 0.3 * dt);
-  G.sand = lerp(G.sand, targetSand, 0.3 * dt);
-  G.rainAmt = lerp(G.rainAmt, targetRain, 0.4 * dt);
+  const damp=1-Math.exp(-.3*dt);
+  G.wet = lerp(G.wet, targetWet, damp);
+  G.fog = lerp(G.fog, targetFog, damp);
+  G.sand = lerp(G.sand, targetSand, damp);
+  G.rainAmt = lerp(G.rainAmt, targetRain, 1-Math.exp(-.4*dt));
+  if(!effects)return;
   if (G.rainAmt > 0.1) {
     for (let i = 0; i < (G.settings.quality==='low'?0:4); i++) {
       G.particles.push({ kind: "rain", x: G.cam.x + (Math.random() - 0.5) * 1400, y: G.cam.y + (Math.random() - 0.5) * 900, vx: 40, vy: 420, life: 0.5 });
     }
   }
   if (G.sand > 0.2) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < (G.settings.quality==='low'?0:3); i++) {
       G.particles.push({ kind: "sand", x: G.cam.x + (Math.random() - 0.5) * 1400, y: G.cam.y + (Math.random() - 0.5) * 900, vx: 180, vy: 20, life: 0.8, a: 1 });
     }
   }
@@ -1554,15 +1556,16 @@ function tickCollisions(G) {
   const P = G.player;
   const view=G.touch&&G.settings.quality==='low'?streetViewport(G):null,co=Math.abs(Math.cos(G.cam.rot||0)),si=Math.abs(Math.sin(G.cam.rot||0));
   const width=view?Math.max(700,view.halfW*co+view.halfH*si+300):1400,height=view?Math.max(550,view.halfH*co+view.halfW*si+300):1100;
-  const near=vs.filter(v=>!airborne(v)&&(Math.abs(v.x-G.cam.x)<width&&Math.abs(v.y-G.cam.y)<height||Math.abs(v.x-P.x)<350&&Math.abs(v.y-P.y)<350));
+  const near=G.nearVehicles||(G.nearVehicles=[]);near.length=0;
+  for(const v of vs)if(!airborne(v)&&(Math.abs(v.x-G.cam.x)<width&&Math.abs(v.y-G.cam.y)<height||Math.abs(v.x-P.x)<350&&Math.abs(v.y-P.y)<350))near.push(v);
   if (P.type === "veh" && !airborne(P) && !near.includes(P)) near.push(P);
   G.nearVehicles=near;
-  const grid=G.streetVehicleGrid||new Map();grid.clear();
-  for(const v of near){const key=Math.floor(v.x/160)*65536+Math.floor(v.y/160);if(!grid.has(key))grid.set(key,[]);grid.get(key).push(v);}
+  const grid=G.streetVehicleGrid||new Map(),pool=G.streetVehicleBuckets||(G.streetVehicleBuckets=[]);for(const bucket of grid.values()){bucket.length=0;pool.push(bucket);}grid.clear();
+  for(const v of near){const key=Math.floor(v.x/160)*65536+Math.floor(v.y/160);let bucket=grid.get(key);if(!bucket){bucket=pool.pop()||[];grid.set(key,bucket);}bucket.push(v);}
   G.streetVehicleGrid=grid;G.streetVehicleSource=G.vehicles;G.streetVehicleGeneration=(G.streetVehicleGeneration||0)+1;
   if(G.streetVehicleQueries)G.streetVehicleQueries.clear();else G.streetVehicleQueries=new Map();
   G.movingVehicles=near.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
-  for(const [a,b] of nearbyPairs(near)) {
+  for(const [a,b] of nearbyPairs(near,G.collisionWorkspace||(G.collisionWorkspace={ignoreParked:true}))) {
       if(!!a.def.boat!==!!b.def.boat)continue;
       if(a.parked&&b.parked&&!a.loose&&!b.loose)continue;
       const best=bodyContact(a,b);if(!best)continue;
@@ -2209,7 +2212,7 @@ function tickPeds(G, dt) {
 
 // Local circles keep crowds from stacking without checking every person against the city.
 function separateCharacters(G){
-  const grid=G.crowdGrid||(G.crowdGrid=new Map());grid.clear();
+  const grid=G.crowdGrid||(G.crowdGrid=new Map()),pool=G.crowdBuckets||(G.crowdBuckets=[]);for(const bucket of grid.values()){bucket.length=0;pool.push(bucket);}grid.clear();
   const cell=24,people=G.crowdActors||(G.crowdActors=[]);people.length=0;
   const view=streetViewport(G),c=Math.abs(Math.cos(G.cam.rot||0)),s=Math.abs(Math.sin(G.cam.rot||0));
   const halfW=view.halfW*c+view.halfH*s+160,halfH=view.halfH*c+view.halfW*s+160;
@@ -2226,7 +2229,7 @@ function separateCharacters(G){
         if(footClear(G,q.x-nx,q.y-ny,7)){q.x-=nx;q.y-=ny;}
       }
     }
-    const key=Math.floor(p.x/cell)*65536+Math.floor(p.y/cell);let bucket=grid.get(key);if(!bucket){bucket=[];grid.set(key,bucket);}bucket.push(p);
+    const key=Math.floor(p.x/cell)*65536+Math.floor(p.y/cell);let bucket=grid.get(key);if(!bucket){bucket=pool.pop()||[];grid.set(key,bucket);}bucket.push(p);
   }
   // A later neighbor can move an earlier person: resolve vehicles after the whole crowd pass.
   for(const p of people)resolveFootVehicles(G,p);
@@ -2404,7 +2407,7 @@ function render(G) {
     if (G.scene === "settings") drawSettings(G);
   } else if (G.scene === "vn") { if (G.vn.pending) drawBoot(ctx, canvas, 0.9, "Loading scene art…"); else drawVN(G); }
   else if (G.scene === "end") drawEnd(G);
-  else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save});
+  else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save,tickWeather});
   else {
     const frozen = ['pause', 'map', 'settings','crew','garage','dossier','transit'].includes(G.scene);
     if(frozen&&G.layered&&G.worldCanvas){/* Retain the compositor layer while menus are open. */}
@@ -3372,8 +3375,8 @@ function drawMinimap(G, x, y, size, span) {
     for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); }
     ctx.stroke();
   }
-  drawTransitMap(G,to);
-  for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
+  drawTransitMap(G,to,{x,y,size});
+  for(const pad of G.world.expansion?.helipads||[]){if(Math.abs(pad.x-P.x)>span/2+50||Math.abs(pad.y-P.y)>span/2+50)continue;const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for (const c of G.cops) { const p = to(c.x, c.y); ctx.fillStyle = ((G.ticks / 8) | 0) % 2 ? "#ff3048" : "#3a6bff"; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5 * u, 0, TAU); ctx.fill(); }
   const at = currentObjectivePos(G);
   if (at) {
