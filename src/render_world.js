@@ -189,6 +189,54 @@ export function makeGround(W, tex, codeAt) {
         }
       }
     }
+    // ---- per-cell brushwork: lawn dabs, shrubs, flower beds, gutters and building AO
+    {
+      let sd = (ix * 2654435761 ^ iy * 40503) >>> 0; sd = sd % 233280 || 11;
+      const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+      const greens = ["rgba(38,74,22,0.30)", "rgba(96,140,48,0.22)", "rgba(150,180,80,0.16)", "rgba(24,52,18,0.26)"];
+      const shrubs = [];
+      for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
+        const v = cellAt(cx, cy), px = cx * CELL, py = cy * CELL;
+        if (v === CODE.grass) {
+          for (let j = 0; j < 3; j++) { // directional brush dabs
+            x.fillStyle = greens[(rn() * 4) | 0];
+            x.beginPath(); x.ellipse(px + rn() * CELL, py + rn() * CELL, 3 + rn() * 5, 1.4 + rn() * 1.6, -0.6 + rn() * 0.4, 0, TAU); x.fill();
+          }
+          const edge = cellAt(cx + 1, cy) !== CODE.grass || cellAt(cx - 1, cy) !== CODE.grass || cellAt(cx, cy + 1) !== CODE.grass || cellAt(cx, cy - 1) !== CODE.grass;
+          const t = rn();
+          if (edge ? t < 0.16 : t < 0.035) shrubs.push([px + CELL / 2 + (rn() - 0.5) * 8, py + CELL / 2 + (rn() - 0.5) * 8, edge ? 7 + rn() * 5 : 9 + rn() * 9, rn()]);
+          else if (!edge && t < 0.05) { // flower bed
+            const fc = ["#e8507a", "#f2c14e", "#f4f0e8", "#b06ae0"][(rn() * 4) | 0];
+            x.fillStyle = "rgba(70,48,30,0.55)"; x.beginPath(); x.ellipse(px + 8, py + 8, 9, 6, 0, 0, TAU); x.fill();
+            x.fillStyle = fc; for (let k = 0; k < 7; k++) { x.beginPath(); x.arc(px + 2 + rn() * 12, py + 4 + rn() * 8, 1.6, 0, TAU); x.fill(); }
+          }
+        } else if (v === CODE.road || v === CODE.track) {
+          // gutter grime along curbs
+          x.fillStyle = "rgba(12,10,8,0.16)";
+          if (cellAt(cx + 1, cy) === CODE.walk) x.fillRect(px + CELL - 7, py, 7, CELL);
+          if (cellAt(cx - 1, cy) === CODE.walk) x.fillRect(px, py, 7, CELL);
+          if (cellAt(cx, cy + 1) === CODE.walk) x.fillRect(px, py + CELL - 7, CELL, 7);
+          if (cellAt(cx, cy - 1) === CODE.walk) x.fillRect(px, py, CELL, 7);
+        } else if (v === CODE.walk || v === CODE.lot) {
+          // soft ambient occlusion at building bases
+          x.fillStyle = "rgba(10,8,14,0.20)";
+          if (cellAt(cx + 1, cy) === CODE.build) x.fillRect(px + CELL - 6, py, 6, CELL);
+          if (cellAt(cx - 1, cy) === CODE.build) x.fillRect(px, py, 6, CELL);
+          if (cellAt(cx, cy + 1) === CODE.build) x.fillRect(px, py + CELL - 6, CELL, 6);
+          if (cellAt(cx, cy - 1) === CODE.build) x.fillRect(px, py, CELL, 6);
+        }
+      }
+      for (const [sx, sy, sr, sv] of shrubs) { // painted shrubs: shadow, body clumps, sunlit rim
+        x.fillStyle = "rgba(8,14,6,0.35)"; x.beginPath(); x.ellipse(sx + sr * 0.35, sy + sr * 0.4, sr * 1.05, sr * 0.8, 0, 0, TAU); x.fill();
+        const base = sv < 0.5 ? [34, 78, 30] : [52, 92, 34];
+        for (let k = 0; k < 4; k++) {
+          const a = k * 1.7 + sv * 6, d = sr * 0.35;
+          x.fillStyle = `rgb(${base[0] + k * 6},${base[1] + k * 8},${base[2] + k * 3})`;
+          x.beginPath(); x.arc(sx + Math.cos(a) * d, sy + Math.sin(a) * d, sr * (0.72 - k * 0.08), 0, TAU); x.fill();
+        }
+        x.fillStyle = "rgba(190,230,120,0.30)"; x.beginPath(); x.arc(sx - sr * 0.3, sy - sr * 0.3, sr * 0.38, 0, TAU); x.fill();
+      }
+    }
     // under-building footprint (dark slab, mostly hidden by walls)
     for (const b of W.buildings) {
       if (b.x > rx1 || b.y > ry1 || b.x + b.w < rx0 || b.y + b.h < ry0) continue;

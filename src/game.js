@@ -1212,12 +1212,14 @@ function tickDrive(G, v, input, dt, isPlayer) {
   }
   if (hand) fwd *= Math.exp(-(def.bike ? 1.4 : 0.9) * dt);
   // surface grip
+  const speed0 = Math.abs(fwd);
   let grip = def.grip * (GRIP[surf] || 0.7) * (G.wet > 0.3 ? 0.8 : 1);
-  if (def.boat) grip = onLand ? 0.2 : 0.35;
+  if (def.boat) grip = onLand ? 0.2 : 0.62 + 0.25 * Math.max(0, 1 - speed0 / 160); // boats carve: more bite at low speed, slide when fast
+  if (def.bike) grip = Math.max(grip, def.grip * 1.45 * (GRIP[surf] || 0.7));
   const speed = Math.abs(fwd);
   // steering: speed-sensitive, understeer at the top end, more bite on bikes
   const steerIn = clamp(input.x || 0, -1, 1);
-  const steerAuth = def.steer * Math.min(1, speed / 55) * (1 - 0.35 * k) * (hand ? 1.35 : 1);
+  const steerAuth = def.steer * Math.min(1, speed / (def.bike ? 28 : def.boat ? 22 : 55)) * (1 - (def.bike ? 0.25 : 0.35) * k) * (hand ? 1.35 : 1) * (def.boat ? 1.15 : 1);
   const yawRate = steerIn * steerAuth * Math.sign(fwd || 1) * 1.15;
   v.yaw = lerp(v.yaw || 0, yawRate, Math.min(1, (def.bike ? 12 : 8) * dt));
   v.rot += v.yaw * dt;
@@ -1229,8 +1231,9 @@ function tickDrive(G, v, input, dt, isPlayer) {
   // rolling + aero drag
   fwd *= Math.exp(-(0.12 + (onLand ? 3 : 0) + (surf === "grass" || surf === "sand" || surf === "dirt" ? 0.35 : 0)) * dt);
   fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 0.0009 * fwd * fwd * dt * 60 * 0.02);
+  if (def.boat && !onLand) fwd *= Math.exp(-Math.abs(v.yaw || 0) * 0.35 * dt); // turning bleeds speed into the wake
   fwd = clamp(fwd, -def.max * 0.42, top);
-  v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : 0.16), 8 * dt);
+  v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : def.boat ? 0.3 : 0.16) + (def.boat && !onLand ? Math.sin(G.ticks * 0.07 + v.x * 0.01) * 0.05 : 0), (def.bike ? 10 : 8) * dt);
   v.turnSign = steerIn;
   v.braking = reverse > 0 && fwd > 5 || hand;
   v.fwd = fwd;
@@ -1354,8 +1357,17 @@ function tickCollisions(G) {
       if (!best) continue;
       const ma = a.def.mass * (a.parked && !a.loose ? 2.2 : 1), mb = b.def.mass * (b.parked && !b.loose ? 2.2 : 1);
       const ta = mb / (ma + mb), tb = ma / (ma + mb);
-      a.x -= best.nx * best.pen * ta; a.y -= best.ny * best.pen * ta;
-      b.x += best.nx * best.pen * tb; b.y += best.ny * best.pen * tb;
+      // pinned against a wall: the car that would be pushed into a building stays put and the other takes the whole push
+      const ax = a.x - best.nx * best.pen * ta, ay = a.y - best.ny * best.pen * ta;
+      const bx = b.x + best.nx * best.pen * tb, by = b.y + best.ny * best.pen * tb;
+      const aBad = !!carHit(G, a, ax, ay), bBad = !!carHit(G, b, bx, by);
+      if (aBad && !bBad) { b.x += best.nx * best.pen; b.y += best.ny * best.pen; }
+      else if (bBad && !aBad) { a.x -= best.nx * best.pen; a.y -= best.ny * best.pen; }
+      else if (!aBad) { a.x = ax; a.y = ay; b.x = bx; b.y = by; }
+      else { // both pinned: slide them apart along the wall tangent
+        const tx = -best.ny, ty = best.nx, sg = ((a.x - b.x) * tx + (a.y - b.y) * ty) >= 0 ? 1 : -1;
+        a.x += tx * sg * best.pen * 0.5; a.y += ty * sg * best.pen * 0.5; b.x -= tx * sg * best.pen * 0.5; b.y -= ty * sg * best.pen * 0.5;
+      }
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
       if (rv < 0) {
         const jimp = -(1.3) * rv / (1 / ma + 1 / mb);
