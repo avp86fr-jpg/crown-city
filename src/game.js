@@ -971,6 +971,7 @@ function tickPlay(G, dt) {
     tickParticles(G, 1 / 60);
     return;
   }
+  if ((G.ticks % 30) === 0) ensureMissionCar(G);
   if (G.input.pauseP) { G.scene = "pause"; G.settingsSel = 0; G.pausedFrom = "play"; return; }
   if (G.input.mapP) { G.scene = "map"; G.pausedFrom = "play"; return; }
   if (G.input.radioP && G.player.type === "veh") { G.radioName = G.audio.nextStation(); G.radioT = 2.5; }
@@ -1292,7 +1293,7 @@ function explode(G, v) {
   G.particles.push({ kind: "boom", x: v.x, y: v.y, life: 0.6, frame: 0, big: true });
   for (let i = 0; i < 26; i++) G.particles.push({ kind: "spark", x: v.x, y: v.y, vx: (Math.random() - 0.5) * 520, vy: (Math.random() - 0.5) * 520, life: 0.3 + Math.random() * 0.3 });
   for (let i = 0; i < 10; i++) G.particles.push({ kind: "smoke", x: v.x, y: v.y, vx: (Math.random() - 0.5) * 80, vy: (Math.random() - 0.5) * 80, life: 1.2, frame: 0, dark: true });
-  G.flashes.push({ x: v.x, y: v.y, r: 420, col: "rgba(255,190,90,1)", life: 0.45, max: 0.45 });
+  G.flashes.push({ x: v.x, y: v.y, r: 760, col: "rgba(255,190,90,1)", life: 0.6, max: 0.6 });
   G.audio.crash(); if (G.audio.boom) G.audio.boom();
   addShake(G, 16);
   scarePeds(G, v.x, v.y, 420);
@@ -1371,7 +1372,7 @@ function tryEnter(G, instant) {
 function nearestVeh(G, x, y, r, kind) {
   let best = null, bd = r;
   for (const v of G.vehicles) {
-    if (v.driver && v !== G.player) continue;
+    if ((v.driver && v !== G.player) || v.dead) continue;
     if (kind && v.kind !== kind) continue;
     const d = Math.hypot(v.x - x, v.y - y);
     if (d < bd) { bd = d; best = v; }
@@ -2570,6 +2571,18 @@ function drawObjectiveBeacon(G) {
   ctx.drawImage(LIGHT.radial("rgba(255,210,110,0.9)", 64), at.x - 40, at.y - 40, 80, 80);
   ctx.restore();
 }
+// mission car wrecked before it was needed: a fresh one is delivered to the garage
+function ensureMissionCar(G) {
+  const flow = G._flow; if (!flow) return;
+  const obj = flow.objectives[G.objectiveIndex];
+  if (!obj || obj.kind !== "enter") return;
+  const v = G.vehicles.find((q) => q.mission && q.kind === "riot" && !q.dead);
+  if (v) return;
+  for (const q of G.vehicles) if (q.mission && q.kind === "riot") q.mission = false;
+  const g = G.meta.spawns.garage; const s = findSafe(G, g[0], g[1], 30, false);
+  G.vehicles.push(makeVeh("riot", s.x, s.y, Math.PI, { keep: true, mission: true }));
+  toast(G, "A fresh Riot is waiting at the garage.");
+}
 function currentObjectivePos(G) {
   const flow = G._flow; if (!flow) return null;
   const obj = flow.objectives[G.objectiveIndex];
@@ -3333,6 +3346,7 @@ function api(G) {
     findSafe: (x, y) => findSafe(G, x, y, 24, true),
     objPos: () => currentObjectivePos(G),
     fps: () => G.fps,
+    boomNear: (dx = 0, dy = -160) => { const v = nearestVeh(G, G.player.x + dx, G.player.y + dy, 400); if (v && v !== G.player) explode(G, v); return !!v; },
     state: () => ({ cops: G.cops.length, district: G.district, fps: G.fps,
       scene: G.scene, mission: G.missionIndex, obj: G.objectiveIndex, chips: G.chips,
       wanted: G.wanted, time: G.time, weather: G.weather, x: G.player.x, y: G.player.y,
