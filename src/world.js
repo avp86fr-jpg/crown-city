@@ -1,8 +1,9 @@
 /* Crown City world: painted core (tiled, streamed) + procedural outer districts.
    One collision grid, one road graph, chunked ground renderer, extruded buildings. */
+import {applyExpansion,terrainRegion} from './expansion_world.js';
 export const CORE = 4096;
-export const WORLD_W = 10240;
-export const WORLD_H = 9216;
+export const WORLD_W = 12288;
+export const WORLD_H = 10240;
 export const CELL = 16;
 export const GW = WORLD_W / CELL, GH = WORLD_H / CELL;
 // codes: 0 road 1 walk 2 build 3 water 4 sand 5 grass 6 track 7 pier 8 canal 9 lot 10 dirt 255 core
@@ -37,6 +38,9 @@ export const CORE_DISTRICTS = [
   { name: "DESERT EDGE", r: [3600, 3000, 496, 1096] },
 ];
 export function districtAt(x, y) {
+  const biome=terrainRegion(x,y);if(biome)return biome==='forest'?'PINEWATCH FOREST':biome==='desert'?'RED MESA':'SIERRA CROWN';
+  if(x>=6784&&x<=7152&&y>560&&y<6800)return 'CROWN CANAL';
+  if(x>=7540&&x<=8960&&y>=2820&&y<=3590)return 'METAWIN TERRACE';
   if (x < CORE && y < CORE) {
     for (const d of CORE_DISTRICTS) { const r = d.r; if (x >= r[0] && y >= r[1] && x < r[0] + r[2] && y < r[1] + r[3]) return d.name; }
     return "CROWN CITY";
@@ -355,6 +359,7 @@ export function buildWorld(meta, coreMask, coreMS) {
     }
   }
   // core buildings join the extruded set (heights from meta), roof painted layer is reused
+  applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H});
   W.coreBuildings = (meta.buildings || []).map((b) => ({ ...b, core: true }));
   return W;
 }

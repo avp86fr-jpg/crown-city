@@ -1,4 +1,5 @@
 /* Streaming tile layers, chunked procedural ground, extruded buildings, trees. */
+import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
@@ -66,12 +67,28 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const pats = {};
+  const pats = {};let revision=0;
+  loadImg('assets/premium/frontier-scenery.webp').then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
+  // Four original terrain paintings, loaded once and repeated inside static chunks.
+  loadImg('assets/premium/frontier-terrain.webp').then(atlas=>{
+    ['forest','desert','mountain','casino'].forEach((name,i)=>{
+      const tile=document.createElement('canvas');tile.width=tile.height=256;
+      tile.getContext('2d').drawImage(atlas,(i%2)*atlas.width/2,Math.floor(i/2)*atlas.height/2,atlas.width/2,atlas.height/2,0,0,256,256);
+      pats[name]=scratch.createPattern(tile,'repeat');if(name==='casino')pats[name].setTransform(new DOMMatrix([.5,0,0,.5,0,0]));
+    });
+    for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;
+  }).catch(()=>{});
   const scratch = document.createElement("canvas").getContext("2d");
   for (const k of Object.keys(tex)) pats[k] = scratch.createPattern(tex[k], "repeat");
   const codeTex = { [CODE.road]: "asphalt", [CODE.walk]: "paver", [CODE.grass]: "grass", [CODE.sand]: "sand", [CODE.track]: "asphalt_hw", [CODE.pier]: "pier", [CODE.lot]: "lot", [CODE.dirt]: "dirt", [CODE.build]: "concrete" };
   const g = W.grid;
   const cellAt = (cx, cy) => (cx < 0 || cy < 0 || cx >= GW || cy >= GH) ? 254 : g[cy * GW + cx];
+  function textureAt(code,x,y){
+    const region=terrainRegion(x,y),C=W.expansion?.casino;
+    if(region&&(code===CODE.grass||code===CODE.sand||code===CODE.dirt||code===CODE.build))return region;
+    if((code===CODE.walk||code===CODE.build)&&C&&x>=C.x&&x<C.x+C.w&&y>=C.y&&y<C.y+C.h)return 'casino';
+    return code===CODE.walk&&cellDistrict(W,x,y)==='warm'?'paver_warm':codeTex[code];
+  }
   function render(ix, iy) {
     const c = document.createElement("canvas");
     c.width = c.height = CH;
@@ -81,17 +98,18 @@ export function makeGround(W, tex, codeAt) {
     const cx0 = ox / CELL, cy0 = oy / CELL, n = CH / CELL;
     let any = false;
     for (let cy = cy0; cy < cy0 + n; cy++) {
-      let run = -1, start = 0;
+      let run = -1, start = 0, runTex=null;
       for (let cx = cx0; cx <= cx0 + n; cx++) {
         const v = cx < cx0 + n ? cellAt(cx, cy) : -2;
-        if (v !== run) {
+        const currentTex=textureAt(v,cx*CELL,cy*CELL);
+        if (v !== run || currentTex !== runTex) {
           if (run >= 0 && run !== 255 && run !== CODE.water && run !== CODE.canal) {
-            const t = run === CODE.walk && cellDistrict(W, start * CELL, cy * CELL) === "warm" ? "paver_warm" : codeTex[run];
-            x.fillStyle = pats[t] || pats.concrete;
+            const t = runTex;
+            x.fillStyle = pats[t] || pats[codeTex[run]] || pats.concrete;
             x.fillRect(start * CELL, cy * CELL, (cx - start) * CELL, CELL);
             any = true;
           }
-          run = v; start = cx;
+          run = v; start = cx; runTex=currentTex;
         }
       }
     }
@@ -144,6 +162,7 @@ export function makeGround(W, tex, codeAt) {
       if (f.x > rx1 + 400 || f.y > ry1 + 400 || f.x + (f.w || 0) < rx0 - 400 || f.y + (f.h || 0) < ry0 - 400) continue;
       drawFeature(x, f, pats);
     }
+    drawExpansionGround(x,W,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats);
     for (const p of W.piers) {
       if (p.x > rx1 || p.y > ry1 || p.x + p.w < rx0 || p.y + p.h < ry0) continue;
       x.fillStyle = pats.pier || "#6b5a44"; x.fillRect(p.x, p.y, p.w, p.h);
@@ -200,7 +219,7 @@ export function makeGround(W, tex, codeAt) {
       const shrubs = [];
       for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
         const v = cellAt(cx, cy), px = cx * CELL, py = cy * CELL;
-        if (v === CODE.grass) {
+        if (v === CODE.grass && !terrainRegion(px,py)) {
           for (let j = 0; j < 3; j++) { // directional brush dabs
             x.fillStyle = greens[(rn() * 4) | 0];
             x.beginPath(); x.ellipse(px + rn() * CELL, py + rn() * CELL, 3 + rn() * 5, 1.4 + rn() * 1.6, -0.6 + rn() * 0.4, 0, TAU); x.fill();
@@ -249,6 +268,7 @@ export function makeGround(W, tex, codeAt) {
   }
   return {
     maxChunks:64,
+    get revision(){return revision;},
     draw(ctx, r, frame) {
       const ix0 = Math.max(0, Math.floor(r.x0 / CH)), iy0 = Math.max(0, Math.floor(r.y0 / CH));
       const ix1 = Math.min(WORLD_W / CH - 1, Math.floor(r.x1 / CH)), iy1 = Math.min(WORLD_H / CH - 1, Math.floor(r.y1 / CH));
@@ -292,7 +312,7 @@ function drawMarkings(x, W, s) {
     const m = s.v ? [s.c - med / 2, a, med, b - a] : [a, s.c - med / 2, b - a, med];
     x.fillStyle = "#cfcac0"; x.fillRect(m[0], m[1], m[2], m[3]);
     x.fillStyle = "#4f7a38"; x.fillRect(m[0] + 4, m[1] + 4, m[2] - 8, m[3] - 8);
-  } else if (lanes > 1 || s.k === "street") {
+  } else if (lanes > 1 || s.k === "street" || s.k === "frontier") {
     const p = L(-2, a, b), q = L(2, a, b);
     dash(x, p[0], p[1], p[2], p[3], 0, 0, 2.5, "#e8b830");
     dash(x, q[0], q[1], q[2], q[3], 0, 0, 2.5, "#e8b830");
@@ -304,13 +324,14 @@ function drawMarkings(x, W, s) {
       dash(x, p[0], p[1], p[2], p[3], 22, 26, 2.5, "rgba(240,240,240,0.85)");
     }
   }
-  if (s.k === "highway" || s.k === "boulevard") {
+  if (s.k === "highway" || s.k === "boulevard" || s.k === "frontier") {
     for (const sg of [-1, 1]) { const p = L(sg * (half - 8), a, b); dash(x, p[0], p[1], p[2], p[3], 0, 0, 2.5, "rgba(240,240,240,0.8)"); }
   }
 }
 function drawIntersection(x, W, n, pats) {
   const hw = n.vs.w / 2, hh = n.hs.w / 2;
   x.fillStyle = pats.asphalt; x.fillRect(n.x - hw, n.y - hh, hw * 2, hh * 2);
+  if(n.vs.k==='frontier'&&n.hs.k==='frontier')return;
   // zebra crossings on each approach (only if that road continues)
   x.fillStyle = "rgba(240,240,236,0.88)";
   const zw = 22;
@@ -498,6 +519,16 @@ export function makeBuildings(W, tex, coreRoofs) {
   }
   return {
     all, inView: (r) => inView(r, bins),
+    // Camera-independent roofs and foliage are baked into mobile scenery tiles.
+    staticDraw(ctx,r){
+      for(const b of inView(r,bins)){
+        if(b.core)continue;
+        ctx.fillStyle='rgba(10,16,18,.3)';ctx.fillRect(b.x+9,b.y+12,b.w+5,b.h+5);
+        if(b.kind==='container'){ctx.fillStyle=b.color||'#7e7770';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='rgba(0,0,0,.2)';for(let x=b.x+4;x<b.x+b.w;x+=7)ctx.fillRect(x,b.y,2,b.h);}
+        else ctx.drawImage(roofSprite(b),b.x,b.y,b.w,b.h);
+      }
+      this.trees(ctx,{x:0,y:0,scale:1},r,{low:false,static:true,time:0});
+    },
     draw(ctx, cam, r, frame, sun, opts) {
       const D = 980 / Math.max(0.45, cam.scale);
       const list = [...inView(r, bins)];
@@ -582,7 +613,16 @@ export function makeBuildings(W, tex, coreRoofs) {
       for (const t of inViewTrees(r)) {
         const k = 28 / D;
         const wind = opts.time ? Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012) * 1.6 : 0;
-        const x = t.x + (t.x - cam.x) * k + wind, y = t.y + (t.y - cam.y) * k + wind * .35;
+        const x = opts.static?t.x:t.x + (t.x - cam.x) * k + wind, y = opts.static?t.y:t.y + (t.y - cam.y) * k + wind * .35;
+        if(t.pine){
+          ctx.fillStyle='rgba(11,24,25,.32)';ctx.beginPath();ctx.ellipse(x+10,y+12,t.r*1.1,t.r*.7,-.6,0,TAU);ctx.fill();
+          if(W.sceneryAtlas){const im=W.sceneryAtlas;ctx.drawImage(im,0,0,im.width/2,im.height/2,x-t.r*1.3,y-t.r*1.65,t.r*2.6,t.r*3.1);continue;}
+          for(let layer=0;layer<4;layer++){
+            const rad=t.r*(1-layer*.19);ctx.fillStyle=['#203e36','#305848','#426d51','#779065'][layer];ctx.beginPath();
+            for(let i=0;i<20;i++){const a=i*TAU/20+t.x*.013,rr=rad*(i%2?.52:1),px=x+Math.cos(a)*rr-layer*1.4,py=y+Math.sin(a)*rr-layer*1.8;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}
+            ctx.closePath();ctx.fill();
+          }continue;
+        }
         ctx.fillStyle = "#4a3422"; ctx.fillRect(t.x - 2, t.y - 2, 4, 4);
         const g = t.t === 0 ? ["#2f5a26", "#4d8a37", "#6fb04a"] : t.t === 1 ? ["#2a4f2c", "#3f7a3c", "#5f9e52"] : ["#3c5a22", "#5f8a2e", "#86b04a"];
         const crown = ctx.createRadialGradient(x - t.r * .3, y - t.r * .35, 1, x, y, t.r);
@@ -598,7 +638,7 @@ export function makeBuildings(W, tex, coreRoofs) {
       }
     },
   };
-  function inViewTrees(r) { return inView(r, treeBins); }
+  function inViewTrees(r) { return inView({x0:r.x0-96,y0:r.y0-96,x1:r.x1+96,y1:r.y1+96}, treeBins); }
 }
 function shadowHull(ctx, x, y, w, h, dx, dy) {
   const pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];

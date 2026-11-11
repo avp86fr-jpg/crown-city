@@ -1,0 +1,426 @@
+{
+  "baselineCommit": "17f89f663f614ceeeeabee4ff6c8d579181ca3f8",
+  "method": "844x390 CSS, DPR2, touch, low quality, 4x CPU throttle, rain/night, same 4-second core drive, music warm; Chrome emulation only",
+  "baseline": {
+    "seconds": 4.379900000000372,
+    "frames": 30,
+    "ticks": 93,
+    "prof": {
+      "render": 104.13845740818238,
+      "tick": 14.043241882960798,
+      "hud": 2.8371116721284855,
+      "h_gps": 8.851367789479456e-05,
+      "h_mini": 0.4080074655675399,
+      "h_stars": 1.7521587426980314,
+      "h_obj": 0.5095232339073009,
+      "h_dist": 0,
+      "h_spd": 0.44132422736976934,
+      "h_arrow": 0.006534299400164957
+    },
+    "max": {
+      "render": 1202.0999999996275,
+      "tick": 36.40000000037253,
+      "hud": 42.899999998509884,
+      "h_gps": 0.09999999962747097,
+      "h_mini": 2.599999999627471,
+      "h_stars": 19.300000000745058,
+      "h_obj": 4.899999998509884,
+      "h_dist": 0,
+      "h_spd": 3.199999999254942,
+      "h_arrow": 0.10000000149011612
+    },
+    "peds": 88,
+    "vehicles": 330,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "callsites": [
+      [
+        "drawImage \u2190 drawMobileWorld:18",
+        1778561
+      ],
+      [
+        "(program) \u2190 (root):-1",
+        1330983
+      ],
+      [
+        "(idle) \u2190 (root):-1",
+        588265
+      ],
+      [
+        "roadArt \u2190 drawStreetScene:85",
+        126837
+      ],
+      [
+        "fill \u2190 oval:5",
+        83031
+      ],
+      [
+        "stroke \u2190 roadArt:67",
+        80196
+      ],
+      [
+        "tickPlay \u2190 tick:819",
+        69495
+      ],
+      [
+        "(garbage collector) \u2190 (root):-1",
+        49298
+      ],
+      [
+        "fillRect \u2190 tile:4",
+        39088
+      ],
+      [
+        "tick \u2190 tickPlay:1123",
+        38994
+      ],
+      [
+        "separateCharacters \u2190 tickPlay:1123",
+        38948
+      ],
+      [
+        "tickPeds \u2190 tickPlay:1123",
+        35347
+      ],
+      [
+        "im.onload \u2190 (root):-1",
+        26148
+      ],
+      [
+        "frame \u2190 (root):-1",
+        20017
+      ],
+      [
+        "drawImage \u2190 drawStreetScene:85",
+        19470
+      ],
+      [
+        "measureText \u2190 textLines:2",
+        18972
+      ],
+      [
+        "drawMobileWorld \u2190 renderWorldLayer:2615",
+        16895
+      ],
+      [
+        "tickVehicles \u2190 tickPlay:1123",
+        15819
+      ],
+      [
+        "drawChar \u2190 drawMobileWorld:18",
+        15805
+      ],
+      [
+        "resolveFootVehicles \u2190 tickPeds:2012",
+        13581
+      ]
+    ],
+    "hot": [
+      [
+        "drawImage",
+        1805311
+      ],
+      [
+        "(program)",
+        1330983
+      ],
+      [
+        "(idle)",
+        588265
+      ],
+      [
+        "roadArt",
+        126837
+      ],
+      [
+        "fill",
+        87039
+      ],
+      [
+        "stroke",
+        81320
+      ],
+      [
+        "tickPlay",
+        69495
+      ],
+      [
+        "(garbage collector)",
+        49298
+      ],
+      [
+        "tick",
+        48889
+      ],
+      [
+        "fillRect",
+        46822
+      ],
+      [
+        "separateCharacters",
+        38948
+      ],
+      [
+        "tickPeds",
+        35347
+      ],
+      [
+        "save",
+        28879
+      ],
+      [
+        "measureText",
+        27545
+      ],
+      [
+        "fillText",
+        27283
+      ],
+      [
+        "resolveFootVehicles",
+        27262
+      ],
+      [
+        "im.onload",
+        26148
+      ],
+      [
+        "frame",
+        20017
+      ],
+      [
+        "drawMobileWorld",
+        16895
+      ],
+      [
+        "query",
+        16295
+      ],
+      [
+        "tickVehicles",
+        15819
+      ],
+      [
+        "drawChar",
+        15805
+      ]
+    ]
+  },
+  "expanded": {
+    "seconds": 4.1185,
+    "frames": 68,
+    "ticks": 214,
+    "prof": {
+      "render": 5.551543945507934,
+      "tick": 13.453684466367458,
+      "hud": 1.8392478032484816,
+      "h_gps": 0.03128837350719233,
+      "h_mini": 0.3470492693210082,
+      "h_stars": 0.7685384299501248,
+      "h_obj": 0.5783636712497655,
+      "h_dist": 0,
+      "h_spd": 0.329589252700184,
+      "h_arrow": 0.016491271573796578
+    },
+    "max": {
+      "render": 62.30000000074506,
+      "tick": 93.60000000149012,
+      "hud": 47.30000000074506,
+      "h_gps": 0.900000000372529,
+      "h_mini": 2.400000000372529,
+      "h_stars": 20.5,
+      "h_obj": 7.200000001117587,
+      "h_dist": 0,
+      "h_spd": 3.199999999254942,
+      "h_arrow": 0.40000000037252903
+    },
+    "peds": 117,
+    "vehicles": 303,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "callsites": [
+      [
+        "(program) \u2190 (root):-1",
+        1703983
+      ],
+      [
+        "(idle) \u2190 (root):-1",
+        953163
+      ],
+      [
+        "tickPlay \u2190 tick:841",
+        204650
+      ],
+      [
+        "tickPeds \u2190 tickPlay:1147",
+        133035
+      ],
+      [
+        "separateCharacters \u2190 tickPlay:1147",
+        104100
+      ],
+      [
+        "tick \u2190 tickPlay:1147",
+        94325
+      ],
+      [
+        "(garbage collector) \u2190 (root):-1",
+        70091
+      ],
+      [
+        "drawMobileWorld \u2190 renderWorldLayer:2707",
+        49703
+      ],
+      [
+        "tickVehicles \u2190 tickPlay:1147",
+        43027
+      ],
+      [
+        "drawHUD \u2190 render:2354",
+        36992
+      ],
+      [
+        "worldBodyHit \u2190 carHit:1496",
+        36440
+      ],
+      [
+        "localStreetVehicles \u2190 tickPeds:2104",
+        35321
+      ],
+      [
+        " \u2190 surfaceAt:141",
+        33869
+      ],
+      [
+        "query \u2190 trafficSpeed:248",
+        33207
+      ],
+      [
+        "tickCollisions \u2190 tickPlay:1147",
+        29538
+      ],
+      [
+        "drawImage \u2190 drawMobileWorld:38",
+        23859
+      ],
+      [
+        "measureText \u2190 wrapLines:3607",
+        23744
+      ],
+      [
+        "tickDrive \u2190 tickVehicles:1985",
+        23545
+      ],
+      [
+        " \u2190 nearbyPairs:57",
+        22620
+      ],
+      [
+        "save \u2190 drawChar:3206",
+        21822
+      ]
+    ],
+    "hot": [
+      [
+        "(program)",
+        1703983
+      ],
+      [
+        "(idle)",
+        953163
+      ],
+      [
+        "tickPlay",
+        204650
+      ],
+      [
+        "tickPeds",
+        133035
+      ],
+      [
+        "tick",
+        115326
+      ],
+      [
+        "separateCharacters",
+        104100
+      ],
+      [
+        "(garbage collector)",
+        70091
+      ],
+      [
+        "save",
+        60015
+      ],
+      [
+        "drawImage",
+        57553
+      ],
+      [
+        "query",
+        49841
+      ],
+      [
+        "drawMobileWorld",
+        49703
+      ],
+      [
+        "fillText",
+        49178
+      ],
+      [
+        "localStreetVehicles",
+        44258
+      ],
+      [
+        "tickVehicles",
+        43027
+      ],
+      [
+        "http://127.0.0.1:8000/src/world.js",
+        41703
+      ],
+      [
+        "tickDrive",
+        39117
+      ],
+      [
+        "drawHUD",
+        36992
+      ],
+      [
+        "worldBodyHit",
+        36440
+      ],
+      [
+        "measureText",
+        33472
+      ],
+      [
+        "tickCollisions",
+        29538
+      ],
+      [
+        "resolveFootVehicles",
+        28104
+      ],
+      [
+        "http://127.0.0.1:8000/src/collision.js",
+        26528
+      ]
+    ]
+  }
+}

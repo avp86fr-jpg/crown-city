@@ -1,3 +1,4 @@
+import {EXPANSION_JOBS,EXPANSION_DEBRIEFS} from './expansion_jobs.js';
 /* Crown City action systems: weapons, stamina, crew work and vehicle workshops. */
 import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_jobs.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -11,7 +12,7 @@ export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1)),t:number(s.contract.t,0,0,240),progress:number(s.contract.progress,0,0,1e6)}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
 export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
@@ -49,7 +50,7 @@ export function buyService(G,choice) {
  const offers={repair:{cost:120},tune:{cost:500},supply:{cost:90},respray:{cost:250}};
  const offer=offers[choice];if(!offer)return false;
  if(G.wanted>0&&!G.evading){message(G,'HUNTER','Break their line of sight first. I am a mechanic, not a magician.');return false;}
- if(['repair','tune','respray'].includes(choice)&&(P.type!=='veh'||P.def.boat)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
+ if(['repair','tune','respray'].includes(choice)&&(P.type!=='veh'||P.def.boat||P.def.aircraft)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
  if(choice==='tune'&&A.upgrades>=3){message(G,'HUNTER','Every street upgrade is fitted. Go make them regret it.');return false;}
  if(G.chips<offer.cost){message(G,'HUNTER','Not enough chips. Crew contracts pay.');return false;}
  G.chips-=offer.cost;
@@ -63,7 +64,7 @@ export const CONTRACTS=[
  {id:'courier',title:'NIGHT SHIFT',contact:'NEURAL',text:'Carry a sealed drive from Southside to the loft. 100 seconds. No wanted stars at delivery.',reward:650,time:100},
  {id:'ghost',title:'GHOST DRIVER',contact:'MASK',text:'Lift a marked black box near Metro, then disappear. Reach the marker and lose two stars.',reward:850,time:150},
  {id:'drift',title:'SMOKE SIGNAL',contact:'FIRE',text:'Bank 1,200 drift points in a car. Keep the speed up. You have 90 seconds.',reward:700,time:90},
- ...STREET_JOBS,
+ ...STREET_JOBS, ...EXPANSION_JOBS,
 ];
 export function startContract(G,id) {
  const A=G.action;if(A.contract)return false;
@@ -104,17 +105,17 @@ export function tickAction(G,dt,hooks) {
     done=c.stage===1&&G.wanted===0&&Math.hypot(P.x-a[0],P.y-a[1])<85;
   }
   if(c.id==='ghost'){const a=G.meta.interactions.pd;if(!c.stage&&Math.hypot(P.x-a[0],P.y-a[1])<100){c.stage=1;G.wanted=Math.max(2,G.wanted);G.seenT=0;G.waypoint=null;G.gps=null;message(G,'MASK','Metro noticed. Find an alley. Do not lead them back to me.');}done=c.stage===1&&G.wanted===0;}
-  if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
-  if(c.id==='rescue'||c.id==='signal'||c.id==='harbour')done=tickStreetJob(G,c,dt,message);
+  if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
+  if(c.id==='rescue'||c.id==='signal'||c.id==='harbour'||EXPANSION_JOBS.some(j=>j.id===c.id))done=tickStreetJob(G,c,dt,message);
   if(c.t===0)done=false;
-  if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;message(G,def.contact,'+'+def.reward+' chips. '+(STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
+  if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;message(G,def.contact,'+'+def.reward+' chips. '+(EXPANSION_DEBRIEFS[c.id]||STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
   else if(c.t===0){message(G,def.contact,'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}
  }
  A.comboT=Math.max(0,A.comboT-dt);if(!A.comboT)A.combo=0;
 
 }
 export function applyTune(G,v) {
- const level=G.action?.upgrades||0;if(v.def.boat||v.tunedLevel===level)return;
+ const level=G.action?.upgrades||0;if(v.def.boat||v.def.aircraft||v.tunedLevel===level)return;
  if(!level){if(v.stockDef)v.def=v.stockDef;v.tunedLevel=0;return;}
  if(!v.stockDef)v.stockDef=v.def;v.def={...v.stockDef,accel:v.stockDef.accel*(1+level*.1),brake:v.stockDef.brake*(1+level*.09),grip:Math.min(1.3,v.stockDef.grip+level*.04),max:v.stockDef.max*(1+level*.035)};v.tunedLevel=level;
 }

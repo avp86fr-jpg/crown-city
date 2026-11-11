@@ -9,7 +9,7 @@ export function buildStreetScene(G){
  const fixtures=[];let i=0;
  for(const b of [...G.meta.buildings,...G.world.buildings]){
   const seed=hash(b.x*13+b.y*7);const kind=Math.floor(seed*6);
-  if(b.w<50||b.h<45)continue;
+  if(b.w<50||b.h<45||b.kind==='pavilion')continue;
   const candidates=[{x:b.x+b.w*.3,y:b.y+b.h+25,rot:0},{x:b.x-27,y:b.y+b.h*.6,rot:Math.PI/2}];
   for(const p of candidates){
    if(['walk','lot','pier'].includes(G.surfaceAt(p.x,p.y))&&!G.solidAt(p.x-18,p.y)&&!G.solidAt(p.x+18,p.y)){
@@ -17,6 +17,8 @@ export function buildStreetScene(G){
    }
   }
  }
+ // The casino's actual tables and canal benches are social destinations.
+ for(const p of G.world.expansion?.decor||[])if(['roulette','blackjack','canal'].includes(p.kind))fixtures.push({x:p.x,y:p.y,rot:0,kind:p.kind==='canal'?3:0,seed:hash(p.x+p.y),id:i++,hidden:true});
  G.street={fixtures,cache:new Map(),roadCache:new Map()};
  const origin=G.meta.spawns.player;
  for(const p of fixtures.filter(p=>Math.hypot(p.x-origin[0],p.y-origin[1])<1250).slice(0,24)){
@@ -86,7 +88,7 @@ function roadArt(G,ix,iy){
 export function drawStreetScene(G,r){
  if(!G.street)buildStreetScene(G);const c=G.ctx,low=G.settings.quality==='low';
  for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++)c.drawImage(roadArt(G,ix,iy),ix*512,iy*512);
- for(const p of G.street.fixtures){if(!within(p,r))continue;if(low&&p.id%2)continue;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
+ for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;if(low&&p.id%2)continue;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
 }

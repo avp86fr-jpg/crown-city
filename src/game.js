@@ -1,4 +1,7 @@
 import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
+import { AIRCRAFT_DEFS, airborne, spawnAircraft, tickAircraft, aircraftSnapshot, restoreAircraft, drawAircraft, aviationHint, canExitAircraft } from './aviation.js';
+import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, drawExpansionHUD } from './expansion.js';
+import { drawExpansionOverhead } from './expansion_world.js';
 import { drawMobileWorld } from './mobile_renderer.js';
 import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
 import { loadImage as loadImg } from "./assets.js";
@@ -50,6 +53,8 @@ const VEH_DEFS = {
 };
 // the city is ~6x bigger now: everything drivable gets more legs (scripted van/bus stay slow)
 for (const [k, d] of Object.entries(VEH_DEFS)) if (k !== "van" && k !== "bus") { d.max = Math.round(d.max * 1.3); d.accel = Math.round(d.accel * 1.4); }
+
+Object.assign(VEH_DEFS, AIRCRAFT_DEFS);
 
 function vehScale(def) {
   if (!def) return 0.283;
@@ -204,6 +209,7 @@ export async function boot() {
   servicePoints(G); buildStreetScene(G);
   G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
+  initExpansion(G);
   seedPickups(G);
   // Warm the first city tiles without running the city behind the static title.
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
@@ -286,7 +292,7 @@ function makeVeh(kind, x, y, rot, extra = {}) {
   const def = VEH_DEFS[kind];
   return {
     type: "veh", kind, def, x, y, rot, vx: 0, vy: 0, lean: 0, health: 100, parked: true, driver: null,
-    r: def.r, torn: false, ...extra,
+    r: def.r, torn: false, ...(def.aircraft ? { altitude:0, verticalSpeed:0, airspeed:0, rotor:0 } : {}), ...extra,
   };
 }
 
@@ -393,6 +399,7 @@ function spawnWorld(G) {
   }
   for (let i = 0; i < 40; i++) G.pedsys.spawn({ x: spawn.x, y: spawn.y }, 120, 1100);
   let boatN=0;for (const v of G.vehicles) if(v.def?.boat){if(boatN++%3===2){v.parked=false;v.role='boat';v.cruise=Math.random()*TAU;v.home={x:v.x,y:v.y};}else v.parked=true;}
+  spawnAircraft(G, makeVeh);
 }
 
 function trafficLane(rd, i) {
@@ -441,11 +448,12 @@ function createInput() {
 }
 
 function bindKeys(G) {
-  const down = new Set();
+  const down = new Set(), releasedHolds=new Set();
   const I = G.input;
   const on = (e, d) => {
     const k = e.code;
-    if (d) down.add(k); else down.delete(k);
+    if(d){if(e.repeat&&releasedHolds.has(k))return;if(!e.repeat)releasedHolds.delete(k);down.add(k);}
+    else {down.delete(k);releasedHolds.delete(k);}
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(k)) e.preventDefault();
     if (!d || e.repeat) return;
     G.touch = false; G._syncTouch && G._syncTouch();
@@ -467,8 +475,13 @@ function bindKeys(G) {
   };
   window.addEventListener("keydown", (e) => on(e, true));
   window.addEventListener("keyup", (e) => on(e, false));
+  G.releaseControls = () => {
+    for(const key of down)releasedHolds.add(key);
+    down.clear(); resetInput(I); I.brake=I.hand=I.boost=I.sprint=I.keyDrive=false; G.releaseAim?.(); G._releaseTouch?.();
+    document.querySelectorAll('#touch .down').forEach(el=>el.classList.remove('down'));
+  };
   const release = () => {
-    down.clear(); resetInput(I); G.jack = null;
+    G.releaseControls(); G.jack = null;
     document.querySelectorAll('#touch .down').forEach(el => el.classList.remove('down'));
     if (G.scene === 'play') { G.pausedFrom = 'play'; G.scene = 'pause'; }
   };
@@ -575,7 +588,8 @@ function setupTouch(G) {
     joy.style.left = ""; joy.style.top = "";
   };
   ["pointerup", "pointercancel", "lostpointercapture"].forEach((ev) => zone.addEventListener(ev, end));
-  window.addEventListener("blur", () => end({ pointerId: joyId }));
+  G._releaseTouch = () => end({ pointerId: joyId });
+  window.addEventListener("blur", G._releaseTouch);
   const hold = (id, fn) => {
     const el = document.getElementById(id);
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); G.touch = true; G.firstTap && G.firstTap(); G.audio.unlock(); el.classList.add("down"); el.setPointerCapture(e.pointerId); fn(true); if (G.settings.haptics && navigator.vibrate) try { navigator.vibrate(8); } catch {} });
@@ -607,11 +621,13 @@ function setupTouch(G) {
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 104);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
-      const lbl = nearbyInteraction(G) ? "TAKE" : drive ? "EXIT" : near ? (near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
+      const lbl = G.contactNear&&!drive ? "TALK" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
       if (enterL.textContent !== lbl) enterL.textContent = lbl;
-      enterB.classList.toggle("ready", (!!near || !!nearbyInteraction(G)) && !G.jack);
-      enterB.style.opacity = drive || near || nearbyInteraction(G) ? 1 : 0.45;
-      boostB.classList.toggle("off", !(drive && G.player.def.sprite === "nyx"));
+      enterB.classList.toggle("ready", (!!near || !!G.contactNear || !!nearbyInteraction(G)) && !G.jack);
+      enterB.style.opacity = drive || near || G.contactNear || nearbyInteraction(G) ? 1 : 0.45;
+      boostB.classList.toggle("off", !(drive && (G.player.def.sprite === "nyx" || G.player.def.aircraft)));
+      const flying=drive&&G.player.def.aircraft;
+      for(const [id,text] of [["tBoost",flying?"UP":"BOOST"],["tBrake",flying?"DOWN":"BRAKE"],["tHand",flying?"LAND":"DRIFT"]]){const el=document.getElementById(id),label=el?.querySelector("span:last-child");if(label&&label.textContent!==text)label.textContent=text;}
     }
   };
 }
@@ -648,7 +664,7 @@ function fit(G) {
 /* -------------------- Save -------------------- */
 function snapshot(G) {
   return {
-    v: 4, mode: G.mode || 'story',
+    v: 5, mode: G.mode || 'story',
     action: actionSave(G.action),
     director: directorSave(G.director),
     freeRoam: G.freeRoam === true,
@@ -664,6 +680,8 @@ function snapshot(G) {
     vehKind: G.player.type === "veh" ? G.player.kind : null,
     health: G.health, vehicleHealth: G.player.type === 'veh' ? G.player.health : null,
     vehiclePaint: G.player.type === 'veh' ? G.player.paint || 0 : 0,
+    aircraft: aircraftSnapshot(G.player),
+    expansion: {...G.expansionState,visited:[...(G.expansionState?.visited||[])]},
     missionState: { ...G.missionState }, ended: G.ended, needsBegin: G.needsBegin,
     scene: G.scene, vnId: G.scene === 'vn' ? G.vn.id : null, vnQueue: [...(G.vnQueue || [])],
     race: G.race ? { i: G.race.i, rivalI: G.race.rivalI, t: G.race.t, countdown: G.race.countdown,
@@ -680,6 +698,7 @@ function loadSave(G, mode = G.mode || 'story') {
   return restoreState(G, data);
 }
 function restoreState(G, d) {
+  clearRecoveryState(G);
   G.action = actionState(d.action);
   G.director = directorState(d.director);
   G.mode=d.mode==='freeride'?'freeride':'story';
@@ -708,16 +727,18 @@ function restoreState(G, d) {
   if (G.player?.type === 'veh') { G.player.driver = null; G.player.loose = true; }
   if (d.ptype === 'veh' && VEH_DEFS[d.vehKind]) {
     let spot = { x, y };
-    if (!VEH_DEFS[d.vehKind].boat) spot = findSafe(G, x, y, 26, false);
-    else if (!['water', 'canal', 'pier'].includes(G.surfaceAt(x, y))) {
+    if (VEH_DEFS[d.vehKind].aircraft) { if (!(d.aircraft?.altitude>1)) spot = findSafe(G,x,y,35,false); }
+    else if (!VEH_DEFS[d.vehKind].boat) spot = findSafe(G, x, y, 26, false);
+    else if (!['water', 'canal', 'pier'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x, y))) {
       const slip = G.meta.slips.find(s => ['water', 'canal', 'pier'].includes(G.surfaceAt(s.x, s.y)));
       if (slip) spot = slip;
     }
-    const v = G.vehicles.find(v => !v.dead && !v.raceRival && v.kind === d.vehKind && Math.hypot(v.x - spot.x, v.y - spot.y) < 80) || spawnPlayerCar(G, d.vehKind, spot.x, spot.y, rot);
+    const v = G.vehicles.find(v => !v.dead && !v.raceRival && v.kind === d.vehKind && (d.aircraft?.id&&v.aircraftId===d.aircraft.id || Math.hypot(v.x - spot.x, v.y - spot.y) < 80)) || spawnPlayerCar(G, d.vehKind, spot.x, spot.y, rot);
     v.x = spot.x; v.y = spot.y; v.rot = rot; v.vx = v.vy = 0; v.burning = false; v.sinkT = 0;
     if(v.def.boat){const at=waterBerth(G,v,v.x,v.y);if(at)Object.assign(v,at);}
     finishEnter(G, v); v.health = finite(d.vehicleHealth, 100, 15, 100); v.wrecked = v.health < 35;
     v.paint = Math.floor(finite(d.vehiclePaint,0,0,100));
+    if(v.def.aircraft) restoreAircraft(v,d.aircraft);
   } else { const spot = findSafe(G, x, y, 8, true); G.player = makeFoot(G, spot.x, spot.y, rot); }
   if (G._flow && G._flow.onStart && G._flow.onStart.spawnVan) {
     spawnVan(G);
@@ -746,6 +767,7 @@ function restoreState(G, d) {
   else if (G.needsBegin && !G.ended) beginMission(G, G.missionIndex);
   else G.scene = G.ended && !G.freeRoam ? 'end' : 'play';
   setHint(G);
+  initExpansion(G,d.expansion);
   beginJob(G);
   return true;
 }
@@ -853,6 +875,7 @@ function menuKeys(G) {
 }
 
 function startNew(G) {
+  clearRecoveryState(G);
   G.mode='story';
   G.action = actionState();
   G.director = directorState();
@@ -874,6 +897,7 @@ function startNew(G) {
   G.cityAI=createCityAI(G);
   const s = G.meta.spawns.player;
   G.player = makeFoot(G, s[0], s[1], 0);
+  initExpansion(G,{});
   G.cam.x = s[0]; G.cam.y = s[1];
   G.needsBegin = true;
   G.weatherT = 90;
@@ -1131,6 +1155,7 @@ function tickPlay(G, dt) {
   if ((G.ticks % 30) === 0) { ensureMissionCar(G);
     if (G.missionIndex === 4 && G.objectiveIndex >= 2) ensureGetawayBoat(G);
   }
+  if((G.ticks%600)===0)spawnAircraft(G,makeVeh);
   if (G.input.pauseP) { G.scene = "pause"; G.settingsSel = 0; G.pausedFrom = "play"; return; }
   if (G.input.mapP) { G.scene = "map"; G.pausedFrom = "play"; return; }
   if (G.input.crewP && nearService(G)) { G.scene='garage'; G.menuSel=0; return; }
@@ -1142,26 +1167,33 @@ function tickPlay(G, dt) {
   const speed = [0, 1, 0.5, 0.25][G.settings.timeSpeed ?? 1] ?? 1;
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
   tickWeather(G, dt);
+  if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
   if (G.input.enterP && nearbyInteraction(G)) {
     G.interactP = true; G.input.enterP = false;
   }
+  const recovery=G.recoverySerial||0;
   // Previous positions are shared by projectile and pedestrian sweeps.
   for(const v of G.vehicles){v.prevX=v.x;v.prevY=v.y;}
   tickPlayer(G, dt);
+  if(recovery!==(G.recoverySerial||0))return;
   G.cityAI?.begin(dt);
   G.traffic.tick(dt);
   tickVehicles(G, dt);
+  if(recovery!==(G.recoverySerial||0))return;
   tickCollisions(G);
   tickJack(G, dt);
   G.pedsys.tick(dt);
   tickPeds(G, dt);
+  if(recovery!==(G.recoverySerial||0))return;
   separateCharacters(G);
   const search = G.policeTarget || G.player;
-  G.nav.update(search.x, search.y);
+  if(G.wanted>0||G.cops.length)G.nav.update(search.x, search.y);
   tickWanted(G, dt);
   tickCops(G, dt);
+  if(recovery!==(G.recoverySerial||0))return;
   tickLife(G, dt);
   tickBullets(G, dt);
+  if(recovery!==(G.recoverySerial||0))return;
   tickProps(G, dt);
   tickParticles(G, dt);
   tickPickups(G, dt);
@@ -1169,6 +1201,7 @@ function tickPlay(G, dt) {
   const guidance=tickDirector(G,dt);
   if(guidance)message(G,guidance.name,guidance.text);
   tickMission(G, dt);
+  tickExpansion(G,dt);
   G.interactP = false;
   tickTips(G, dt);
   G.district = districtAt(G.player.x, G.player.y);
@@ -1279,6 +1312,12 @@ function tickPlayer(G, dt) {
       else if (Math.abs(diff) > 1.6 && fwd > 90) y = mag * 0.3;
       inp = { x, y, brake: I.brake, hand: I.hand, boost: I.boost, sprint: I.boost, fire: I.fire, enterP: I.enterP };
     } else if (I.brake) inp = { ...I, y: Math.min(I.y, -1) };
+    if(v.def.aircraft){
+      const flight=tickAircraft(G,v,inp,dt,{damage:(craft,amount)=>damageVeh(G,craft,amount),notice:s=>toast(G,s)});
+      tickVehDamage(G,v,dt);
+      if(v.health<=0&&!v.dead){explode(G,v);if(G._endT<=0||!G._endT)wasted(G);return;}
+      if(flight?.exit)exitVeh(G);return;
+    }
     return tickDrive(G, v, inp, dt, true);
   }
   const p = G.player;
@@ -1312,8 +1351,8 @@ function moveFoot(G,p,dx,dy){
   const x=p.x,y=p.y;moveFootMap(G,p,dx,dy);resolveFootVehicles(G,p,x,y);
 }
 function resolveFootVehicles(G,p,oldX=p.x,oldY=p.y){
-  for(const v of G.nearVehicles||G.vehicles){
-    if(v.def.boat||Math.abs(v.x-p.x)>90||Math.abs(v.y-p.y)>90||Math.hypot(v.vx||0,v.vy||0)>45)continue;
+  for(const v of localStreetVehicles(G,p.x,p.y)){
+    if(v.def.boat||airborne(v)||Math.abs(v.x-p.x)>90||Math.abs(v.y-p.y)>90||Math.hypot(v.vx||0,v.vy||0)>45)continue;
     if(!circleBody(v,p.x,p.y,8))continue;
     const b=bodySize(v),q=localPoint(v,p.x,p.y),c=Math.cos(v.rot),sn=Math.sin(v.rot);
     let dx=0,dy=0;
@@ -1349,7 +1388,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.prevX=v.x;v.prevY=v.y;const oldRot=v.rot;
   if(isPlayer) applyTune(G,v);
   const def = v.def;
-  const surf = G.surfaceAt(v.x, v.y);
+  const surf = v.def.boat ? G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x,v.y) : G.surfaceAt(v.x, v.y);
   if (v.dead) { v.vx *= 0.95; v.vy *= 0.95; v.x += v.vx * dt; v.y += v.vy * dt; return; }
   if (!def.boat && (surf === "water" || surf === "canal")) {
     v.vx *= Math.exp(-3 * dt); v.vy *= Math.exp(-3 * dt);
@@ -1484,6 +1523,7 @@ function explode(G, v) {
   G.audio.crash(); if (G.audio.boom) G.audio.boom();
   addShake(G, 16);
   scarePeds(G, v.x, v.y, 420);
+  if(airborne(v)){if(G.player===v)wasted(G);return;}
   if (G.player === v) { exitVeh(G,true); G.health -= 60; if (G.health <= 0) wasted(G); }
   else if (G.player.type === "foot" && Math.hypot(G.player.x - v.x, G.player.y - v.y) < 70) { G.health -= 45; if (G.health <= 0) wasted(G); }
   for (const p of G.peds) if (!p.dead && Math.hypot(p.x - v.x, p.y - v.y) < 70) {if(v.playerIgnited&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,!!v.playerIgnited);}
@@ -1495,10 +1535,14 @@ function explode(G, v) {
 function tickCollisions(G) {
   const vs = G.vehicles;
   const P = G.player;
-  const near = vs.filter((v) => Math.abs(v.x - G.cam.x) < 1400 && Math.abs(v.y - G.cam.y) < 1100);
-  if (P.type === "veh" && !near.includes(P)) near.push(P);
+  const near = vs.filter((v) => !airborne(v) && Math.abs(v.x - G.cam.x) < 1400 && Math.abs(v.y - G.cam.y) < 1100);
+  if (P.type === "veh" && !airborne(P) && !near.includes(P)) near.push(P);
   G.nearVehicles=near;
-  G.movingVehicles=near.filter(v=>!v.dead&&!v.def.boat&&Math.hypot(v.vx||0,v.vy||0)>45);
+  const grid=G.streetVehicleGrid||new Map();grid.clear();
+  for(const v of near){const key=Math.floor(v.x/160)*65536+Math.floor(v.y/160);if(!grid.has(key))grid.set(key,[]);grid.get(key).push(v);}
+  G.streetVehicleGrid=grid;G.streetVehicleSource=G.vehicles;
+  if(G.streetVehicleQueries)G.streetVehicleQueries.clear();else G.streetVehicleQueries=new Map();
+  G.movingVehicles=near.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
   for(const [a,b] of nearbyPairs(near)) {
       if(!!a.def.boat!==!!b.def.boat)continue;
       if(a.parked&&b.parked&&!a.loose&&!b.loose)continue;
@@ -1548,6 +1592,17 @@ function tickCollisions(G) {
   }
 }
 
+function localStreetVehicles(G,x,y){
+  if(!G.streetVehicleGrid||G.streetVehicleSource!==G.vehicles)return G.vehicles;
+  const cx=Math.floor(x/160),cy=Math.floor(y/160),key=cx*65536+cy;
+  const cached=G.streetVehicleQueries.get(key);if(cached)return cached;
+  const result=[];
+  for(let ix=cx-1;ix<=cx+1;ix++)for(let iy=cy-1;iy<=cy+1;iy++){
+    const bucket=G.streetVehicleGrid.get(ix*65536+iy);if(bucket)for(let i=0;i<bucket.length;i++)result.push(bucket[i]);
+  }
+  G.streetVehicleQueries.set(key,result);return result;
+}
+
 function solidAtSafe(G, x, y, r) {
   return G.solidAt(x, y) || G.solidAt(x + r, y) || G.solidAt(x - r, y) || G.solidAt(x, y + r) || G.solidAt(x, y - r);
 }
@@ -1564,7 +1619,7 @@ function tryEnter(G, instant) {
 function nearestVeh(G, x, y, r, kind) {
   let best = null, bd = r;
   for (const v of G.vehicles) {
-    if ((v.driver && v !== G.player) || v.dead) continue;
+    if ((v.driver && v !== G.player) || v.dead || airborne(v)) continue;
     if (kind && v.kind !== kind) continue;
     const d = Math.hypot(v.x - x, v.y - y);
     if (d < bd) { bd = d; best = v; }
@@ -1573,12 +1628,12 @@ function nearestVeh(G, x, y, r, kind) {
 }
 
 function enterVeh(G, v, instant) {
-  if (!v) return;
+  if (!v || airborne(v)) return;
   if (v.lockedUntil && !G.unlocked.includes(v.lockedUntil) && !G.unlocked.includes(v.kind)) {
     toast(G, "Still locked. Earn it first.");
     return;
   }
-  if (v.def.boat && !["water", "canal", "pier"].includes(G.surfaceAt(v.x, v.y))) {
+  if (v.def.boat && !["water", "canal", "pier"].includes(G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x, v.y))) {
     toast(G, "That hull wants water.");
     return;
   }
@@ -1620,6 +1675,8 @@ function finishEnter(G, v) {
 function exitVeh(G, emergency=false) {
   const v = G.player;
   if (v.type !== "veh") return;
+  if(!emergency&&!canExitAircraft(v)){v.landing=true;toast(G,"Land and stop before exiting.");return;}
+  if(v.def.aircraft){v.vx=v.vy=v.airspeed=0;v.landing=false;if(emergency)v.altitude=0;}
   v.doorT=.75;
   const r = rightVec(v.rot);
   // Boats can only disembark at a nearby reachable bank, never teleport across the bay.
@@ -1629,7 +1686,8 @@ function exitVeh(G, emergency=false) {
   v.siren = false;
   let spot = null;
   for (const side of [-1, 1, 0]) {
-    const x = v.x + r.x * 30 * side, y = v.y + r.y * 30 * side + (side === 0 ? 40 : 0);
+    const offset=v.def.aircraft?70:30;
+    const x = v.x + r.x * offset * side, y = v.y + r.y * offset * side + (side === 0 ? 40 : 0);
     if (footClear(G, x, y, 7)) { spot = { x, y }; break; }
   }
   if (!spot) spot = findSafe(G, v.x - r.x * 30, v.y - r.y * 30, 8);
@@ -1677,7 +1735,7 @@ function shoot(G, from, onFoot) {
   from.aimRot=angle;
   for(let i=0;i<weapon.pellets;i++) {
     const a=angle+(Math.random()-.5)*weapon.spread;
-    G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:.7,friend:true,damage:weapon.damage,carDamage:weapon.carDamage });
+    G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:.7,friend:true,waterLevel:!!from.def?.boat,damage:weapon.damage,carDamage:weapon.carDamage });
   }
   G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
   G.particles.push({kind:'casing',x:from.x+ay*9,y:from.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
@@ -1691,6 +1749,8 @@ function shoot(G, from, onFoot) {
   if (!weapon.quiet && G.shotsFired % 6 === 0 && G.peds.some((p) => !p.dead && Math.hypot(p.x - from.x, p.y - from.y) < 300)) crime(G, 1, from.x, from.y, false, 1);
 }
 
+function bridgeAt(G,x,y){const E=G.world?.expansion;if(!E)return false;const c=E.canal;if(c&&(x<c.x-64||x>c.x+c.w+64))return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
+function bulletLayerMatches(G,b,target){return !bridgeAt(G,target.x,target.y)||!!b.waterLevel===!!target.def?.boat;}
 function tickBullets(G, dt) {
   for (const b of G.bullets) {
     if(b.life<=0)continue;
@@ -1699,18 +1759,18 @@ function tickBullets(G, dt) {
     const steps=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/5));
     for(let i=1;i<=steps;i++){const t=i/steps;if(G.solidAt(x0+(x1-x0)*t,y0+(y1-y0)*t)){first=t;wall=true;break;}}
     if(b.friend){
-      for(const p of G.peds){if(p.dead)continue;const t=segmentCircle(x0,y0,x1,y1,p.x,p.y,12);if(t!==null&&t<first){first=t;target=p;wall=false;}}
-      for(const v of G.vehicles){if(v===G.player||v.dead||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85)continue;const t=segmentBody(v,x0,y0,x1,y1,2);if(t!==null&&t<first){first=t;target=v;wall=false;}}
+      for(const p of G.peds){if(p.dead||!bulletLayerMatches(G,b,p))continue;const t=segmentCircle(x0,y0,x1,y1,p.x,p.y,12);if(t!==null&&t<first){first=t;target=p;wall=false;}}
+      for(const v of G.vehicles){if(v===G.player||v.dead||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,2);if(t!==null&&t<first){first=t;target=v;wall=false;}}
     }else{
       // Cars and scenery shield characters from police fire as well.
-      for(const v of G.vehicles){if(v.dead||v.cop&&v!==G.player)continue;const t=segmentBody(v,x0,y0,x1,y1,1);if(t!==null&&t<first){first=t;target=v;wall=false;}}
-      if(G.player.type==='foot'){const t=segmentCircle(x0,y0,x1,y1,G.player.x,G.player.y,12);if(t!==null&&t<first){first=t;target=G.player;wall=false;}}
+      for(const v of G.vehicles){if(v.dead||v.cop&&v!==G.player||airborne(v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+85||Math.abs(v.y-y0)>Math.abs(y1-y0)+85||!bulletLayerMatches(G,b,v))continue;const t=segmentBody(v,x0,y0,x1,y1,1);if(t!==null&&t<first){first=t;target=v;wall=false;}}
+      if(G.player.type==='foot'&&bulletLayerMatches(G,b,G.player)){const t=segmentCircle(x0,y0,x1,y1,G.player.x,G.player.y,12);if(t!==null&&t<first){first=t;target=G.player;wall=false;}}
     }
     const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend);G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;if(G.health<=0)wasted(G);}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-(b.damage||20);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
       if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
       G.particles.push({kind:'blood',x:b.x,y:b.y,life:.25});if(target.hp<=0)killPed(G,target,true);
@@ -1734,6 +1794,36 @@ function wasted(G) {
   endLife(G, "WASTED", "Mercy Unit patched you up.", "hospital");
 }
 function busted(G) { endLife(G, "BUSTED", "Metro took your piece and some chips.", "pd"); }
+// Recovery changes actors, not campaign receipts or the persistent city. Remove
+// chase ownership before clearing arrays so no detached unit can resume its AI.
+function clearRecoveryState(G) {
+  G.recoverySerial=(G.recoverySerial||0)+1;
+  G.releaseControls?.(); resetInput(G.input);
+  const old=G.player, units=new Set(G.cops||[]), rival=G.race?.rival;
+  for(const v of G.vehicles||[]){
+    if(v===old&&v.type==='veh'){
+      v.driver=null;v.vx=v.vy=0;v.loose=false;v.parked=true;
+      if(v.def.aircraft){v.altitude=0;v.verticalSpeed=v.airspeed=0;v.landing=false;
+        if(v.home&&!v.dead){v.x=v.home.x;v.y=v.home.y;v.rot=v.home.rot;}}
+    }
+    if(units.has(v)||v.chasing){units.add(v);v.ai=false;v.chasing=false;v.siren=false;v.tr=null;v.traffic=false;v.crewOut=false;v.target=null;v.reverseT=v.stuckT=v.progT=0;}
+    if(v.siren)v.siren=false;
+  }
+  G.vehicles=(G.vehicles||[]).filter(v=>v!==rival&&(!units.has(v)||v===old||v.pdCar));
+  G.peds=(G.peds||[]).filter(p=>!p.copPed);
+  G.cops=[];G.bullets=[];G.flashes=[];G.particles=[];G.floaters=[];
+  G.jack=null;G.race=null;G.contactNear=G.contactTalk=null;G.policeTarget=null;G.heliChase=false;G.evading=false;
+  G.nearVehicles=null;G.movingVehicles=null;G.streetVehicleGrid=null;G.streetVehicleQueries=null;G.streetVehicleSource=null;G.interactP=false;G.hurtT=G.hitConfirmT=0;
+  G.seenT=G.wantedCool=G._crimeCool=G._ramCool=G.starFlash=G._endT=G._ambT=0;
+  G.gps=null;G.gpsPts=null;G.gpsT=0;G.lastShot=0;G._heli=null;
+  G.banner=null;G.toastT=0;G.tip='';
+  if(G.cam)G.cam.lx=G.cam.ly=G.cam.shake=0;
+  if(G.nav){G.nav.t=0;G.nav.lastX=G.nav.lastY=-1;G.nav.dist?.fill(65535);}
+  if(G.missionState){G.missionState.holdT=0;G.missionState.hacking=false;G.missionState.scramblerT=0;}
+  if(G.action){for(const k of ['reloadT','shotT','dodgeT','dodgeCool','combo','comboT'])G.action[k]=0;G.action.cover=false;G.action.exhausted=false;G.action.stamina=100;if(G.action.contract)G.action.contract.progress=0;}
+  G.audio?.setEngine?.(false,0,false);G.audio?.setRadio?.(false);G.radioT=0;
+  G.cityAI?.reset?.();
+}
 function endLife(G, title, sub, where) {
   if (G._endT > 0) return;
   recordIncident(G,'death');
@@ -1741,15 +1831,15 @@ function endLife(G, title, sub, where) {
   G.health = 100;
   const lost = Math.min(G.chips, Math.round(G.chips * 0.08));
   G.chips -= lost;
-  if (G.player.type === "veh") exitVeh(G,true);
+  clearRecoveryState(G);
+  G._endT=2.2;
   const at = where === "pd" ? [G.meta.spawns.pd[0], G.meta.spawns.pd[1] + 120] : [G.meta.spawns.player[0], G.meta.spawns.player[1]];
   const s = findSafe(G, at[0], at[1], 14, true, true);
-  G.player = makeFoot(G, s.x, s.y, 0);
-  G.cam.x = s.x; G.cam.y = s.y;
+  G.player = makeFoot(G, s.x, s.y, 0);G.player.impactT=2.2;
+  G.cam.x = s.x; G.cam.y = s.y; G.cam.lx=G.cam.ly=G.cam.shake=0;
   G.wanted = 0; G.wantedCool = 0;
-  for (const c of G.cops) { c.ai = false; c.chasing = false; c.siren = false; c.keep = false; c.parked = true; c.loose = true; }
-  G.cops = [];
-  G.peds = G.peds.filter((p) => !p.copPed);
+  restoreStreetRoute(G);
+  spawnAircraft(G,makeVeh);
   showBanner(G, title, sub + (lost ? `  −${lost} chips` : ""), "bust");
   // keep the mission, restart the current objective
   if (G._flow) { const obj = G._flow.objectives[G.objectiveIndex]; if (obj && obj.at === "van" && !G.van) spawnVan(G); if (G.race) { G.race = null; } }
@@ -1765,6 +1855,7 @@ function bumpWanted(G, n) {
 }
 // a crime: +n stars (capped, so petty stuff never jumps straight to a manhunt)
 function crime(G, n, x, y, serious, cap) {
+  if(G._endT>0)return;
   if (G.missionState) G.missionState.scramblerT = 0;
   G.policeTarget = { x, y };
   const limit = cap ?? (serious ? 5 : 3);
@@ -1783,7 +1874,7 @@ function tickWanted(G, dt) {
   if (G.wanted <= 0) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
     for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; }
-    G.cops = []; G.policeTarget = null;
+    G.cops = []; G.policeTarget = null; G.heliChase=false;G.evading=false;G.seenT=0;
     G.peds = G.peds.filter((p) => !p.copPed || Math.hypot(p.x - G.player.x, p.y - G.player.y) < 300 && false);
     return;
   }
@@ -1824,7 +1915,7 @@ function tickCops(G, dt) {
     const dist = Math.hypot(P.x - c.x, P.y - c.y);
     let tx = (G.policeTarget || P).x, ty = (G.policeTarget || P).y;
     const pv = P.type === "veh" ? { x: P.vx, y: P.vy } : { x: 0, y: 0 };
-    const los = dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
+    const los = !airborne(P) && dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
     if (los) { tx = P.x + pv.x * Math.min(0.8, dist / 400); ty = P.y + pv.y * Math.min(0.8, dist / 400); }
     else { const n = G.nav.next(c.x, c.y, 4); if (n) { tx = n.x; ty = n.y; } }
     const ang = Math.atan2(tx - c.x, -(ty - c.y));
@@ -1881,7 +1972,7 @@ function tickCops(G, dt) {
     p.speed = sp; p.dist += sp * dt;
     if (P.type === "foot" && d < 26 && G.wanted <= 2) {
       p.grabT += dt;
-      if (p.grabT > 0.7) busted(G);
+      if (p.grabT > 0.7) {busted(G);return;}
     } else p.grabT = Math.max(0, p.grabT - dt);
     if (P.type === "foot" && G.wanted >= 3 && d < 300 && G.nav.clearLine(p.x, p.y, P.x, P.y) && Math.random() < 0.02) {
       const a = Math.atan2(dx, -dy) + (Math.random() - 0.5) * 0.25, hv = headingVec(a);
@@ -1897,6 +1988,7 @@ function tickVehicles(G, dt) {
   for (const v of G.vehicles) {
     if(v.doorT>0)v.doorT=Math.max(0,v.doorT-dt);
     if (v === P || v.ai) continue;
+    if(v.def.aircraft){if(v.burning)tickVehDamage(G,v,dt);continue;}
     if (v.isVan) {
       if (v.dead || v.health<=65) { v.vx = v.vy = 0; v.loose=true; continue; }
       // the seed van cruises the Strip southbound lanes
@@ -2013,7 +2105,7 @@ function lightHeld(G, rd, pos) {
 function tickPeds(G, dt) {
   const pl = G.player;
   const pSpd = pl.type === "veh" ? Math.hypot(pl.vx, pl.vy) : (pl.speed || 0);
-  const moving=G.movingVehicles||G.vehicles.filter(v=>!v.dead&&!v.def.boat&&Math.hypot(v.vx||0,v.vy||0)>45);
+  const moving=G.movingVehicles||G.vehicles.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
   if(pl.type==='foot'){
     pl.impactT=Math.max(0,(pl.impactT||0)-dt);
     if(!pl.impactT)for(const v of moving){
@@ -2021,7 +2113,7 @@ function tickPeds(G, dt) {
       if(!circleBody(v,pl.x,pl.y,8)&&segmentBody(v,pl.x+v.x-(v.prevX??v.x),pl.y+v.y-(v.prevY??v.y),pl.x,pl.y,8)===null)continue;
       const speed=Math.hypot(v.vx,v.vy);G.health-=Math.min(75,speed*(v.def.bike?.16:.26));G.hurtT=.6;pl.impactT=1;
       moveFootMap(G,pl,v.vx/speed*26,v.vy/speed*26);v.vx*=.9;v.vy*=.9;G.audio.hit();addShake(G,7);
-      if(G.health<=0)wasted(G);break;
+      if(G.health<=0){wasted(G);return;}break;
     }
   }
   for (const b of G.bullets || []) if ((G.ticks & 3) === 0) scarePeds(G, b.x, b.y, 90);
@@ -2033,9 +2125,9 @@ function tickPeds(G, dt) {
     // Impacts are resolved before a pedestrian's dodge; a dive is never invulnerability.
     let struck=false;
     p.impactT=Math.max(0,(p.impactT||0)-dt);
-    for(const car of moving){
+    for(const car of localStreetVehicles(G,p.x,p.y)){
       if(p.impactT)break;
-      const speed=Math.hypot(car.vx||0,car.vy||0);if(car.dead||car.def.boat||speed<45||Math.abs(car.x-p.x)>110||Math.abs(car.y-p.y)>110)continue;
+      const speed=Math.hypot(car.vx||0,car.vy||0);if(car.dead||airborne(car)||car.def.boat||speed<45||Math.abs(car.x-p.x)>110||Math.abs(car.y-p.y)>110)continue;
       const px=car.prevX??car.x,py=car.prevY??car.y;
       if(!circleBody(car,p.x,p.y,9)&&segmentBody(car,p.x+(car.x-px),p.y+(car.y-py),p.x,p.y,9)===null)continue;
       p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
@@ -2046,7 +2138,7 @@ function tickPeds(G, dt) {
     if(p.copPed)continue;
     resolveFootVehicles(G,p);
     // dive away from fast cars (any car, not just the player)
-    if (pl.type === "veh" && pSpd > 55 && dist < 90 && !(p.dive > 0)) {
+    if (pl.type === "veh" && !airborne(pl) && pSpd > 55 && dist < 90 && !(p.dive > 0)) {
       const hx = pl.vx / (pSpd || 1), hy = pl.vy / (pSpd || 1);
       if ((-dx * hx - dy * hy) < 0) {
         p.dive = 0.6; p.flee = 3;
@@ -2148,7 +2240,7 @@ function tickCamera(G, dt) {
   const spd = p.type === "veh" ? Math.hypot(p.vx, p.vy) : p.speed || 0;
   const onFoot = p.type !== "veh";
   const portrait = G.cssH > G.cssW;
-  const tgtScale = (onFoot
+  const tgtScale = (p.def?.aircraft ? lerp(.92,.63,clamp((p.altitude||0)/300,0,1)) : onFoot
     ? lerp(1.48, 1.22, clamp(spd / 160, 0, 1))
     : lerp(1.10, 0.73, clamp(spd / 300, 0, 1))) * (portrait ? 0.86 : 1);
   G.cam.scale = lerp(G.cam.scale, tgtScale, 2.2 * dt);
@@ -2171,7 +2263,7 @@ function nearbyInteraction(G) {
   return at && Math.hypot(G.player.x - at.x, G.player.y - at.y) < (obj.r || 90) ? obj : null;
 }
 function tickMission(G, dt) {
-  if(G.freeRoam)return;
+  if(G.freeRoam||airborne(G.player))return;
   if (!MISSIONS[G.missionIndex]) return;
   const flow = G._flow || missionFlow(MISSIONS[G.missionIndex].id, G.flags);
   G._flow = flow;
@@ -2217,14 +2309,14 @@ function tickMission(G, dt) {
       advanceObjective(G);
     }
   } else if (obj.kind === 'race') {
-    if (p.type !== 'veh' || p.def.boat) { if (G.race) completeMission(G, false); else toast(G, 'Bring a car or bike to race Fire.'); return; }
+    if (p.type !== 'veh' || p.def.boat || p.def.aircraft) { if (G.race) completeMission(G, false); else toast(G, 'Bring a car or bike to race Fire.'); return; }
     if (!G.race) startRace(G, obj);
     else tickRace(G, obj, dt);
   }
 }
 
 function startRace(G, obj = {}, resuming = false) {
-  if (G.player.type !== 'veh' || G.player.def.boat) return;
+  if (G.player.type !== 'veh' || G.player.def.boat || G.player.def.aircraft) return;
   if (G.race && G.race.rival) G.vehicles = G.vehicles.filter(v => v !== G.race.rival);
   const start = G.meta.spawns.raceStart;
   const pts = raceCourse(G.meta, obj.laps || 1);
@@ -2295,7 +2387,7 @@ function render(G) {
     if (G.scene === "map") drawMap(G);
     if (G.scene === "settings") drawSettings(G);
     if (G.scene === 'crew') {
-      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask',right:'hunter'});ensureStoryAssets(G,{bg:'news',right:'vera'});}
+      if(!G._crewArt){G._crewArt=true;ensureStoryAssets(G,{bg:'garage',left:'neural',right:'fire'});ensureStoryAssets(G,{bg:'loft',left:'mask',right:'hunter'});ensureStoryAssets(G,{bg:'news',right:'vera'});ensureStoryAssets(G,{bg:'garage',left:'gold_mage'});}
       drawCrew(G,{button:uiButton,panel:uiPanel,save});
     }
     if (G.scene === 'dossier') drawDossier(G,{button:uiButton,panel:uiPanel});
@@ -2614,7 +2706,7 @@ function drawWorld(G) {
   ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';ctx.drawImage(off,0,0,canvas.width,canvas.height);
 }
 function renderWorldLayer(G) {
-  if(G.settings.quality==='low')return drawMobileWorld(G,{viewRect,worldXform,drawVeh,drawChar,drawParticles,drawObjectiveGround,drawObjectiveBeacon,drawStreetWaypoint,drawAimGuide,drawHeli});
+  if(G.settings.quality==='low')return drawMobileWorld(G,{viewRect,worldXform,drawVeh,drawChar,drawParticles,drawObjectiveGround,drawObjectiveBeacon,drawStreetWaypoint,drawAimGuide,drawHeli,drawAirborne});
   const { ctx, canvas, cam, assets } = G;
   const low = G.settings.quality === "low";
   const sh = cam.shake || 0;
@@ -2700,6 +2792,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
+  drawExpansionOverhead(G,r);
   // 6. actors
   const actors = [];
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -2707,6 +2800,7 @@ function renderWorldLayer(G) {
   if (G.player.type === "foot") actors.push(G.player);
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
   for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
+  drawExpansionPeople(G,r);
   drawParticles(G, r, false);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
@@ -2724,6 +2818,7 @@ function renderWorldLayer(G) {
     if (hidden) { ctx.save(); ctx.globalAlpha = .38; drawChar(G, G.player); ctx.restore(); }
   }
   if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
+  drawAirborne(G,r);
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
@@ -2982,10 +3077,17 @@ function currentObjectivePos(G) {
   return objectivePos(G, obj);
 }
 
+function drawAirborne(G,r){for(const v of G.vehicles)if(airborne(v)&&v.x>r.x0-160&&v.x<r.x1+160&&v.y>r.y0-160&&v.y<r.y1+160)drawAircraft(G,v);}
+
 function drawVeh(G, v) {
+  if(v.def.aircraft){if(!airborne(v))drawAircraft(G,v);return;}
   const spr = G.assets.sprites["veh_" + v.def.sprite] || {width:200,height:384};
   const ctx = G.ctx;
   ctx.save();
+  if(v.def.boat){
+    const bridges=G.world.expansion?.bridges?.filter(b=>v.x+100>b.x&&v.x-100<b.x+b.w&&v.y+120>b.y&&v.y-120<b.y+b.h)||[];
+    if(bridges.length){ctx.beginPath();ctx.rect(-1000,-1000,WORLD_W+2000,WORLD_H+2000);for(const b of bridges)ctx.rect(b.x,b.y,b.w,b.h);ctx.clip('evenodd');}
+  }
   ctx.translate(v.x, v.y);
   const pose = vehiclePose(v, G.ticks / 60, G.settings.reducedMotion);
   ctx.rotate(v.rot + pose.roll);
@@ -3195,7 +3297,7 @@ function drawChar(G, a) {
 
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
 function drawAimGuide(G){
-  if(G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
+  if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,rot=p.aimRot??aimDirection(G.input,p.rot,G.cam.rot),h=headingVec(rot);
   let length=200;for(let n=24;n<200;n+=12)if(G.solidAt(p.x+h.x*n,p.y+h.y*n)){length=n;break;}
   const x=p.x+h.x*length,y=p.y+h.y*length;
@@ -3267,7 +3369,7 @@ function updateGPS(G) {
   if (!at) { G.gpsPts = null; return; }
   if (G._gpsTick === G.ticks && G.gps && G.gps.x === at.x && G.gps.y === at.y) return;
   G._gpsTick = G.ticks;
-  if (G.player.type === 'veh' && G.player.def.boat) { G.gpsPts = [at.x, at.y]; return; }
+  if (G.player.type === 'veh' && (G.player.def.boat||G.player.def.aircraft)) { G.gpsPts = [G.player.x,G.player.y,at.x,at.y]; return; }
   const N = G.nav;
   if (!G.gps) G.gps = { D: new Uint16Array(N.NW * N.NH), x: -1e9, y: 0, next: 0 };
   const g = G.gps;
@@ -3296,6 +3398,7 @@ function drawMinimap(G, x, y, size, span) {
     for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); }
     ctx.stroke();
   }
+  for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for (const c of G.cops) { const p = to(c.x, c.y); ctx.fillStyle = ((G.ticks / 8) | 0) % 2 ? "#ff3048" : "#3a6bff"; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5 * u, 0, TAU); ctx.fill(); }
   const at = currentObjectivePos(G);
   if (at) {
@@ -3316,7 +3419,7 @@ function drawMinimap(G, x, y, size, span) {
 }
 function drawHUD(G) {
   if (G.hideHUD) return;
-  if (G.touch) return drawMobileHUD(G,{minimap:drawMinimap,gps:updateGPS,objective:currentObjectivePos,screen:worldToScreen,missionTitle:G.freeRoam?'FREE RIDE':MISSIONS[G.missionIndex]?.title,banner:drawBanner});
+  if (G.touch) {drawMobileHUD(G,{minimap:drawMinimap,gps:updateGPS,objective:currentObjectivePos,screen:worldToScreen,missionTitle:G.freeRoam?'FREE RIDE':MISSIONS[G.missionIndex]?.title,banner:drawBanner});drawExpansionHUD(G);drawFlightHUD(G);return;}
   const { ctx, canvas } = G;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const u = G.ui, sf = G.safe || { t: 0, r: 0, b: 0, l: 0 };
@@ -3491,6 +3594,16 @@ function drawHUD(G) {
     ctx.fillText(`${(G.presentFps || G.fps) | 0} FPS · ${Math.round((G.resScale || 1) * 100)}% · ${G.worldWidth}×${G.worldHeight} · js ${((P.tick || 0) + (P.render || 0)).toFixed(1)}ms`, rr, T + 64 * u);
   }
   if (!G.touch) { ctx.font = uiFont(10 * u, 700); ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fillText("ESC pause · M map · E car · Space drift", R - (G.fsSupported ? 150 * G.dpr : 0), H - 10 * u - sf.b); }
+  drawExpansionHUD(G);drawFlightHUD(G);
+}
+function drawFlightHUD(G){
+  const hint=aviationHint(G);if(!hint)return;
+  const c=G.ctx,d=G.touch?G.dpr:G.ui,W=G.canvas.width,H=G.canvas.height;
+  const w=Math.min(W-28*d,(G.touch?360:570)*d),x=(W-w)/2;
+  const y=G.touch?(H>W?H*.32:H-145*d):H-190*d;
+  c.save();c.setTransform(1,0,0,1,0,0);uiPanel(c,x,y,w,53*d,7*d,{accent:'#a0d8d2'});
+  const [status,controls]=hint.split('\n');c.textAlign='center';c.fillStyle=G.player.stall?'#ffb093':'#e9d4aa';c.font=uiFont(11*d,800);c.fillText(status,W/2,y+18*d,w-16*d);
+  c.fillStyle='#b8d4cf';c.font=uiFont((G.touch?9:11)*d,600);c.fillText(controls,W/2,y+37*d,w-16*d);c.restore();
 }
 function wrapLines(ctx, text, max) {
   const words = String(text).split(" "); const out = []; let line = "";
@@ -3552,10 +3665,12 @@ function drawMap(G) {
   ctx.drawImage(M.c, mx, my, mw, mh);
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
   const to = (x, y) => [mx + x / M.S * k, my + y / M.S * k];
+  for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
+  for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();ctx.font=uiFont(7*u,800);ctx.textAlign='left';ctx.fillText(contact.name,p[0]+5*u,p[1]+10*u);}
   for(const s of G.services||[]){const p=to(s.x,s.y);ctx.fillStyle='#83d7d0';ctx.fillRect(p[0]-3*u,p[1]-3*u,6*u,6*u);}
   ctx.textAlign = "center"; ctx.font = uiFont(Math.max(9, 11 * u * Math.min(1, k * 6)), 900);
   const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["SUNSET HILLS", 3000, 8000], ["CROWN AIRFIELD", 8300, 7300]]];
-  for (const [n, x, y] of labels) { const p = to(x, y); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(n, p[0], p[1]); ctx.fillStyle = "rgba(255,240,200,0.92)"; ctx.fillText(n, p[0], p[1]); }
+  for (const [n, x, y] of labels.concat((G.world.expansion?.landmarks||[]).filter(p=>p.name!=="CROWN AIRFIELD").map(p=>[p.name,p.x,p.y]))) { const p = to(x, y); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(n, p[0], p[1]); ctx.fillStyle = "rgba(255,240,200,0.92)"; ctx.fillText(n, p[0], p[1]); }
   if (G.gpsPts) { ctx.strokeStyle = G.waypoint ? "#29d7ff" : "#ffd65a"; ctx.lineWidth = 2.5 * u; ctx.beginPath(); const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); } ctx.stroke(); }
   const at = currentObjectivePos(G);
   if (at) { const p = to(at.x, at.y); ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(p[0], p[1], 7 * u, 0, TAU); ctx.fill(); }
@@ -3566,7 +3681,7 @@ function drawMap(G) {
   }
   ctx.fillStyle = '#c5dbe6'; ctx.font = uiFont(11 * u, 800); ctx.textAlign = 'center';
   ctx.fillText('MAP: WAYPOINT · GOLD: JOB · PINK: YOU · CYAN: SERVICES', W / 2, Math.min(H - 12 * u, my + mh + 22 * u),W-24*u);
-  uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = null; G.gps = null; updateGPS(G); }, {});
+  uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = G.action?.contract?streetJobTarget(G,G.action.contract):null; G.gps = null; updateGPS(G); }, {});
   const pp = to(G.player.x, G.player.y);
   ctx.fillStyle = "#ff2d9b"; ctx.beginPath(); ctx.arc(pp[0], pp[1], 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
   ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(16 * u, 900, true); ctx.textAlign = "left"; ctx.fillText("CROWN CITY", Math.max(mx, 160 * u), 34 * u);
@@ -3772,6 +3887,7 @@ function stuckProbe(G, secs = 1.5) {
 export const testing = {
   tick, render, tickPlayer, tickDrive, tickVehicles, tickMission, tickRace, startRace,
   startNew, startFreeRide, tickCollisions, tickPeds, moveFoot, separateCharacters, beginMission, advanceObjective, completeMission, startPlayFromBrief, openVN,
+  clearRecoveryState, endLife, busted, wasted, tickPlay, drawAirborne,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,
   findSafe, footClear, clearAt, carHit, nearbyInteraction, ensureMissionCar, ensureGetawayBoat, updateGPS, worldToScreen,
   tickWanted, tickCops, crime, damageVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
