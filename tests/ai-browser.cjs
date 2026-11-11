@@ -1,0 +1,26 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+const url=process.env.CC_URL||'http://127.0.0.1:8000/';
+(async()=>{const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});try{
+ const page=await browser.newPage({viewport:{width:844,height:390},deviceScaleFactor:2,hasTouch:true,isMobile:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>requestAnimationFrame=()=>0);await page.goto(url);await page.waitForFunction(()=>window.__CC,null,{polling:100});
+ await page.evaluate(async()=>{window.T=(await import('./src/game.js')).testing;window.S=(await import('./src/slots.js'));window.C=(await import('./src/casino.js'));const G=__CC.G;G.settings.autoFS=false;G.settings.autoRes=false;T.startFreeRide(G);G.settings.quality='low';T.applyQuality(G);T.fit(G);G.touch=true;G._syncTouch();T.render(G);});
+ assert.deepEqual(await page.evaluate(()=>[__CC.G.player.x,__CC.G.player.y]),[704,3264]);
+ assert.equal(await page.evaluate(()=>__CC.G.vehicles.filter(v=>v.pdCar).length),2);
+ console.log('PASS authored garage start and two correctly parked police cars');
+ await page.evaluate(()=>{const G=__CC.G;T.busted(G);G.banner=null;G.toastT=0;T.render(G);});
+ assert.deepEqual(await page.evaluate(()=>[__CC.G.player.x,__CC.G.player.y]),[2400,3736]);
+ await page.reload();await page.waitForFunction(()=>window.__CC,null,{polling:100});
+ await page.evaluate(async()=>{window.T=(await import('./src/game.js')).testing;window.S=await import('./src/slots.js');window.C=await import('./src/casino.js');const G=__CC.G;T.loadSave(G,'freeride');G.scene='play';T.render(G);});
+ assert.deepEqual(await page.evaluate(()=>[__CC.G.player.x,__CC.G.player.y]),[2400,3736]);console.log('PASS busted release persists at the police station across reload');
+ await page.evaluate(()=>{const G=__CC.G,m=S.SLOT_MACHINES[1];G.player=T.makeFoot(G,m.entryX,m.entryY,0);G.cam.x=G.player.x;G.cam.y=G.player.y;G.touch=true;G._syncTouch();T.render(G);});
+ await page.locator('#tEnter').tap();await page.evaluate(()=>{T.tick(__CC.G,1/60);T.render(__CC.G);});
+ assert.equal(await page.evaluate(()=>__CC.G.casino.mode),'slots');
+ const buttons=async label=>{const b=await page.evaluate(label=>{T.render(__CC.G);const b=__CC.G.buttons.find(b=>b.label.includes(label));return b?{x:(b.x+b.w/2)/(__CC.G.dpr||1),y:(b.y+b.h/2)/(__CC.G.dpr||1)}:null;},label);assert.ok(b,label);await page.touchscreen.tap(b.x,b.y);await page.evaluate(()=>{T.tick(__CC.G,1/60);T.render(__CC.G);});};
+ const balance=await page.evaluate(()=>__CC.G.chips);await buttons('SPIN');
+ assert.equal(await page.evaluate(()=>__CC.G.slots.round.phase),'spinning');assert.equal(await page.evaluate(()=>__CC.G.chips),balance-10);
+ const expected=await page.evaluate(()=>__CC.G.chips+__CC.G.slots.round.returned);await buttons('FINISH & LEAVE');assert.equal(await page.evaluate(()=>__CC.G.chips),expected);
+ assert.equal(await page.evaluate(()=>__CC.G.scene),'play');console.log('PASS physical slot entry, real touch spin and exactly one exit settlement');
+ await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{const G=__CC.G;T.fit(G);C.interactCasino(G);T.render(G);});
+ assert.equal(await page.evaluate(()=>__CC.G.buttons.every(b=>b.x>=0&&b.y>=0&&b.x+b.w<=__CC.G.canvas.width&&b.y+b.h<=__CC.G.canvas.height)),true);
+ fs.mkdirSync('.qa/ai2',{recursive:true});await page.screenshot({path:'.qa/ai2/slots-touch-result.png'});assert.deepEqual(errors,[]);console.log('PASS portrait controls and zero browser exceptions');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

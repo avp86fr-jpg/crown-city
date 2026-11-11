@@ -1,3 +1,5 @@
+import {SLOT_MACHINES} from './slots.js';
+import {applyCityHubs} from './world_hubs.js';
 /* Crown City world: painted core (tiled, streamed) + procedural outer districts.
    One collision grid, one road graph, chunked ground renderer, extruded buildings. */
 import {applyExpansion,terrainRegion} from './expansion_world.js';
@@ -52,7 +54,24 @@ export function districtAt(x, y) {
 }
 
 /* ---------------- generation ---------------- */
+// Crosswalk paint is drivable road. In the original mask some stripes were
+// sidewalk, allowing residents to stop and socialise inside live junctions.
+function normalizePaintedRoads(meta,mask,size){
+ const scale=size/CORE;
+ for(const r of meta.roads||[]){
+  if(r.k==='track')continue;const dx=r.b[0]-r.a[0],dy=r.b[1]-r.a[1],len=Math.hypot(dx,dy);if(!len)continue;
+  const hx=dx/len,hy=dy/len,half=r.w/2-4,median=r.k==='strip'?36:0;
+  const x0=Math.max(0,Math.floor((Math.min(r.a[0],r.b[0])-half)*scale)),x1=Math.min(size,Math.ceil((Math.max(r.a[0],r.b[0])+half)*scale));
+  const y0=Math.max(0,Math.floor((Math.min(r.a[1],r.b[1])-half)*scale)),y1=Math.min(size,Math.ceil((Math.max(r.a[1],r.b[1])+half)*scale));
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+   const i=y*size+x;if(mask[i]!==CODE.walk)continue;
+   const px=(x+.5)/scale-r.a[0],py=(y+.5)/scale-r.a[1],along=px*hx+py*hy,side=Math.abs(px*hy-py*hx);
+   if(along>=0&&along<=len&&side<half&&side>=median)mask[i]=CODE.road;
+  }
+ }
+}
 export function buildWorld(meta, coreMask, coreMS) {
+  normalizePaintedRoads(meta,coreMask,coreMS);
   const rnd = mulberry(1337);
   const R = (a, b) => a + (b - a) * rnd();
   const grid = new Uint8Array(GW * GH);
@@ -373,6 +392,8 @@ export function buildWorld(meta, coreMask, coreMS) {
   W.trees=W.trees.filter(t=>!basins.some(f=>Math.hypot(t.x-f.x,t.y-f.y)<f.r*1.2+t.r+12));
   planParking(W);
   W.coreBuildings = (meta.buildings || []).map((b) => ({ ...b, core: true }));
+  applyCityHubs(W,meta,CODE);
+  for(const m of SLOT_MACHINES)W.fill(m.x-16,m.y-16,32,32,CODE.build);
   return W;
 }
 

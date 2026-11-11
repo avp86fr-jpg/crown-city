@@ -1,3 +1,5 @@
+import {stepPedestrian} from './pedestrian_motion.js';
+import {CITY_HUBS,drawCityHubs} from './world_hubs.js';
 import {drawDialogue,openingScene} from './dialogue.js';
 import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,drawCasino,drawCasinoWorld} from './casino.js';
 import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
@@ -356,13 +358,14 @@ function spawnWorld(G) {
       }
     }
   };
-  const car = parkNear('riot',920,3236,Math.PI,{mission:true});
-  const spawn = findSafe(G, car.x - 52, car.y, 10, true, true);
+  const home=CITY_HUBS.garage;
+  const car = addParked('riot',{x:home.car[0],y:home.car[1],rot:home.car[2]},{mission:true});
+  const spawn = findSafe(G,home.spawn[0],home.spawn[1],10,true,true);
   meta.spawns.player = [spawn.x, spawn.y];
   // the getaway now runs the whole east highway out to the city edge
   { const d = findSafe(G, 9700, 3900, 30, false); meta.spawns.desert = [d.x, d.y]; }
   meta.spawns.garage = [car.x, car.y];
-  // keep the lane in front of the Riot clear: the spare cab waits across the road, facing north
+  // Mission markers use reachable entrances.
   // Mission markers belong at reachable entrances, not deep inside painted roofs.
   meta.interactions = {};
   for (const key of ['casinoDoor', 'casino', 'neural', 'pd']) {
@@ -371,10 +374,10 @@ function spawnWorld(G) {
   }
   const lot = findSafe(G, meta.spawns.casinoDoor[0], meta.spawns.casinoDoor[1] + 240, 10, true);
   meta.interactions.casinoLot = [lot.x, lot.y];
-  parkNear("fare",1044,3330,0);
-  parkNear("hog",870,3140,Math.PI);
-  const pd = meta.spawns.pd;
-  for(const ox of [-60,60])parkNear("metro",pd[0]+ox,pd[1],0,{pdCar:true});
+  addParked("fare",{x:768,y:3456,rot:Math.PI/2});
+  addParked("hog",{x:640,y:3328,rot:Math.PI});
+  for(const x of [2320,2480])addParked("metro",{x,y:3728,rot:Math.PI},{pdCar:true});
+  meta.interactions.pd=[...CITY_HUBS.police.release];
   let parkedN = 0;
   const stripX = (meta.layout && meta.layout.stripX) || 1964;
   for (const pk of meta.parking) {
@@ -398,6 +401,7 @@ function spawnWorld(G) {
     const n = 2 + ((Math.random() * 2) | 0);
     for (let i = 0; i < n; i++) {
       const ox = (i - (n - 1) / 2) * (16 + Math.random() * 8), oy = (Math.random() - 0.5) * 16;
+      if(!footClear(G,gt.x+ox,gt.y+oy,8))continue;
       G.peds.push({ x: gt.x + ox, y: gt.y + oy, rot: Math.PI + (Math.random() - 0.5) * 0.8, vx: 0, vy: 0, sprite: i === 0 ? "valet" : ["guest", "m2", "prime", "m4"][i % 4], speed: 0, walk: 10, dist: 0, flee: 0, r: 8, hp: 30, dead: false, gather: gt });
     }
   }
@@ -1061,7 +1065,7 @@ function tickTips(G, dt) {
   if (G.missionIndex !== 0 || G.tipStep == null || G.tipsDone) { G.tip = ""; return; }
   const P = G.player, touch = G.touch;
   const steps = [
-    { t: touch ? "Drag anywhere on the left to walk. Push further to run." : "WASD / arrows to walk. Shift to run.", done: () => (G.walked || 0) > 140 || P.type === "veh" },
+    { t: touch ? "Drag on the left to walk. Hold RUN to sprint." : "WASD / arrows to walk. Shift to run.", done: () => (G.walked || 0) > 140 || P.type === "veh" },
     { t: touch ? "Walk to the gold marker and tap CAR to get in." : "Walk to the gold marker and press E to get in.", done: () => P.type === "veh" },
     { t: touch ? "Point the stick to steer. BRAKE: stop, then hold to reverse. DRIFT: slide." : "W gas, S brake/reverse, A/D steer, Space handbrake.", done: () => (G.drove || 0) > 600 },
     { t: "Follow the gold arrow and the minimap line to the van.", done: () => G.objectiveIndex >= 2 },
@@ -1200,7 +1204,7 @@ function tickPlay(G, dt) {
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
   tickWeather(G, dt);
   tickTransit(G,dt);
-  tickCasino(G,dt);
+  tickCasino(G,dt,CASINO_HOOKS);
   if(G.input.enterP&&interactCasino(G)){G.releaseControls?.();G.input.enterP=false;return;}
   if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
   if(G.input.enterP&&interactTransit(G)){G.input.enterP=false;return;}
@@ -1360,8 +1364,8 @@ function tickPlayer(G, dt) {
     const want = Math.atan2(G.input.x, G.input.y) + G.cam.rot;
     p.rot = p.rot + angNorm(want - p.rot) * Math.min(1, 16 * dt);
   }
-  const run = !G.action?.exhausted && (G.input.sprint || G.input.touchJoy.active && mag > 0.92);
-  const target = mag < 0.12 ? 0 : (run ? 175 : 70 + 40 * mag);
+  const run = !G.action?.exhausted && G.input.sprint;
+  const target = mag < 0.12 ? 0 : (run ? 136 : 76) * Math.min(1, (mag - .12) / .88);
   p.spd = lerp(p.spd || 0, target, (target > (p.spd || 0) ? 10 : 14) * dt);
   const h = headingVec(p.rot);
   const oldX=p.x,oldY=p.y;
@@ -1599,8 +1603,11 @@ function tickCollisions(G) {
       if(!!a.def.boat!==!!b.def.boat)continue;
       if(a.parked&&b.parked&&!a.loose&&!b.loose)continue;
       const best=bodyContact(a,b);if(!best)continue;
+      const ax0=a.x,ay0=a.y,bx0=b.x,by0=b.y;
       const ma = a.def.mass * (a.parked && !a.loose ? 2.2 : 1), mb = b.def.mass * (b.parked && !b.loose ? 2.2 : 1);
-      const ta = mb / (ma + mb), tb = ma / (ma + mb);
+      const closing=Math.max(0,(a.vx-b.vx)*best.nx+(a.vy-b.vy)*best.ny);
+      const fixedA=a.parked&&!a.loose&&a!==P&&closing<12,fixedB=b.parked&&!b.loose&&b!==P&&closing<12;
+      const ta = fixedA?0:fixedB?1:mb/(ma+mb), tb = fixedB?0:fixedA?1:ma/(ma+mb);
       // pinned against a wall: the car that would be pushed into a building stays put and the other takes the whole push
       const ax = a.x - best.nx * best.pen * ta, ay = a.y - best.ny * best.pen * ta;
       const bx = b.x + best.nx * best.pen * tb, by = b.y + best.ny * best.pen * tb;
@@ -1614,6 +1621,11 @@ function tickCollisions(G) {
         if(!carHit(G,a,a.x+tx*sg*d,a.y+ty*sg*d)){a.x+=tx*sg*d;a.y+=ty*sg*d;}
         if(!carHit(G,b,b.x-tx*sg*d,b.y-ty*sg*d)){b.x-=tx*sg*d;b.y-=ty*sg*d;}
       }
+      // Preserve small collision corrections in the lane controller. Recovery
+      // toward the lane is gradual and still subject to full-body clearance.
+      for(const [v,x0,y0] of [[a,ax0,ay0],[b,bx0,by0]])if(v.traffic&&v.tr){
+        v.tr.offsetX=(v.tr.offsetX||0)+v.x-x0;v.tr.offsetY=(v.tr.offsetY||0)+v.y-y0;
+      }
       const playerImpact = a===P ? a.vx*best.nx+a.vy*best.ny : b===P ? -b.vx*best.nx-b.vy*best.ny : 0;
       const otherImpact = a===P ? -b.vx*best.nx-b.vy*best.ny : b===P ? a.vx*best.nx+a.vy*best.ny : Infinity;
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
@@ -1622,8 +1634,9 @@ function tickCollisions(G) {
         for (const v of [a, b]) {
           if (v.isVan && imp > 50) v.loose = true;
           if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
-          if (v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
+          if (imp > 12 && v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
         }
+        if(fixedA)a.vx=a.vy=0;if(fixedB)b.vx=b.vy=0;
         if (imp > 50) {
           if(playerImpact>50 && playerImpact>otherImpact)recordIncident(G,'collision');
           const atFault=playerImpact>50&&playerImpact>otherImpact;
@@ -1845,7 +1858,7 @@ function wasted(G) {
   const busted = false;
   endLife(G, "WASTED", "Mercy Unit patched you up.", "hospital");
 }
-function busted(G) { endLife(G, "BUSTED", "Metro took your piece and some chips.", "pd"); }
+function busted(G) { endLife(G, "BUSTED", "Released at Metro Police. Your crew is waiting.", "pd"); }
 // Recovery changes actors, not campaign receipts or the persistent city. Remove
 // chase ownership before clearing arrays so no detached unit can resume its AI.
 function clearRecoveryState(G) {
@@ -1886,7 +1899,7 @@ function endLife(G, title, sub, where) {
   G.chips -= lost;
   clearRecoveryState(G);
   G._endT=2.2;
-  const at = where === "pd" ? [G.meta.spawns.pd[0], G.meta.spawns.pd[1] + 120] : [G.meta.spawns.player[0], G.meta.spawns.player[1]];
+  const at = where === "pd" ? (G.world?.hubs?.police.release || [G.meta.spawns.pd[0], G.meta.spawns.pd[1] + 120]) : [G.meta.spawns.player[0], G.meta.spawns.player[1]];
   const s = findSafe(G, at[0], at[1], 14, true, true);
   G.player = makeFoot(G, s.x, s.y, 0);G.player.impactT=2.2;
   G.cam.x = s.x; G.cam.y = s.y; G.cam.lx=G.cam.ly=G.cam.shake=0;
@@ -1896,6 +1909,7 @@ function endLife(G, title, sub, where) {
   showBanner(G, title, sub + (lost ? `  −${lost} chips` : ""), "bust");
   // keep the mission, restart the current objective
   if (G._flow) { const obj = G._flow.objectives[G.objectiveIndex]; if (obj && obj.at === "van" && !G.van) spawnVan(G); if (G.race) { G.race = null; } }
+  save(G,true);
 }
 
 function bumpWanted(G, n) {
@@ -1980,7 +1994,7 @@ function tickCops(G, dt) {
     if(Math.abs(diff)>.7&&fwd>75)y=0;
     if (Math.abs(diff) > 1.4 && fwd > 120) y = -0.6;
     // stuck recovery
-    c.stuckT = Math.abs(fwd) < 18 ? (c.stuckT || 0) + dt : 0;
+    c.stuckT = y>0&&!c.crewOut&&!(P.type==="foot"&&los&&dist<180)&&Math.abs(fwd) < 18 ? (c.stuckT || 0) + dt : 0;
     if (c.stuckT > 1.1) { c.reverseT = 0.9; c.stuckT = 0; }
     let x = clamp(diff * 2.2, -1, 1);
     if (c.reverseT > 0) { c.reverseT -= dt; y = -0.8; x = -x; }
@@ -1994,7 +2008,16 @@ function tickCops(G, dt) {
       if(!clear(c.rot)){c._avoidBrake=true;for(const side of [Math.sign(diff)||1,-(Math.sign(diff)||1)])if(clear(c.rot+side*.7)){c._avoidTurn=side;break;}}
     }
     if(c._avoidTurn)x=c._avoidTurn;if(c._avoidBrake&&fwd>60)y=0;
-    tickDrive(G, c, { x, y, hand: Math.abs(diff) > 1.2 && fwd > 140 && los, brake: (targetDistance<45&&!los)||c._avoidBrake&&fwd>90, fire: false, enterP: false }, dt, false);
+    // A cruiser holds position while its officers are outside. It must not
+    // reverse into the crowd simply because it is intentionally stationary.
+    if(c.crewOut){x=0;y=0;c.reverseT=c.stuckT=0;c._avoidBrake=true;}
+    let trafficBrake=false;
+    for(const other of localStreetVehicles(G,c.x,c.y)){
+      if(other===c||other.def.boat||airborne(other))continue;
+      const dx=other.x-c.x,dy=other.y-c.y,hx=Math.sin(c.rot),hy=-Math.cos(c.rot);
+      if(dx*hx+dy*hy>0&&dx*hx+dy*hy<bodySize(c).l+bodySize(other).l+25+Math.max(0,fwd)*.45&&Math.abs(dx*hy-dy*hx)<bodySize(c).w+bodySize(other).w+4){trafficBrake=true;y=0;break;}
+    }
+    tickDrive(G, c, { x, y, hand: Math.abs(diff) > 1.2 && fwd > 140 && los, brake: c.crewOut||trafficBrake||(targetDistance<45&&!los)||c._avoidBrake&&fwd>90, fire: false, enterP: false }, dt, false);
     c.siren = true;
     // no progress for 5 s while out of sight: quietly recycle the unit (a fresh one is dispatched nearer)
     c.progT = (c.progT || 0) + dt;
@@ -2013,7 +2036,7 @@ function tickCops(G, dt) {
     if(c.crewOut&&!G.peds.some(p=>p.car===c&&!p.dead))c.crewOut=false;
     // ram + shoot from the car at 3+
     c.shotWait=Math.max(0,(c.shotWait??1.1)-dt);
-    if (G.wanted >= 3 && los && dist < 320 && c.shotWait<=0) {
+    if (!c.crewOut && G.wanted >= 3 && los && dist < 320 && c.shotWait<=0) {
       c.shotWait=1.1+Math.random()*.5;
       const a = Math.atan2(P.x - c.x, -(P.y - c.y)) + (Math.random() - 0.5) * 0.22;
       const h = headingVec(a);
@@ -2035,7 +2058,8 @@ function tickCops(G, dt) {
     } else { const target=G.nav.clearLine(p.x,p.y,P.x,P.y)?P:G.nav.next(p.x,p.y,2,true)||G.policeTarget||p;p.rot=Math.atan2(target.x-p.x,-(target.y-p.y)); }
     const sp = G.wanted >= 3 && d < 260 ? 40 : 120;
     const h = headingVec(p.rot);
-    const px=p.x,py=p.y;moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
+    const px=p.x,py=p.y;
+    if(P.type==="veh"||G.wanted===0)stepPedestrian(G,p,p.rot,95,dt,{road:true});else moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
     const moved=Math.hypot(p.x-px,p.y-py);p.speed=moved/Math.max(.001,dt);p.dist+=moved;
     if (P.type === "foot" && d < 26 && G.wanted > 0 && G.wanted <= 2 && G.nav.clearLine(p.x,p.y,P.x,P.y)) {
       p.grabT += dt;
@@ -2176,7 +2200,6 @@ function lightHeld(G, rd, pos) {
 
 function tickPeds(G, dt) {
   const pl = G.player;
-  const pSpd = pl.type === "veh" ? Math.hypot(pl.vx, pl.vy) : (pl.speed || 0);
   const moving=G.movingVehicles||G.vehicles.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
   if(pl.type==='foot'){
     pl.impactT=Math.max(0,(pl.impactT||0)-dt);
@@ -2211,17 +2234,8 @@ function tickPeds(G, dt) {
     if(struck)continue;
     if(p.copPed)continue;
     resolveFootVehicles(G,p);
-    // dive away from fast cars (any car, not just the player)
-    if (pl.type === "veh" && !airborne(pl) && pSpd > 55 && dist < 90 && !(p.dive > 0)) {
-      const hx = pl.vx / (pSpd || 1), hy = pl.vy / (pSpd || 1);
-      if ((-dx * hx - dy * hy) < 0) {
-        p.dive = 0.6; p.flee = 3;
-        const side = (dx * hy - dy * hx) > 0 ? 1 : -1;
-        p.vx = hy * side * 170; p.vy = -hx * side * 170;
-        p.rot = Math.atan2(p.vx, -p.vy);
-        if (G.audio.yelp && Math.random() < 0.4) G.audio.yelp();
-      }
-    }
+    // City AI owns predictive avoidance for every nearby vehicle. The old
+    // player-only distance check also made safe sidewalk residents dive.
     if (p.dive > 0) {
       p.dive -= dt;
       const oldX=p.x,oldY=p.y;moveFoot(G,p,p.vx*dt,p.vy*dt);
@@ -2859,7 +2873,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
+  drawCityHubs(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);

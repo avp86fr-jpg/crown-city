@@ -1,3 +1,4 @@
+import {drawCityHubs} from './world_hubs.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadImage} from './assets.js';
@@ -81,6 +82,7 @@ export function drawMobileWorld(G,H) {
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
+  drawCityHubs(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
   drawCasinoWorld(G,r);

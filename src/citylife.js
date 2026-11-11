@@ -1,3 +1,4 @@
+import {inCityHub} from './world_hubs.js';
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
 import {loadImage} from './assets.js';
@@ -14,7 +15,7 @@ export function buildStreetScene(G){
   if(b.w<50||b.h<45||b.kind==='pavilion'||b.kind==='outpost')continue;
   const candidates=[{x:b.x+b.w*.3,y:b.y+b.h+25,rot:0},{x:b.x-27,y:b.y+b.h*.6,rot:Math.PI/2}];
   for(const p of candidates){
-   if(['walk','lot','pier'].includes(G.surfaceAt(p.x,p.y))&&!G.solidAt(p.x-18,p.y)&&!G.solidAt(p.x+18,p.y)){
+   if(!inCityHub(p.x,p.y,80)&&['walk','lot','pier'].includes(G.surfaceAt(p.x,p.y))&&!G.solidAt(p.x-18,p.y)&&!G.solidAt(p.x+18,p.y)){
     fixtures.push({...p,kind,seed,id:i++,name:b.name||''});break;
    }
   }
