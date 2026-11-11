@@ -10,22 +10,24 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** Buckets use floor, including negative coordinates, and queries cover their full radius. */
 export function createStreetIndex(size = 160) {
-  const cells = new Map();
+  const cells = new Map(), rows = [], buckets = [];
   return {
     rebuild(items) {
-      cells.clear();
+      for(const row of cells.values()){for(const bucket of row.values()){bucket.length=0;buckets.push(bucket);}row.clear();rows.push(row);}cells.clear();
       for (const item of items) {
         if (item.dead || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
-        const key = `${Math.floor(item.x / size)},${Math.floor(item.y / size)}`;
-        if (!cells.has(key)) cells.set(key, []);
-        cells.get(key).push(item);
+        const ix=Math.floor(item.x/size),iy=Math.floor(item.y/size);
+        let row=cells.get(ix);if(!row){row=rows.pop()||new Map();cells.set(ix,row);}
+        let bucket=row.get(iy);if(!bucket){bucket=buckets.pop()||[];row.set(iy,bucket);}bucket.push(item);
       }
     },
     query(x, y, radius, visit) {
       const r2 = radius * radius;
       for (let ix = Math.floor((x - radius) / size); ix <= Math.floor((x + radius) / size); ix++) {
+        const row=cells.get(ix);if(!row)continue;
         for (let iy = Math.floor((y - radius) / size); iy <= Math.floor((y + radius) / size); iy++) {
-          for (const item of cells.get(`${ix},${iy}`) || []) {
+          const bucket=row.get(iy);if(!bucket)continue;
+          for (const item of bucket) {
             if ((item.x - x) ** 2 + (item.y - y) ** 2 <= r2) visit(item);
           }
         }

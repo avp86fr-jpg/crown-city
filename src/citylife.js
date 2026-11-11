@@ -1,5 +1,6 @@
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
+import {loadImage} from './assets.js';
 const TAU=Math.PI*2;
 const colors=['#ac4540','#2c6663','#d0b47b','#304f68','#736047'];
 const within=(p,r,m=120)=>p.x>r.x0-m&&p.x<r.x1+m&&p.y>r.y0-m&&p.y<r.y1+m;
@@ -9,7 +10,7 @@ export function buildStreetScene(G){
  const fixtures=[];let i=0;
  for(const b of [...G.meta.buildings,...G.world.buildings]){
   const seed=hash(b.x*13+b.y*7);const kind=Math.floor(seed*6);
-  if(b.w<50||b.h<45||b.kind==='pavilion')continue;
+  if(b.w<50||b.h<45||b.kind==='pavilion'||b.kind==='outpost')continue;
   const candidates=[{x:b.x+b.w*.3,y:b.y+b.h+25,rot:0},{x:b.x-27,y:b.y+b.h*.6,rot:Math.PI/2}];
   for(const p of candidates){
    if(['walk','lot','pier'].includes(G.surfaceAt(p.x,p.y))&&!G.solidAt(p.x-18,p.y)&&!G.solidAt(p.x+18,p.y)){
@@ -19,7 +20,8 @@ export function buildStreetScene(G){
  }
  // The casino's actual tables and canal benches are social destinations.
  for(const p of G.world.expansion?.decor||[])if(['roulette','blackjack','canal'].includes(p.kind))fixtures.push({x:p.x,y:p.y,rot:0,kind:p.kind==='canal'?3:0,seed:hash(p.x+p.y),id:i++,hidden:true});
- G.street={fixtures,cache:new Map(),roadCache:new Map()};
+ G.street={fixtures,cache:new Map(),roadCache:new Map(),revision:0};
+ loadStreetArt(G);
  const origin=G.meta.spawns.player;
  for(const p of fixtures.filter(p=>Math.hypot(p.x-origin[0],p.y-origin[1])<1250).slice(0,24)){
   if(p.kind===4)continue;
@@ -29,12 +31,25 @@ export function buildStreetScene(G){
  }
  return G.street;
 }
+export function loadStreetArt(G){
+ const street=G.street;if(!street)return Promise.resolve();
+ if(street.atlas||(street.retryAt||0)>performance.now())return Promise.resolve();
+ if(street.loading)return street.loading;
+ street.loading=loadImage('assets/premium/street-furniture.webp').then(im=>{
+  street.atlas=im;for(const canvas of street.cache.values())canvas.width=1;street.cache.clear();street.revision++;
+ }).catch(()=>{street.retryAt=performance.now()+10000;}).finally(()=>{street.loading=null;});return street.loading;
+}
 function fixtureArt(G,kind,seed){
  const key=kind+':'+Math.floor(seed*4);let canvas=G.street.cache.get(key);if(canvas)return canvas;
  canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d');c.translate(80,80);
  const col=colors[Math.floor(seed*colors.length)];
  // Concrete base, worn edge, warm contact shadows.
  oval(c,4,11,51,32,'rgba(0,0,0,.18)');
+ if(G.street.atlas){
+  const im=G.street.atlas,w=kind===0?112:kind===2?112:kind===3?108:86,h=kind===0?96:kind===2?78:kind===3?80:90;
+  c.drawImage(im,(kind%3)*im.width/3,Math.floor(kind/3)*im.height/2,im.width/3,im.height/2,-w/2,20-h,w,h);
+  G.street.cache.set(key,canvas);return canvas;
+ }
  if(kind===0){ // pavement cafe
   for(const x of [-27,27]){
    for(const side of [-1,1]){panel(c,x-6,side*19-5,12,11,'#584c3e');c.fillStyle='#ae9876';c.fillRect(x-6,side*19-5,12,2);}
@@ -86,9 +101,10 @@ function roadArt(G,ix,iy){
  G.street.roadCache.set(key,c);return c;
 }
 export function drawStreetScene(G,r){
- if(!G.street)buildStreetScene(G);const c=G.ctx,low=G.settings.quality==='low';
+ if(!G.street)buildStreetScene(G);const c=G.ctx;
+ if(!G.street.atlas)loadStreetArt(G);
  for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++)c.drawImage(roadArt(G,ix,iy),ix*512,iy*512);
- for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;if(low&&p.id%2)continue;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
+ for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
 }

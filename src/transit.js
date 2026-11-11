@@ -42,7 +42,7 @@ export function applyTransitWorld(W,{CODE}){
   W.expansion?.obstacles.push({x:10288,y:y-10,w:16,h:20,hgt:42});
  }
 }
-function ensureTransitArt(G){if(!G.transitAtlas&&!G.transitLoading){G.transitLoading=true;loadImage('assets/premium/transit.webp').then(im=>G.transitAtlas=im).catch(()=>{}).finally(()=>G.transitLoading=false);}}
+function ensureTransitArt(G){if(!G.transitAtlas&&!G.transitLoading&&G.ticks>=(G.transitRetryAt||0)){G.transitLoading=true;loadImage('assets/premium/transit.webp').then(im=>G.transitAtlas=im).catch(()=>{G.transitRetryAt=G.ticks+600;}).finally(()=>G.transitLoading=false);}}
 export function initTransit(G,saved={}){G.transit={clock:Number.isFinite(saved.clock)?Math.max(0,saved.clock)%198:0,near:null,menu:null,ride:null,completed:Number.isFinite(saved.completed)?Math.max(0,Math.min(1e6,Math.floor(saved.completed))):0};}
 export function nearStation(G){if(G.player?.type!=='foot'||G.jack)return null;return STATIONS.find(s=>{const e=stationExit(s);return Math.hypot(G.player.x-e.x,G.player.y-e.y)<76;})||null;}
 export function tickTransit(G,dt){if(!G.transit)initTransit(G);G.transit.clock+=dt;G.transit.near=nearStation(G);}
@@ -65,22 +65,25 @@ export function ridePhase(ride){
 }
 export function tickJourney(G,dt,H={}){
  const ride=G.transit?.ride;if(!ride){G.scene='play';return;}
- const before=ridePhase(ride).id;ride.elapsed=Math.min(ride.duration,ride.elapsed+dt);G.ticks++;G.transit.clock+=dt;
+ dt=Math.max(0,Math.min(dt,ride.duration-ride.elapsed));
+ const before=ridePhase(ride).id;ride.elapsed+=dt;G.ticks++;G.transit.clock+=dt;
  const speed=[0,1,.5,.25][G.settings.timeSpeed??1]??1;G.time=(G.time+dt*(24/480)*speed)%24;
+ H.tickWeather?.(G,dt,false);
  // Timed contracts cannot gain free time by using a train, including skipped journeys.
- if(G.action?.contract&&(G.action.contract.id!=='courier'||G.action.contract.stage)){G.action.contract.t-=dt;if(G.action.contract.t<=0){G.action.contract=null;message(G,'CREW','The job window closed while you were on the train.');}}
+ if(G.action?.contract&&(G.action.contract.id!=='courier'||G.action.contract.stage)){G.action.contract.t=Math.max(0,G.action.contract.t-dt);if(G.action.contract.t===0){ride.expired=true;G.action.contract=null;G.waypoint=null;G.gps=null;G.gpsPts=null;message(G,'CREW','The job window closed while you were on the train.');}}
  const after=ridePhase(ride).id;if(after!==before)G.audio.transit?.(after==='boarding'||after==='alighting'?'doors':after==='departing'?'depart':'rail');
  if(ride.elapsed>=ride.duration){
   const e=stationExit(ride.to),safe=G.findSafeAction?G.findSafeAction(e.x,e.y):e;
   G.player=H.makeFoot?H.makeFoot(G,safe.x,safe.y,Math.PI):{...G.player,type:'foot',x:safe.x,y:safe.y,vx:0,vy:0};
-  G.cam.x=safe.x;G.cam.y=safe.y;G.cam.rot=0;G.transit.ride=null;G.transit.completed++;G.scene='play';G.frozenWorld=null;G.waypoint=null;G.gps=null;
-  G.input.fire=G.input.enterP=false;G.transit.near=ride.to;message(G,'CROWN TRANSIT',ride.to.name+' · Mind the gap.','#8ed6cc');H.save?.(G);
+  G.cam.x=safe.x;G.cam.y=safe.y;G.cam.rot=0;G.transit.ride=null;G.transit.completed++;G.scene='play';G.frozenWorld=null;G.gps=null;G.gpsPts=null;G.gpsT=0;
+  G.input.fire=G.input.enterP=false;G.transit.near=ride.to;message(G,'CROWN TRANSIT',ride.to.name+(ride.expired?' · Your contract expired en route. Visit the contact to try again.':' · Mind the gap.'),'#8ed6cc');H.save?.(G);
  }
 }
 export function skipJourney(G,H){const r=G.transit?.ride;if(r&&r.elapsed>=6)tickJourney(G,r.duration-r.elapsed,H);}
 export function cancelTransit(G){if(G.transit){G.transit.ride=null;G.transit.menu=null;G.transit.near=null;}if(['train','transit'].includes(G.scene))G.scene='play';}
+const regionalStops=STATIONS.filter(s=>s.line==='regional'),sequence=[0,1,2,3,2,1],legs=sequence.map((i,j)=>({a:regionalStops[i],b:regionalStops[sequence[(j+1)%sequence.length]]}));
+const metroStops=STATIONS.filter(s=>s.line==='metro');
 export function regionalTrainAt(clock,offset=0){
- const stops=STATIONS.filter(s=>s.line==='regional'),sequence=[0,1,2,3,2,1],legs=sequence.map((i,j)=>({a:stops[i],b:stops[sequence[(j+1)%sequence.length]]}));
  const travel=26,dwell=7,total=legs.length*(travel+dwell),t=((clock+offset)%total+total)%total,k=Math.floor(t/(travel+dwell)),local=t%(travel+dwell),leg=legs[k],p=clamp((local-dwell)/travel,0,1),dir=Math.sign(leg.b.y-leg.a.y);
  return {x:10320+(offset?18:-18),y:leg.a.y+(leg.b.y-leg.a.y)*smooth(p),rot:dir>0?Math.PI:0,doors:local<dwell?Math.min(1,local*2,(dwell-local)*2):0,speed:local<dwell?0:6*p*(1-p)*Math.abs(leg.b.y-leg.a.y)/travel,next:leg.b.name};
 }
@@ -100,15 +103,29 @@ export function drawTransitWorld(G,r,overhead=false){
  const c=G.ctx,rail=G.world.transit?.rail;if(!rail)return;
  if(overhead&&r.x1>rail.x-120&&r.x0<rail.x+120&&r.y1>rail.y0&&r.y0<rail.y1){
   ensureTransitArt(G);const y0=Math.max(rail.y0,Math.floor(r.y0/16)*16-16),y1=Math.min(rail.y1,r.y1+16);
-  box(c,rail.x-26,y0+18,103,y1-y0,'rgba(10,24,26,.32)');box(c,rail.x-50,y0,100,y1-y0,'#555e59');
-  for(let y=y0;y<y1;y+=16){box(c,rail.x-42,y,84,5,'#8c8770');box(c,rail.x-40,y+5,80,2,'#353f3f');}
-  for(const x of [-31,-6,6,31]){box(c,rail.x+x,y0,3,y1-y0,'#aeb5a8');box(c,rail.x+x+3,y0,1,y1-y0,'#293e40');}
-  for(const x of [-49,48])box(c,rail.x+x,y0,2,y1-y0,'#c0b99b');
+  if(!G.railPattern){
+   const tile=document.createElement('canvas');tile.width=100;tile.height=256;const x=tile.getContext('2d');box(x,0,0,100,256,'#555e59');
+   for(let y=0;y<256;y+=16){box(x,8,y,84,5,'#8c8770');box(x,10,y+5,80,2,'#353f3f');}
+   for(const a of [19,44,56,81]){box(x,a,0,3,256,'#aeb5a8');box(x,a+3,0,1,256,'#293e40');}
+   for(const a of [1,98])box(x,a,0,2,256,'#c0b99b');G.railPattern=c.createPattern(tile,'repeat');
+  }
+  box(c,rail.x-26,y0+18,103,y1-y0,'rgba(10,24,26,.32)');c.save();c.translate(rail.x-50,0);box(c,0,y0,100,y1-y0,G.railPattern);c.restore();
   for(const offset of [0,99]){const v=regionalTrainAt(G.transit?.clock||0,offset);if(v.y<r.y0-420||v.y>r.y1+420)continue;for(let i=-1;i<=1;i++)trainCar(c,v.x,v.y+i*148,v.rot,i===0?v.doors:0,true,G.transitAtlas);}
  }
  if(overhead)return;
  for(const s of STATIONS){if(s.x<r.x0-220||s.x>r.x1+220||s.y<r.y0-160||s.y>r.y1+160)continue;
-  ensureTransitArt(G);c.save();c.translate(s.x,s.y);if(s.line==='metro')c.scale(.82,1);box(c,-179,-94,358,204,'#8c9483');
+  ensureTransitArt(G);c.drawImage(stationArt(G,s),s.x-200,s.y-132);
+  c.save();c.translate(s.x,s.y);if(s.line==='metro')c.scale(.82,1);
+  if(darkness(G.time)>.3)for(const x of [-165,164])box(c,x-6,-76,15,5,'#ffe4a4');
+  const e=stationExit(s);label(c,G.transit?.near?.id===s.id?(G.touch?'TAP RAIL':'E / RAIL'):'CROWN TRANSIT',e.x-s.x,102,9,'#173f40');c.restore();
+ }
+}
+function stationArt(G,s){
+ const cache=G.stationArtCache||(G.stationArtCache=new Map()),old=cache.get(s.id);
+ if(old&&old.atlas===G.transitAtlas)return old.canvas;
+ if(old)old.canvas.width=1;
+ const canvas=document.createElement('canvas');canvas.width=400;canvas.height=264;const c=canvas.getContext('2d');c.translate(200,132);
+ if(s.line==='metro')c.scale(.82,1);box(c,-179,-94,358,204,'#8c9483');
   for(let y=-92;y<108;y+=16){box(c,-178,y,356,1,'#a3aa92');for(let x=-178+(y%32?0:12);x<179;x+=24)box(c,x,y,1,16,'rgba(49,72,63,.18)');}
   if(s.line==='metro'){
    box(c,-85,-12,170,69,'#172c32');for(let i=0;i<9;i++)box(c,-78,1+i*6,156,3,'#556863');
@@ -124,16 +141,14 @@ export function drawTransitWorld(G,r,overhead=false){
    box(c,-50,-96,100,204,'#555e59');for(let y=-92;y<108;y+=16)box(c,-42,y,84,5,'#8c8770');for(const x of [-31,-6,6,31])box(c,x,-96,3,204,'#b9c0b1');
 
    box(c,-153,-72,50,98,'#28585b');box(c,-150,-69,44,90,'#477878');for(let i=0;i<9;i++)box(c,-146,34+i*5,38,2,'#c6c2a7');if(G.transitAtlas){art(c,G.transitAtlas,[.13,.5,.23,.5],-101,-96,47,202);art(c,G.transitAtlas,[.13,.5,.23,.5],54,-96,47,202);}
-   label(c,'R',-126,-36,27);label(c,s.name,0,-107,11);
+   label(c,'R',-126,-36,27);box(c,-181,-118,124,18,'#203f40');label(c,s.name,-119,-105,9,'#e3d7b8');
   }
   for(const x of [-151,140]){box(c,x,57,22,8,'#5b5844');box(c,x,56,22,2,'#d4b98a');box(c,x,65,3,6,'#354941');box(c,x+19,65,3,6,'#354941');}
   box(c,112,-74,29,47,'#273d3e');box(c,116,-70,21,24,'#bba36b');label(c,'CITY',126,-55,6);
-  for(const x of [-165,164]){box(c,x,-73,3,24,'#283c39');box(c,x-6,-76,15,5,darkness(G.time)>.3?'#ffe4a4':'#bdc6ab');}
-  const e=stationExit(s);label(c,G.transit?.near?.id===s.id?(G.touch?'TAP RAIL':'E / RAIL'):'CROWN TRANSIT',e.x-s.x,102,9,'#173f40');
-  c.restore();
- }
+  for(const x of [-165,164]){box(c,x,-73,3,24,'#283c39');box(c,x-6,-76,15,5,'#bdc6ab');}
+  cache.set(s.id,{canvas,atlas:G.transitAtlas});G.stationArtBuilds=(G.stationArtBuilds||0)+1;return canvas;
 }
-export function drawTransitMap(G,to){const c=G.ctx;c.save();for(const line of ['metro','regional']){const list=STATIONS.filter(s=>s.line===line);c.strokeStyle=line==='metro'?'#75d7c3':'#e2b46a';c.lineWidth=2*G.ui;c.beginPath();list.forEach((s,i)=>{const p=to(s.x,s.y);i?c.lineTo(...p):c.moveTo(...p);});if(line==='metro')c.closePath();c.stroke();for(const s of list){const p=to(s.x,s.y);c.fillStyle='#122e34';c.beginPath();c.arc(...p,6*G.ui,0,TAU);c.fill();c.stroke();label(c,line==='metro'?'M':'R',p[0],p[1]+3*G.ui,8*G.ui,line==='metro'?'#75d7c3':'#e2b46a');}}c.restore();}
+export function drawTransitMap(G,to,bounds=null){const c=G.ctx;c.save();for(const line of ['metro','regional']){const list=line==='metro'?metroStops:regionalStops;c.strokeStyle=line==='metro'?'#75d7c3':'#e2b46a';c.lineWidth=2*G.ui;c.beginPath();list.forEach((s,i)=>{const p=to(s.x,s.y);i?c.lineTo(...p):c.moveTo(...p);});if(line==='metro')c.closePath();c.stroke();for(const s of list){const p=to(s.x,s.y);if(bounds&&(p[0]<bounds.x-8||p[0]>bounds.x+bounds.size+8||p[1]<bounds.y-8||p[1]>bounds.y+bounds.size+8))continue;c.fillStyle='#122e34';c.beginPath();c.arc(...p,6*G.ui,0,TAU);c.fill();c.stroke();label(c,line==='metro'?'M':'R',p[0],p[1]+3*G.ui,8*G.ui,line==='metro'?'#75d7c3':'#e2b46a');}}c.restore();}
 export function drawTransitMenu(G,H){
  const c=G.ctx,d=G.dpr,W=G.canvas.width,Hh=G.canvas.height,from=G.transit?.menu;if(!from)return;
  c.setTransform(1,0,0,1,0,0);box(c,0,0,W,Hh,'rgba(7,21,28,.97)');const width=Math.min(W-28*d,650*d),x=(W-width)/2;

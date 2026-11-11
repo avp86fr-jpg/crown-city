@@ -1,5 +1,6 @@
 /* Streaming tile layers, chunked procedural ground, extruded buildings, trees. */
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
+import {drawWorldDetails} from './world_details.js';
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
@@ -67,14 +68,19 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const pats = {};let revision=0;
+  const pats = {};let revision=0,useId=0;
   loadImg('assets/premium/frontier-scenery.webp').then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
-  // Four original terrain paintings, loaded once and repeated inside static chunks.
-  loadImg('assets/premium/frontier-terrain.webp').then(atlas=>{
-    ['forest','desert','mountain','casino'].forEach((name,i)=>{
+  // Eight material paintings, decoded once; detail is baked into streamed chunks.
+  loadImg('assets/premium/world-materials.webp').then(atlas=>{
+    ['forest','desert','mountain','casino','asphalt','paver','trail','water'].forEach((name,i)=>{
       const tile=document.createElement('canvas');tile.width=tile.height=256;
-      tile.getContext('2d').drawImage(atlas,(i%2)*atlas.width/2,Math.floor(i/2)*atlas.height/2,atlas.width/2,atlas.height/2,0,0,256,256);
-      pats[name]=scratch.createPattern(tile,'repeat');if(name==='casino')pats[name].setTransform(new DOMMatrix([.5,0,0,.5,0,0]));
+      tile.getContext('2d').drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
+      pats[name]=scratch.createPattern(tile,'repeat');
+      const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'?.55:.8;
+      pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
+      if(name==='forest'){
+        const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d');ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,99,60,.78)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
+      }
     });
     for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;
   }).catch(()=>{});
@@ -85,6 +91,7 @@ export function makeGround(W, tex, codeAt) {
   const cellAt = (cx, cy) => (cx < 0 || cy < 0 || cx >= GW || cy >= GH) ? 254 : g[cy * GW + cx];
   function textureAt(code,x,y){
     const region=terrainRegion(x,y),C=W.expansion?.casino;
+    if(region&&region!=='mountain'&&code===CODE.dirt)return 'trail';
     if(region&&(code===CODE.grass||code===CODE.sand||code===CODE.dirt||code===CODE.build))return region;
     if((code===CODE.walk||code===CODE.build)&&C&&x>=C.x&&x<C.x+C.w&&y>=C.y&&y<C.y+C.h)return 'casino';
     return code===CODE.walk&&cellDistrict(W,x,y)==='warm'?'paver_warm':codeTex[code];
@@ -103,7 +110,10 @@ export function makeGround(W, tex, codeAt) {
         const v = cx < cx0 + n ? cellAt(cx, cy) : -2;
         const currentTex=textureAt(v,cx*CELL,cy*CELL);
         if (v !== run || currentTex !== runTex) {
-          if (run >= 0 && run !== 255 && run !== CODE.water && run !== CODE.canal) {
+          if(run===CODE.water){
+            x.fillStyle=pats.water||'#24585b';x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);
+            x.fillStyle='rgba(15,48,56,.66)';x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);any=true;
+          }else if (run >= 0 && run !== 255 && run !== CODE.canal) {
             const t = runTex;
             x.fillStyle = pats[t] || pats[codeTex[run]] || pats.concrete;
             x.fillRect(start * CELL, cy * CELL, (cx - start) * CELL, CELL);
@@ -113,7 +123,8 @@ export function makeGround(W, tex, codeAt) {
         }
       }
     }
-    if (!any) return null;
+    // Water-only chunks still need painted water and shoreline detail.
+    if (!any && ox<CORE && oy<CORE) return null;
     // curbs + shore foam + grass edges
     for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
       const v = cellAt(cx, cy);
@@ -163,6 +174,7 @@ export function makeGround(W, tex, codeAt) {
       drawFeature(x, f, pats);
     }
     drawExpansionGround(x,W,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats);
+    drawWorldDetails(x,W,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,codeAt);
     for (const p of W.piers) {
       if (p.x > rx1 || p.y > ry1 || p.x + p.w < rx0 || p.y + p.h < ry0) continue;
       x.fillStyle = pats.pier || "#6b5a44"; x.fillRect(p.x, p.y, p.w, p.h);
@@ -172,7 +184,7 @@ export function makeGround(W, tex, codeAt) {
     for (const p of W.pools) {
       if (p.x > rx1 || p.y > ry1 || p.x + p.w < rx0 || p.y + p.h < ry0) continue;
       x.fillStyle = "#e9e4da"; x.fillRect(p.x - 4, p.y - 4, p.w + 8, p.h + 8);
-      x.fillStyle = "#3fc4e0"; x.fillRect(p.x, p.y, p.w, p.h);
+      x.fillStyle = pats.water||"#3fc4e0"; x.fillRect(p.x, p.y, p.w, p.h);
       x.fillStyle = "rgba(255,255,255,0.35)"; x.fillRect(p.x + 3, p.y + 3, p.w - 6, 3);
     }
     // ---- hand-paint pass (baked once per chunk): weathering, stains, patches, cracks, tufts
@@ -215,15 +227,12 @@ export function makeGround(W, tex, codeAt) {
     {
       let sd = (ix * 2654435761 ^ iy * 40503) >>> 0; sd = sd % 233280 || 11;
       const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
-      const greens = ["rgba(38,74,22,0.30)", "rgba(96,140,48,0.22)", "rgba(150,180,80,0.16)", "rgba(24,52,18,0.26)"];
       const shrubs = [];
       for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
         const v = cellAt(cx, cy), px = cx * CELL, py = cy * CELL;
         if (v === CODE.grass && !terrainRegion(px,py)) {
-          for (let j = 0; j < 3; j++) { // directional brush dabs
-            x.fillStyle = greens[(rn() * 4) | 0];
-            x.beginPath(); x.ellipse(px + rn() * CELL, py + rn() * CELL, 3 + rn() * 5, 1.4 + rn() * 1.6, -0.6 + rn() * 0.4, 0, TAU); x.fill();
-          }
+          // The grass material supplies fine detail. Keep runway margins mown and clear.
+          if(px>=6500&&px<10240&&py>=7240&&py<8200)continue;
           const edge = cellAt(cx + 1, cy) !== CODE.grass || cellAt(cx - 1, cy) !== CODE.grass || cellAt(cx, cy + 1) !== CODE.grass || cellAt(cx, cy - 1) !== CODE.grass;
           const t = rn();
           if (edge ? t < 0.16 : t < 0.035) shrubs.push([px + CELL / 2 + (rn() - 0.5) * 8, py + CELL / 2 + (rn() - 0.5) * 8, edge ? 7 + rn() * 5 : 9 + rn() * 9, rn()]);
@@ -270,6 +279,9 @@ export function makeGround(W, tex, codeAt) {
     maxChunks:64,
     get revision(){return revision;},
     draw(ctx, r, frame) {
+      // Offscreen mobile composition deliberately passes frame=0. A separate usage
+      // clock is required or every such chunk stays "current" and can never evict.
+      const stamp=++useId;
       const ix0 = Math.max(0, Math.floor(r.x0 / CH)), iy0 = Math.max(0, Math.floor(r.y0 / CH));
       const ix1 = Math.min(WORLD_W / CH - 1, Math.floor(r.x1 / CH)), iy1 = Math.min(WORLD_H / CH - 1, Math.floor(r.y1 / CH));
       let built = 0;
@@ -278,14 +290,14 @@ export function makeGround(W, tex, codeAt) {
         let e = cache.get(k);
         if (!e) {
           if (built >= 2 && frame > 2) continue; // budget per frame
-          e = { c: render(ix, iy), f: frame }; built++;
+          e = { c: render(ix, iy), f: stamp }; built++;
           cache.set(k, e);
         }
-        e.f = frame;
+        e.f = stamp;
         if (e.c) ctx.drawImage(e.c, ix * CH, iy * CH);
       }
       if (cache.size > this.maxChunks) {
-        const cold=[...cache].filter(([,e])=>e.f!==frame).sort((a,b)=>a[1].f-b[1].f);
+        const cold=[...cache].filter(([,e])=>e.f!==stamp).sort((a,b)=>a[1].f-b[1].f);
         for(const [key,e] of cold){if(cache.size<=this.maxChunks)break;cache.delete(key);if(e.c)e.c.width=e.c.height=1;}
       }
     },

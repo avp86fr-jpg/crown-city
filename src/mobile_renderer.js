@@ -1,7 +1,7 @@
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT} from './lighting.js';
 import {loadImage} from './assets.js';
-import {drawStreetScene} from './citylife.js';
+import {drawStreetScene,loadStreetArt} from './citylife.js';
 import {drawExpansionPeople} from './expansion.js';
 import {drawExpansionOverhead} from './expansion_world.js';
 import {WORLD_W,WORLD_H} from './world.js';
@@ -17,9 +17,9 @@ function seal(e){
 }
 function trim(cache,limit){if(cache.size<=limit)return;const cold=[...cache].sort((a,b)=>a[1].t-b[1].t);for(let i=0;i<cold.length-limit;i++){retire(cold[i][1]);cache.delete(cold[i][0]);}}
 function outerTile(G,tx,ty){
- const cache=G.mobileOuter||(G.mobileOuter=new Map()),key=tx+':'+ty,revision=G.ground.revision;
+ const cache=G.mobileOuter||(G.mobileOuter=new Map()),key=tx+':'+ty,revision=G.ground.revision*100+(G.street?.revision||0);
  let entry=cache.get(key);if(entry&&entry.revision===revision){entry.t=G.ticks;return entry.bitmap||entry.canvas;}
- if(G._outerBuilt>=2)return null;G._outerBuilt++;if(entry)retire(entry);
+ if(G._outerBuilt>=2||G._outerBuilt>0&&performance.now()-G._outerStart>5)return null;G._outerBuilt++;if(entry)retire(entry);
  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const c=canvas.getContext('2d',{alpha:false});
  c.fillStyle='#193e43';c.fillRect(0,0,256,256);c.scale(.5,.5);c.translate(-tx*OUTER,-ty*OUTER);
  const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
@@ -31,15 +31,16 @@ function tile(G,tx,ty,night) {
   const cache=G.mobileTiles||(G.mobileTiles=new Map()),key=`${tx}:${ty}:${night}`;
   let e=cache.get(key);
   if(!e){
-    e={image:null,t:G.ticks};cache.set(key,e);
-    loadImage(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp`).then(im=>{e.image=im;}).catch(()=>{e.failed=true;});
+    e={image:null,t:G.ticks,pending:false,retryAt:0};cache.set(key,e);
     const limit=G._coreLimit||16;if(cache.size>limit){const cold=[...cache].sort((a,b)=>a[1].t-b[1].t);for(let i=0;i<cold.length-limit;i++)cache.delete(cold[i][0]);}
   }
+  if(!e.image&&!e.pending&&G.ticks>=e.retryAt){e.pending=true;loadImage(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp`).then(im=>{e.image=im;}).catch(()=>{e.retryAt=G.ticks+600;}).finally(()=>e.pending=false);}
   e.t=G.ticks;
   // The boot albedo keeps the first frame painted while its finished tile decodes.
   return e.image||G.assets.layers.albedo?.img.get(tx+'_'+ty)||null;
 }
 export function drawMobileWorld(G,H) {
+  if(G.street&&!G.street.atlas)loadStreetArt(G);
   const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;
   const coreCols=Math.max(0,Math.min(3,Math.floor(r.x1/TILE))-Math.max(0,Math.floor(r.x0/TILE))+1),coreRows=Math.max(0,Math.min(3,Math.floor(r.y1/TILE))-Math.max(0,Math.floor(r.y0/TILE))+1);G._coreLimit=Math.min(32,Math.max(16,coreCols*coreRows*(night>.02&&night<.98?2:1)+2));
   H.worldXform(G,c,r.S);c.imageSmoothingQuality='low';c.fillStyle='#123943';c.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
@@ -47,7 +48,7 @@ export function drawMobileWorld(G,H) {
     const image=tile(G,x,y,night>.98);if(image)c.drawImage(image,x*TILE,y*TILE,TILE+.5,TILE+.5);
     if(night>.02&&night<=.98){const lit=tile(G,x,y,true);if(lit){c.globalAlpha=night;c.drawImage(lit,x*TILE,y*TILE,TILE+.5,TILE+.5);c.globalAlpha=1;}}
   }
-  G._outerBuilt=0;let pending=0;
+  G._outerBuilt=0;G._outerStart=performance.now();let pending=0;
   const queue=G._outerQueue||(G._outerQueue=[]);queue.length=0;const co=Math.cos(G.cam.rot),si=Math.sin(G.cam.rot),halfW=G.canvas.width/(2*r.S),halfH=G.canvas.height/(2*r.S),margin=OUTER*.708;
   if(r.x1>CORE||r.y1>CORE)for(let y=Math.max(0,Math.floor(r.y0/OUTER));y<=Math.min(WORLD_H/OUTER-1,Math.floor(r.y1/OUTER));y++)for(let x=Math.max(0,Math.floor(r.x0/OUTER));x<=Math.min(WORLD_W/OUTER-1,Math.floor(r.x1/OUTER));x++){
     if(x*OUTER<CORE&&y*OUTER<CORE)continue;const dx=(x+.5)*OUTER-G.cam.x,dy=(y+.5)*OUTER-G.cam.y;
@@ -89,5 +90,5 @@ export function drawMobileWorld(G,H) {
   c.setTransform(1,0,0,1,0,0);
   if(G.rainAmt>.15&&!G.settings.reducedMotion){c.strokeStyle='rgba(190,216,230,.22)';c.lineWidth=1;c.beginPath();for(let i=0;i<28;i++){const x=(i*97+G.ticks*1.5)%G.canvas.width,y=(i*137+G.ticks*6)%G.canvas.height;c.moveTo(x,y);c.lineTo(x+3,y+9);}c.stroke();}
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);G.hurtT=Math.max(0,G.hurtT-1/30);}
-  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,outerLimit:G._outerLimit,actors:actors.length};
+  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,outerLimit:G._outerLimit,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

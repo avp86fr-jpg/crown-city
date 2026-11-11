@@ -81,3 +81,11 @@ Character animation uses measured artwork bounds and grounded feet; repeat turns
 The eastern forest river stays navigable under road bridges and the elevated railway. Train carriages remain continuous when reversing at termini. Aircraft clearance includes wing spans, tips and rotor sweep, and steering eases into turns. Pedestrian dives respect banks and walls. Rain, fog and sand now cycle correctly, with saved weather timing and consistent day/night lighting across quality modes.
 
 Run `npm run test:coherence` for the new real-browser regression checks. [Pass notes](docs/coherence-combat-pass.md) and the [mobile comparison](docs/performance/coherence-comparison.json) record the verification and remaining physical-device limits.
+
+## Detailed world and mobile streaming
+
+The current scenery pass adds painted materials, detailed street furniture, botanical ground cover, a ranger camp, fuel forecourt and mountain rescue outpost. Crown Airfield has three paved taxiway links, runway 09/27 numbers, hold-short lines, aircraft stands, service lanes, animated windsocks and night edge lights. The outpost buildings, tents and pumps have matching solid footprints; roads, helipads and mission approaches remain open.
+
+Train arrivals retain active waypoints and rebuild GPS. Full journeys and skips advance weather and contract deadlines, with expired jobs reported on arrival. Station artwork, rail sleepers and mobile text layout are cached. Street/collision buckets are reused, and the mobile terrain cache now evicts old offscreen chunks during long exploration. Failed mobile tiles retry with a delay.
+
+`npm run test:world` checks actual touch travel, network recovery, nine distant destinations and cache bounds. `node tools/world-profile.cjs LABEL URL` measures whole animation callbacks with actual CDP touch input, frame intervals and warmed drawing-call counts. [World pass notes](docs/vibrant-world-pass.md) include paired results and physical-device limitations.

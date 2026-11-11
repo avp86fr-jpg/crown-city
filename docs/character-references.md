@@ -58,3 +58,9 @@ The new portraits were downloaded from the collectible image URLs embedded in th
 `src/sprite_frames.js` records measured alpha bounds for every Chaos and crowd frame, scaled to the existing mobile textures. Figures use a common foot origin and a torso anchor rather than each cell’s geometric center. No source atlas pixels were repainted.
 
 `assets/premium/contact-costumes.webp` contains four waist-to-boot extensions generated with the image tool from the Gold Mage, Chief, Ice and Steampunk costume palettes. The generation explicitly excluded heads, helmets, faces, arms and upper torsos. Runtime rendering combines those extensions with smaller silhouette clips of the original portraits for adult proportions. Gold Mage’s original cyan insignia and horns remain sourced from the supplied image, whose file hash is unchanged. The lower-body costumes are game adaptations, not additional NFT source art. The retained generated PNG was mechanically resized and exported as a transparent WebP.
+
+## World material and street furniture pass
+
+`assets/premium/world-materials.webp` contains eight original generated materials: woodland floor, desert sand, slate, plaza brick, asphalt, concrete paving, trail gravel and water. The source PNG was mechanically resized to 1536×768 and exported to WebP. Runtime patterns control scale and blend water/lawn color inside cached terrain chunks.
+
+`assets/premium/street-furniture.webp` is a transparent original generated 3×2 atlas of a café, produce cart, bus shelter, flower-planter bench, loading supplies and newsstand, mechanically resized to 1152×768. These replace the previous primitive fixture paintings; day/night mobile core tiles were rebaked from the actual renderer. No NFT character or portrait was regenerated for this pass.

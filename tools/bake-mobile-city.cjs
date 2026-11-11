@@ -2,7 +2,8 @@
 // Only static albedo/water/roofs/lights/furniture are baked; actors and missions stay live.
 const {chromium}=require('playwright'),fs=require('fs'),path=require('path'),{execFileSync}=require('child_process');
 (async()=>{const b=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});try{const p=await b.newPage();await p.addInitScript(()=>requestAnimationFrame=()=>0);await p.goto(process.env.CC_URL||'http://127.0.0.1:8000');await p.waitForFunction(()=>window.__CC,null,{polling:100});for(const night of [false,true])for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++){
- const png=await p.evaluate(async({tx,ty,night})=>{const G=__CC.G,{drawStreetScene}=await import('./src/citylife.js'),names=night?['albedo','water0','roofs','neonGround','neon','windows']:['albedo','water0','roofs'],key=tx+'_'+ty;
+ const png=await p.evaluate(async({tx,ty,night})=>{const G=__CC.G,{drawStreetScene,loadStreetArt}=await import('./src/citylife.js'),names=night?['albedo','water0','roofs','neonGround','neon','windows']:['albedo','water0','roofs'],key=tx+'_'+ty;
+ await loadStreetArt(G);
  await Promise.all(names.map(n=>G.assets.layers[n]?.preload([key])));const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const c=canvas.getContext('2d',{alpha:false});c.fillStyle='#123943';c.fillRect(0,0,512,512);
  for(const n of names){const im=G.assets.layers[n]?.img.get(key);if(!im)continue;c.globalCompositeOperation=['neonGround','neon','windows'].includes(n)?'screen':'source-over';c.globalAlpha=c.globalCompositeOperation==='screen'?.72:1;c.drawImage(im,0,0,512,512);}
  c.globalAlpha=1;c.globalCompositeOperation='source-over';c.scale(.5,.5);c.translate(-tx*1024,-ty*1024);const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,{x0:tx*1024,y0:ty*1024,x1:(tx+1)*1024,y1:(ty+1)*1024});}finally{G.ctx=prior;}return canvas.toDataURL('image/png').split(',')[1];

@@ -56,16 +56,18 @@ export function worldBodyHit(G,v,x,y) {
   if(Math.hypot(nx,ny)<.01){nx=-(v.vx||Math.sin(v.rot));ny=-(v.vy||-Math.cos(v.rot));}
   const m=Math.hypot(nx,ny)||1;return {nx:nx/m,ny:ny/m,n:count};
 }
-export function nearbyPairs(vehicles) {
-  const grid=new Map(),pairs=[],seen=new Set(),cell=160;
-  vehicles.forEach((v,i)=>{
+export function nearbyPairs(vehicles,workspace={}) {
+  const grid=workspace.grid||(workspace.grid=new Map()),pairs=workspace.pairs||(workspace.pairs=[]),seen=workspace.seen||(workspace.seen=new Set()),pool=workspace.pool||(workspace.pool=[]),pairPool=workspace.pairPool||(workspace.pairPool=[]),cell=160;
+  for(const bucket of grid.values()){bucket.length=0;pool.push(bucket);}grid.clear();pairs.length=0;seen.clear();
+  let used=0;
+  for(let i=0;i<vehicles.length;i++){const v=vehicles[i];
     const b=bodySize(v),extent=Math.hypot(b.w,b.l);
     for(let x=Math.floor((v.x-extent)/cell);x<=Math.floor((v.x+extent)/cell);x++)for(let y=Math.floor((v.y-extent)/cell);y<=Math.floor((v.y+extent)/cell);y++){
-      const key=x*65536+y,bucket=grid.get(key)||[];
-      for(const j of bucket){const code=j*vehicles.length+i;if(!seen.has(code)){seen.add(code);pairs.push([vehicles[j],v]);}}
+      const key=x*65536+y;let bucket=grid.get(key);if(!bucket){bucket=pool.pop()||[];grid.set(key,bucket);}
+      for(const j of bucket){const other=vehicles[j];if(workspace.ignoreParked&&other.parked&&v.parked&&!other.loose&&!v.loose)continue;const code=j*vehicles.length+i;if(!seen.has(code)){seen.add(code);const pair=pairPool[used]||(pairPool[used]=[]);pair[0]=other;pair[1]=v;pairs.push(pair);used++;}}
       bucket.push(i);grid.set(key,bucket);
     }
-  });return pairs;
+  }for(let i=used;i<pairPool.length;i++){pairPool[i][0]=pairPool[i][1]=null;}return pairs;
 }
 export function waterBerth(G,v,x,y) {
   if(!worldBodyHit(G,v,x,y))return {x,y};
