@@ -165,6 +165,7 @@ export async function boot() {
   G.graph = buildGraph(world, meta);
   G.traffic = createTraffic(G);
   G.pedsys = createPeds(G);
+  applyQuality(G);
   G.nav = createNav(G);
   G.crossOk = (p) => {
     for (const n of G.graph.nodes) {
@@ -203,12 +204,17 @@ export async function boot() {
     G.dtStat = dt;
     G.fps = lerp(G.fps, 1 / Math.max(0.001, dt), 0.05);
     let n = 0;
+    const _t0 = performance.now();
     while (acc >= STEP && n++ < 4) {
       tick(G, STEP);
       acc -= STEP;
     }
     if (acc > STEP * 4) acc = 0;
+    const _t1 = performance.now();
     render(G);
+    const _t2 = performance.now();
+    prof(G, "tick", _t1 - _t0); prof(G, "render", _t2 - _t1);
+    adaptRes(G, dt);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -582,8 +588,9 @@ function fit(G) {
   const c = G.canvas;
   const w = window.innerWidth || G.wrap.clientWidth;
   const h = window.innerHeight || G.wrap.clientHeight;
-  const maxDpr = G.settings && G.settings.quality === "low" ? 1.5 : 2;
-  const dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
+  const q = G.settings ? G.settings.quality : "high";
+  const maxDpr = q === "low" ? 1.15 : q === "med" ? 1.5 : 2;
+  const dpr = Math.max(0.6, Math.min(maxDpr, window.devicePixelRatio || 1) * (G.resScale || 1));
   c.width = Math.round(w * dpr);
   c.height = Math.round(h * dpr);
   G.dpr = dpr; G.cssW = w; G.cssH = h;
@@ -1980,7 +1987,7 @@ function render(G) {
   else {
     drawWorld(G);
     if (G.scene === "brief") drawBrief(G);
-    else drawHUD(G);
+    else { const _h = performance.now(); drawHUD(G); prof(G, "hud", performance.now() - _h); }
     if (G.scene === "pause") drawPause(G);
     if (G.scene === "map") drawMap(G);
     if (G.scene === "settings") drawSettings(G);
@@ -2003,6 +2010,26 @@ function viewRect(G) {
   const ex = e || hw, ey = e || hh;
   return { x0: G.cam.x - ex - 40, y0: G.cam.y - ey - 40, x1: G.cam.x + ex + 40, y1: G.cam.y + ey + 40, S };
 }
+// adaptive resolution: hold ~50+ fps by trading render pixels (never below 0.6 css px)
+function adaptRes(G, dt) {
+  if (G.scene !== "play" && G.scene !== "title") return;
+  const A = G._ar || (G._ar = { t: 0, n: 0, sum: 0 });
+  A.t += dt; A.n++; A.sum += dt;
+  if (A.t < 2) return;
+  const avg = A.sum / A.n; A.t = 0; A.n = 0; A.sum = 0;
+  if (G.settings.autoRes === false) return;
+  const r = G.resScale || 1;
+  let nr = r;
+  if (avg > 1 / 45 && r > 0.62) nr = Math.max(0.6, r - (avg > 1 / 28 ? 0.15 : 0.08));
+  else if (avg < 1 / 58 && r < 1) nr = Math.min(1, r + 0.05);
+  if (nr !== r) { G.resScale = nr; fit(G); }
+}
+function applyQuality(G) {
+  const q = G.settings.quality;
+  if (G.traffic) G.traffic.target = q === "low" ? 18 : q === "med" ? 26 : 34;
+  if (G.pedsys) G.pedsys.target = q === "low" ? 32 : q === "med" ? 48 : 64;
+}
+function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.translate(G.canvas.width / 2 / div + ox / div, G.canvas.height / 2 / div + oy / div);
@@ -2287,17 +2314,21 @@ function drawWorld(G) {
       ctx.globalAlpha = 1;
     }
   }
+  let _pt = performance.now(); const _ph = (k) => { const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
+  _ph('w_water');
   // 2. painted core
   if (r.x0 < CORE && r.y0 < CORE) {
-    L.albedo.draw(ctx, r, frame);
+    if (!(G.dbg && G.dbg.noAlb)) L.albedo.draw(ctx, r, frame);
     const wi = ((G.ticks / 12) | 0) % 4;
-    L["water" + wi].draw(ctx, r, frame);
+    if (!(G.dbg && G.dbg.noWater)) L["water" + wi].draw(ctx, r, frame);
     for (let k = 0; k < 4; k++) if (k !== wi) for (const key of L["water" + k].keys) { const [tx, ty] = key.split("_").map(Number); if (tx * 1024 < r.x1 && tx * 1024 + 1024 > r.x0 && ty * 1024 < r.y1 && ty * 1024 + 1024 > r.y0) L["water" + k].get(tx, ty, frame); }
   }
+  _ph('w_core');
   // 3. procedural districts
   G.ground.draw(ctx, r, frame);
   if (G.wet > 0.15 && r.x0 < CORE && r.y0 < CORE) { ctx.globalAlpha = 0.4 * G.wet; L.puddles.draw(ctx, r, frame); ctx.globalAlpha = 1; }
   if (G.wet > 0.15) { ctx.fillStyle = `rgba(30,40,60,${0.18 * G.wet})`; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
+  _ph('w_ground');
   // 4. sun shadows
   const sun = sunAt(G.time);
   if (sun.alpha > 0.02) {
@@ -2310,6 +2341,7 @@ function drawWorld(G) {
     ctx.globalAlpha = sun.alpha; ctx.drawImage(lt.sh, 0, 0, canvas.width, canvas.height);
     ctx.restore();
   }
+  _ph('w_shadow');
   // 5. ground details
   ctx.lineWidth = 3;
   for (const s of G.skids) {
@@ -2333,6 +2365,7 @@ function drawWorld(G) {
   }
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
+  _ph('w_details');
   // 6. actors
   const actors = [];
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -2341,14 +2374,17 @@ function drawWorld(G) {
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
   for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
   drawParticles(G, r, false);
+  _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
   G.bld.trees(ctx, cam, r, { low });
-  G.bld.draw(ctx, cam, r, frame, sun, { low });
+  if (!(G.dbg && G.dbg.noBld)) G.bld.draw(ctx, cam, r, frame, sun, { low });
   // the player is never lost behind a tower: soft outline when occluded
   if (G.player.type === "foot") { ctx.globalAlpha = 0.35; drawChar(G, G.player); ctx.globalAlpha = 1; }
   if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
+  _ph('w_bld');
   // 8. light map
-  drawLighting(G, r, S, ox, oy, low);
+  if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
+  _ph('w_light');
   drawParticles(G, r, true);
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
@@ -2368,7 +2404,11 @@ function drawLighting(G, r, S, ox, oy, low) {
   const hasFlash = G.flashes.length > 0;
   const lt = G.light, lx = lt.lx;
   const needMap = Math.min(ar, ag, ab) < 248;
-  if (needMap) {
+  // low tier: rebuild the light map every other frame (the multiply still runs every frame)
+  G._lmF = (G._lmF || 0) + 1;
+  const reuse = low && (G._lmF & 1) && G._lmValid && !hasFlash;
+  if (needMap) G._lmValid = true;
+  if (needMap && !reuse) {
     lx.setTransform(1, 0, 0, 1, 0, 0);
     lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
     lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
@@ -2413,6 +2453,8 @@ function drawLighting(G, r, S, ox, oy, low) {
       const h = heliPos(G);
       lx.globalAlpha = 0.9 * Math.max(dark, 0.4); lx.drawImage(LIGHT.radial("rgba(255,250,225,0.95)"), h.lx - 90, h.ly - 90, 180, 180);
     }
+  }
+  if (needMap) {
     // multiply onto the frame
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = 1;
@@ -2820,8 +2862,9 @@ function updateGPS(G) {
   if (!G.gps) G.gps = { D: new Uint16Array(N.NW * N.NH), x: -1e9, y: 0, t: 0 };
   const g = G.gps;
   g.t--;
-  if (Math.hypot(at.x - g.x, at.y - g.y) > 96 || g.t <= 0 && Math.hypot(at.x - g.x, at.y - g.y) > 8) { N.flood(g.D, at.x, at.y, 60000); g.x = at.x; g.y = at.y; g.t = 45; }
-  if ((G.ticks % 10) === 0 || !G.gpsPts) G.gpsPts = N.route(g.D, G.player.x, G.player.y);
+  // flood is a full-grid BFS: at most every 40 ticks, and only when the target really moved
+  if (g.t <= 0 && Math.hypot(at.x - g.x, at.y - g.y) > 64 || g.x < -1e8) { N.flood(g.D, at.x, at.y, 60000); g.x = at.x; g.y = at.y; g.t = 40; G.gpsPts = null; }
+  if ((G.ticks % 15) === 0 || !G.gpsPts) G.gpsPts = N.route(g.D, G.player.x, G.player.y);
 }
 function drawMinimap(G, x, y, size, span) {
   const ctx = G.ctx, u = G.ui, P = G.player, M = G.minimap;
@@ -2988,6 +3031,11 @@ function drawHUD(G) {
   }
   ctx.globalAlpha = 1;
   if (G.banner) drawBanner(G, W, H);
+  if (G.settings.showFps) {
+    const P = G.prof || {};
+    ctx.font = uiFont(10 * u, 800); ctx.textAlign = "right"; ctx.fillStyle = G.fps > 50 ? "#3ce06a" : G.fps > 28 ? "#ffd24a" : "#ff4a5a";
+    ctx.fillText(`${G.fps | 0} FPS · ${Math.round((G.resScale || 1) * 100)}% · ${canvas.width}×${canvas.height} · js ${((P.tick || 0) + (P.render || 0)).toFixed(1)}ms`, rr, T + 64 * u);
+  }
   if (!G.touch) { ctx.font = uiFont(10 * u, 700); ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fillText("ESC pause · M map · E car · Space drift", R, H - 10 * u - sf.b); }
 }
 function wrapLines(ctx, text, max) {
@@ -3138,7 +3186,8 @@ function drawSettings(G) {
   const rows = [
     ["SOUND FX", `${Math.round(G.audio.sfxVol * 100)}%`, (d) => { G.audio.setSfx(clamp(G.audio.sfxVol + d * 0.1, 0, 1)); S.sfx = G.audio.sfxVol; saveSettings(G); }],
     ["MUSIC", `${Math.round(G.audio.musVol * 100)}%`, (d) => { G.audio.setMus(clamp(G.audio.musVol + d * 0.1, 0, 1)); S.mus = G.audio.musVol; saveSettings(G); }],
-    ["GRAPHICS", S.quality === "low" ? "PERFORMANCE" : "QUALITY", () => { S.quality = S.quality === "low" ? "high" : "low"; saveSettings(G); fit(G); }],
+    ["GRAPHICS", S.quality === "low" ? "PERFORMANCE" : S.quality === "med" ? "BALANCED" : "QUALITY", () => { S.quality = S.quality === "low" ? "med" : S.quality === "med" ? "high" : "low"; G.resScale = 1; saveSettings(G); fit(G); applyQuality(G); }],
+    ["FPS COUNTER", S.showFps ? "ON" : "OFF", () => { S.showFps = !S.showFps; saveSettings(G); }],
     ["TIME OF DAY", speeds[S.timeSpeed ?? 1], (d) => { S.timeSpeed = ((S.timeSpeed ?? 1) + (d || 1) + 4) % 4; saveSettings(G); }],
     ["SET CLOCK", timeLabel(G.time).text, (d) => { G.time = (G.time + (d || 1) * 3 + 24) % 24; }],
     ["CAMERA", G.cam.northUp ? "NORTH UP" : "CHASE", () => { G.cam.northUp = !G.cam.northUp; }],

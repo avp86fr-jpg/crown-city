@@ -153,6 +153,42 @@ export function makeGround(W, tex, codeAt) {
       x.fillStyle = "#3fc4e0"; x.fillRect(p.x, p.y, p.w, p.h);
       x.fillStyle = "rgba(255,255,255,0.35)"; x.fillRect(p.x + 3, p.y + 3, p.w - 6, 3);
     }
+    // ---- hand-paint pass (baked once per chunk): weathering, stains, patches, cracks, tufts
+    {
+      let sd = (ix * 73856093) ^ (iy * 19349663); sd = Math.abs(sd) % 233280 || 7;
+      const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+      for (let i = 0; i < 16; i++) {
+        const gx = ox + rn() * CH, gy = oy + rn() * CH, gr = 40 + rn() * 150;
+        const k = rn(); const col = k < 0.55 ? "rgba(25,20,15,0.10)" : k < 0.8 ? "rgba(255,236,200,0.06)" : "rgba(90,110,140,0.07)";
+        const gd = x.createRadialGradient(gx, gy, 0, gx, gy, gr); gd.addColorStop(0, col); gd.addColorStop(1, "rgba(0,0,0,0)");
+        x.fillStyle = gd; x.fillRect(gx - gr, gy - gr, gr * 2, gr * 2);
+      }
+      for (let i = 0; i < 46; i++) {
+        const px = ox + rn() * CH, py = oy + rn() * CH;
+        const v = cellAt((px / CELL) | 0, (py / CELL) | 0);
+        if (v === CODE.road || v === CODE.lot || v === CODE.track) {
+          const t = rn();
+          if (t < 0.35) { // oil stain
+            const rr = 5 + rn() * 9; x.fillStyle = "rgba(10,8,6,0.22)";
+            x.beginPath(); x.ellipse(px, py, rr * 1.6, rr, rn() * 3, 0, TAU); x.fill();
+            x.fillStyle = "rgba(10,8,6,0.18)"; x.beginPath(); x.ellipse(px + rr, py + 2, rr * 0.6, rr * 0.4, 0, 0, TAU); x.fill();
+          } else if (t < 0.55) { // patch repair
+            const pw = 20 + rn() * 50, ph = 14 + rn() * 30; x.fillStyle = rn() < 0.5 ? "rgba(0,0,0,0.13)" : "rgba(255,255,255,0.05)";
+            x.fillRect(px, py, pw, ph); x.strokeStyle = "rgba(0,0,0,0.18)"; x.lineWidth = 1; x.strokeRect(px, py, pw, ph);
+          } else { // crack
+            x.strokeStyle = "rgba(15,12,10,0.38)"; x.lineWidth = 1 + rn();
+            x.beginPath(); x.moveTo(px, py); let cx = px, cy = py;
+            for (let j = 0; j < 5; j++) { cx += (rn() - 0.5) * 26; cy += (rn() - 0.5) * 26; x.lineTo(cx, cy); }
+            x.stroke();
+          }
+        } else if (v === CODE.grass) {
+          const rr = 6 + rn() * 16; x.fillStyle = rn() < 0.5 ? "rgba(30,60,15,0.25)" : "rgba(190,210,110,0.16)";
+          x.beginPath(); x.ellipse(px, py, rr, rr * 0.8, 0, 0, TAU); x.fill();
+        } else if (v === CODE.walk) {
+          if (rn() < 0.5) { x.fillStyle = "rgba(0,0,0,0.12)"; x.beginPath(); x.arc(px, py, 2 + rn() * 3, 0, TAU); x.fill(); } // gum / stains
+        }
+      }
+    }
     // under-building footprint (dark slab, mostly hidden by walls)
     for (const b of W.buildings) {
       if (b.x > rx1 || b.y > ry1 || b.x + b.w < rx0 || b.y + b.h < ry0) continue;
@@ -230,13 +266,13 @@ function drawIntersection(x, W, n, pats) {
   if (n.vs.k === "highway" && n.hs.k === "highway") return;
   for (const dy of [-1, 1]) if (vCont(dy)) {
     const y0 = dy < 0 ? n.y - hh - zw - 6 : n.y + hh + 6;
-    for (let xx = n.x - hw + 6; xx < n.x + hw - 8; xx += 14) x.fillRect(xx, y0, 8, zw);
+    if (n.vs.k !== "highway") for (let xx = n.x - hw + 6; xx < n.x + hw - 8; xx += 14) x.fillRect(xx, y0, 8, zw);
     // stop line
     x.fillRect(dy < 0 ? n.x - hw + 4 : n.x + 2, dy < 0 ? y0 - 10 : y0 + zw + 6, hw - 6, 4);
   }
   for (const dx of [-1, 1]) if (hCont(dx)) {
     const x0 = dx < 0 ? n.x - hw - zw - 6 : n.x + hw + 6;
-    for (let yy = n.y - hh + 6; yy < n.y + hh - 8; yy += 14) x.fillRect(x0, yy, zw, 8);
+    if (n.hs.k !== "highway") for (let yy = n.y - hh + 6; yy < n.y + hh - 8; yy += 14) x.fillRect(x0, yy, zw, 8);
     x.fillRect(dx < 0 ? x0 - 10 : x0 + zw + 6, dx < 0 ? n.y + 2 : n.y - hh + 4, 4, hh - 6);
   }
 }
@@ -353,6 +389,48 @@ export function makeBuildings(W, tex, coreRoofs) {
     const k = h / D;
     return [px + (px - cam.x) * k, py + (py - cam.y) * k];
   }
+  // ---- painted roof bake: texture + per-building tint + grime + sun gradient + AO edge + parapet + details
+  const roofCache = new Map();
+  function roofSprite(b) {
+    let c = roofCache.get(b);
+    if (c) { roofCache.delete(b); roofCache.set(b, c); return c; }
+    const sc = Math.min(1, 256 / Math.max(b.w, b.h));
+    const W = Math.max(8, Math.round(b.w * sc)), H = Math.max(8, Math.round(b.h * sc));
+    c = document.createElement("canvas"); c.width = W; c.height = H;
+    const x = c.getContext("2d");
+    x.scale(sc, sc);
+    const p = pat[b.roof] || pat.gravel;
+    const ts = (b.roof === "terra" || b.roof === "terra2") ? 0.42 : b.roof === "glass" ? 1 : 0.65;
+    p.setTransform(new DOMMatrix([ts, 0, 0, ts, (b.seed % 64), (b.seed % 48)]));
+    x.fillStyle = p; x.fillRect(0, 0, b.w, b.h);
+    const TINTS = ["rgba(255,220,180,0.10)", "rgba(120,140,170,0.12)", "rgba(0,0,0,0.16)", "rgba(255,255,255,0.06)", "rgba(90,60,40,0.12)"];
+    x.fillStyle = TINTS[b.seed % TINTS.length]; x.fillRect(0, 0, b.w, b.h);
+    // grime / water stains: soft painted blotches
+    let sd = b.seed * 9301 + 49297; const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+    const nb = 2 + ((b.w * b.h) / 12000 | 0);
+    for (let i = 0; i < Math.min(nb, 9); i++) {
+      const gx = rn() * b.w, gy = rn() * b.h, gr = 10 + rn() * Math.min(b.w, b.h) * 0.35;
+      const g = x.createRadialGradient(gx, gy, 0, gx, gy, gr);
+      const dark = rn() < 0.7;
+      g.addColorStop(0, dark ? "rgba(20,14,10,0.16)" : "rgba(255,245,225,0.10)"); g.addColorStop(1, "rgba(0,0,0,0)");
+      x.fillStyle = g; x.fillRect(gx - gr, gy - gr, gr * 2, gr * 2);
+    }
+    const gg = x.createLinearGradient(0, 0, b.w, b.h);
+    gg.addColorStop(0, "rgba(255,250,235,0.12)"); gg.addColorStop(1, "rgba(0,0,0,0.18)");
+    x.fillStyle = gg; x.fillRect(0, 0, b.w, b.h);
+    // inner AO along the parapet
+    const ao = Math.min(14, Math.min(b.w, b.h) * 0.12);
+    for (const [gx0, gy0, gx1, gy1, rx, ry, rw, rh] of [[0, 0, 0, ao, 0, 0, b.w, ao], [0, b.h, 0, b.h - ao, 0, b.h - ao, b.w, ao], [0, 0, ao, 0, 0, 0, ao, b.h], [b.w, 0, b.w - ao, 0, b.w - ao, 0, ao, b.h]]) {
+      const g = x.createLinearGradient(gx0, gy0, gx1, gy1); g.addColorStop(0, "rgba(0,0,0,0.28)"); g.addColorStop(1, "rgba(0,0,0,0)");
+      x.fillStyle = g; x.fillRect(rx, ry, rw, rh);
+    }
+    x.strokeStyle = "rgba(0,0,0,0.4)"; x.lineWidth = 3; x.strokeRect(1.5, 1.5, b.w - 3, b.h - 3);
+    x.strokeStyle = "rgba(255,255,255,0.2)"; x.lineWidth = 1.5; x.strokeRect(4, 4, b.w - 8, b.h - 8);
+    roofDetails(x, b, 0, 0, b.w, b.h);
+    roofCache.set(b, c);
+    if (roofCache.size > 160) roofCache.delete(roofCache.keys().next().value);
+    return c;
+  }
   function wall(ctx, a, b, qa, qb, col, hgt, facP, sun, nx, ny) {
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(qb[0], qb[1]); ctx.lineTo(qa[0], qa[1]); ctx.closePath();
     const lit = 0.55 + 0.45 * Math.max(0, nx * sun.x + ny * sun.y);
@@ -371,7 +449,8 @@ export function makeBuildings(W, tex, coreRoofs) {
       const D = 980 / Math.max(0.45, cam.scale);
       const list = [...inView(r, bins)];
       // far-from-camera first so near walls overlap correctly
-      list.sort((p, q) => (Math.hypot(q.x + q.w / 2 - cam.x, q.y + q.h / 2 - cam.y) - Math.hypot(p.x + p.w / 2 - cam.x, p.y + p.h / 2 - cam.y)));
+      for (const b of list) { const dx = b.x + b.w / 2 - cam.x, dy = b.y + b.h / 2 - cam.y; b._dk = dx * dx + dy * dy; }
+      list.sort((p, q) => q._dk - p._dk);
       for (const b of list) {
         const h = b.core ? Math.min(70, (b.hgt || 24) * 1.0) : b.hgt;
         const x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
@@ -396,23 +475,8 @@ export function makeBuildings(W, tex, coreRoofs) {
             ctx.fillStyle = "rgba(0,0,0,0.22)";
             for (let i = 4; i < rw - 2; i += 6) ctx.fillRect(rx + i, ry, 2, rh);
           } else {
-            const p = pat[b.roof] || pat.gravel;
-            const k = 1 + h / D;
-            const ts = (b.roof === "terra" || b.roof === "terra2") ? 0.42 : b.roof === "glass" ? 1 : 0.65;
-            p.setTransform(new DOMMatrix([k * ts, 0, 0, k * ts, cam.x * (1 - k) + (b.seed % 64), cam.y * (1 - k) + (b.seed % 48)]));
-            ctx.fillStyle = p; ctx.fillRect(rx, ry, rw, rh);
-            // per-building tint + soft sun gradient so neighbouring roofs never read as one sheet
-            const TINTS = ["rgba(255,220,180,0.10)", "rgba(120,140,170,0.12)", "rgba(0,0,0,0.16)", "rgba(255,255,255,0.06)", "rgba(90,60,40,0.12)"];
-            ctx.fillStyle = TINTS[b.seed % TINTS.length]; ctx.fillRect(rx, ry, rw, rh);
-            const gg = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh);
-            gg.addColorStop(0, "rgba(255,255,255,0.08)"); gg.addColorStop(1, "rgba(0,0,0,0.14)");
-            ctx.fillStyle = gg; ctx.fillRect(rx, ry, rw, rh);
-          }
-          // parapet + roof details
-          if (b.kind !== "container") {
-            ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 3; ctx.strokeRect(rx + 1.5, ry + 1.5, rw - 3, rh - 3);
-            ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1.5; ctx.strokeRect(rx + 4, ry + 4, rw - 8, rh - 8);
-            if (!opts.low) roofDetails(ctx, b, rx, ry, rw, rh);
+            // baked, hand-painted roof sprite (paid once per building, then one drawImage)
+            ctx.drawImage(roofSprite(b), rx, ry, rw, rh);
           }
         }
         // ambient occlusion at the base of tall buildings
