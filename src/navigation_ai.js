@@ -1,5 +1,5 @@
 /* Small, local steering decisions. Physics still performs every movement. */
-import {bodySize,worldBodyHit} from './collision.js';
+import {bodySize,worldBodyHit,circleBody} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const water=(G,x,y)=>['water','canal'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x,y));
@@ -61,30 +61,37 @@ export function safeCrossing(G,p){
  // moving vehicles are still checked on every decision.
  let geometry=p._crossGeometry;
  if(!geometry||geometry.x!==p.x||geometry.y!==p.y||geometry.hx!==hx||geometry.hy!==hy||geometry.graph!==G.graph||geometry.surface!==G.surfaceAt){
-  let invalid=false;
+  let invalid=false,exitDistance=0;
   if(G.surfaceAt){
    let road=false,exit=false;
    for(let step=12;step<=600;step+=12){const s=G.surfaceAt(p.x+hx*step,p.y+hy*step);
     if(s==='build'||s==='water'||s==='canal')break;
-    if(s==='road')road=true;else if(road&&CROSS_SAFE.has(s)){exit=true;break;}
+    if(s==='road')road=true;else if(road&&CROSS_SAFE.has(s)){exit=true;exitDistance=step;break;}
    }
    invalid=!exit;
   }
   if(!invalid){let best=Infinity;for(const n of G.graph.nodes){const dx=n.x-p.x,dy=n.y-p.y,d=dx*dx+dy*dy;if(d<best&&Math.abs(dx)<n.hw+90&&Math.abs(dy)<n.hh+90){junction=n;best=d;}}}
-  geometry=p._crossGeometry={x:p.x,y:p.y,hx,hy,graph:G.graph,surface:G.surfaceAt,junction,invalid};
+  geometry=p._crossGeometry={x:p.x,y:p.y,hx,hy,graph:G.graph,surface:G.surfaceAt,junction,invalid,exitDistance};
  }
  if(geometry.invalid){p._crossRouteInvalid=true;return false;}
  junction=geometry.junction;
  if(!junction)return false;
- const crossingTime=Math.min(5,((Math.abs(hx)>0?junction.hw:junction.hh)*2+30)/Math.max(36,(p.walk||32)*1.4));
+ const walkSpeed=Math.max(36,(p.walk||32)*1.4);
+ const crossingTime=((geometry.exitDistance||((Math.abs(hx)>0?junction.hw:junction.hh)*2))+12)/walkSpeed;
  if(junction.sig){const phase=((G.ticks/60)%16+16)%16,ns=Math.abs(hy)>Math.abs(hx);if(ns?phase>6-crossingTime:phase<8||phase>14-crossingTime)return false;}
- // Refuse a crossing into an actual moving vehicle even during a green.
- for(const v of G.vehicles){
-  if(v.dead||v.def?.boat||v.altitude>10)continue;
-  const speed=Math.hypot(v.vx||0,v.vy||0);if(speed<12)continue;
-  const dx=p.x-v.x,dy=p.y-v.y,t=clamp((dx*v.vx+dy*v.vy)/(speed*speed),0,2);
-  if(Math.hypot(v.x+v.vx*t-p.x-hx*35,v.y+v.vy*t-p.y-hy*35)<bodySize(v).l+22)return false;
- }p._crossAllowed=true;return true;
+ // Test relative motion across the entire crossing, including its far lane.
+ // The former curb-only probe let people step into a car arriving mid-crossing.
+ let blocked=false;
+ const inspect=v=>{
+  if(blocked||v.dead||v.def?.boat||v.altitude>10)return;
+  const vx=v.vx||0,vy=v.vy||0;if(vx*vx+vy*vy<144)return;
+  const dx=p.x-v.x,dy=p.y-v.y,rx=hx*walkSpeed-vx,ry=hy*walkSpeed-vy,den=rx*rx+ry*ry;
+  const t=clamp(-(dx*rx+dy*ry)/Math.max(1,den),0,crossingTime);
+  if(circleBody(v,p.x+rx*t,p.y+ry*t,14))blocked=true;
+ };
+ if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(p.x+hx*walkSpeed*crossingTime/2,p.y+hy*walkSpeed*crossingTime/2,Math.min(1500,700+walkSpeed*crossingTime/2),inspect);
+ else for(const v of G.vehicles)inspect(v);
+ if(blocked)return false;p._crossAllowed=true;return true;
 }
 
 export function escapeHeading(G,p,source){

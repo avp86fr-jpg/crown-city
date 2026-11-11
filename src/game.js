@@ -1,4 +1,8 @@
 import {stepPedestrian} from './pedestrian_motion.js';
+import {drawMapPlaces,placeButtons} from './map_places.js';
+import {drawStreetGateways} from './world_streets.js';
+import {drawDropMission,dropReady} from './airdrop.js';
+import {drawCircuitActivity,tickCircuit,startCircuit,nearCircuit,circuitHint} from './motorsport.js';
 import {CITY_HUBS,drawCityHubs} from './world_hubs.js';
 import {drawDialogue,openingScene} from './dialogue.js';
 import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,drawCasino,drawCasinoWorld} from './casino.js';
@@ -181,6 +185,7 @@ export async function boot() {
     director: directorState(),
   };
   G.makeVeh = makeVeh;
+  G.circuitHooks={tickDrive,enterVeh,save};
   G.ground = makeGround(world, tex, codeAt);
   G.bld = makeBuildings(world, tex, layers.roofs);
   G.light = createLighting();
@@ -630,13 +635,15 @@ function setupTouch(G) {
     if (inPlay) {
       const near = !drive && G.player && nearestVeh(G, G.player.x, G.player.y, 104);
       touch.classList.toggle("used", (G.walked || 0) > 140 || (G.drove || 0) > 100);
-      const casino=!drive&&nearCasino(G);
-      const lbl = casino?'PLAY':G.contactNear&&!drive ? (G.contactTalk?.id===G.contactNear.id&&G.contactTalk.repeat?'REPLAY':'TALK') : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
+      const casino=!drive&&nearCasino(G),circuit=nearCircuit(G);
+      const lbl = circuit?'TRIAL':casino?'PLAY':G.contactNear&&!drive ? (G.contactTalk?.id===G.contactNear.id&&G.contactTalk.repeat?'REPLAY':'TALK') : !drive&&G.transit?.near ? "RAIL" : nearbyInteraction(G) ? "TAKE" : drive ? (G.player.def.aircraft&&!canExitAircraft(G.player)?"LAND":"EXIT") : near ? (near.def.aircraft ? "FLY" : near.def.boat ? "BOAT" : near.def.bike ? "BIKE" : "CAR") : "CAR";
       if (enterL.textContent !== lbl) {enterL.textContent=lbl;enterIcon?.setAttribute('d',icons[lbl]||icons.CAR);}
-      enterB.classList.toggle("ready", (!!casino || !!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
-      enterB.style.opacity = drive || casino || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
+      enterB.classList.toggle("ready", (!!casino || circuit || !!near || !!G.contactNear || !!G.transit?.near || !!nearbyInteraction(G)) && !G.jack);
+      enterB.style.opacity = drive || casino || circuit || near || G.contactNear || G.transit?.near || nearbyInteraction(G) ? 1 : 0.45;
       boostB.classList.toggle("off", !(drive && (G.player.def.sprite === "nyx" || G.player.def.aircraft)));
-      const flying=drive&&G.player.def.aircraft;
+      const flying=drive&&G.player.def.aircraft;touch.classList.toggle("flying",!!flying);
+      const fireLabel=document.getElementById('tFire')?.querySelector('span:last-child');if(fireLabel)fireLabel.textContent=dropReady(G)?'DROP':'AIM / FIRE';
+      document.getElementById('tFire')?.classList.toggle('cargo',!!dropReady(G));
       for(const [id,text] of [["tBoost",flying?"UP":"BOOST"],["tBrake",flying?"DOWN":drive&&G.player.brakeReverse?"REVERSE":"BRAKE"],["tHand",flying?"LAND":"DRIFT"]]){const el=document.getElementById(id),label=el?.querySelector("span:last-child");if(label&&label.textContent!==text)label.textContent=text;}
     }
   };
@@ -1197,6 +1204,7 @@ function tickPlay(G, dt) {
   if (G.input.crewP && nearService(G)) { G.scene='garage'; G.menuSel=0; return; }
   if (G.input.radioP && G.player.type === "veh") { G.radioName = G.audio.nextStation(); G.radioT = 2.5; }
   G.ticks++;
+  if(G.action.contract?.id!=='airdrop')G.parcel=null;
   tickAction(G,dt,{moveFoot});
   G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);
   if(G.scene !== 'play') return;
@@ -1205,6 +1213,7 @@ function tickPlay(G, dt) {
   tickWeather(G, dt);
   tickTransit(G,dt);
   tickCasino(G,dt,CASINO_HOOKS);
+  if(G.input.enterP&&nearCircuit(G)){if(startCircuit(G,G.circuitHooks)){G.input.enterP=false;return;}}
   if(G.input.enterP&&interactCasino(G)){G.releaseControls?.();G.input.enterP=false;return;}
   if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
   if(G.input.enterP&&interactTransit(G)){G.input.enterP=false;return;}
@@ -1331,6 +1340,7 @@ function headingVec(rot) { return { x: Math.sin(rot), y: -Math.cos(rot) }; }
 function rightVec(rot) { return { x: Math.cos(rot), y: Math.sin(rot) }; }
 
 function tickPlayer(G, dt) {
+  if(G.circuitSession?.running&&G.circuitSession.countdown>0){G.player.vx=G.player.vy=0;return;}
   if(G.player.type==='foot' && G.action?.dodgeT>0) return;
   if (G.player.type === "veh") {
     const v = G.player, I = G.input;
@@ -1721,7 +1731,7 @@ function finishEnter(G, v) {
     if (G.audio.yelp) G.audio.yelp();
   }
   v.parked = false; v.loose = false; v.ambient = false; v.keep = true;
-  v.driver = "player";
+  v.driver = "player";v.circuitRacer=false;v.ai=false;
   v.traffic = false; v.tr = null;
   G.player = v;
   G.audio.enter();
@@ -1862,6 +1872,7 @@ function busted(G) { endLife(G, "BUSTED", "Released at Metro Police. Your crew i
 // Recovery changes actors, not campaign receipts or the persistent city. Remove
 // chase ownership before clearing arrays so no detached unit can resume its AI.
 function clearRecoveryState(G) {
+  G.circuitSession=null;G.parcel=null;
   cancelTransit(G);
   G.recoverySerial=(G.recoverySerial||0)+1;
   G.releaseControls?.(); resetInput(G.input);
@@ -2077,6 +2088,7 @@ function tickCops(G, dt) {
 }
 
 function tickVehicles(G, dt) {
+  tickCircuit(G,dt,G.circuitHooks);
   const P = G.player;
   for (const v of G.vehicles) {
     if(v.doorT>0)v.doorT=Math.max(0,v.doorT-dt);
@@ -2873,7 +2885,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawCityHubs(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
+  drawStreetGateways(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -3300,7 +3312,11 @@ function drawChar(G,a){
  if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
  if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
  if(a.dive>0){ctx.rotate((a.rot||0)*.15);ctx.scale(1.12,.45);}
- if(a===G.player&&G.action?.dodgeT>0){ctx.rotate(Math.sin((1-G.action.dodgeT/.34)*Math.PI)*.35);ctx.scale(1,.67);}
+ if(a===G.player&&G.action?.dodgeT>0){
+  const k=1-G.action.dodgeT/.48,tuck=Math.sin(k*Math.PI),side=Math.sin(G.action.dodgeRot-G.cam.rot)>=0?1:-1;
+  ctx.translate(0,-17);if(!G.settings.reducedMotion&&!G.action.dodgeBlocked)ctx.rotate(side*Math.PI*2*(k*k*(3-2*k)));
+  ctx.scale(1-tuck*.18,1-tuck*.45);ctx.translate(0,17);
+ }
  const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';
  ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
@@ -3417,6 +3433,7 @@ function drawMinimap(G, x, y, size, span) {
     ctx.stroke();
   }
   drawTransitMap(G,to,{x,y,size});
+  drawMapPlaces(G,to,true);
   for(const pad of G.world.expansion?.helipads||[]){if(Math.abs(pad.x-P.x)>span/2+50||Math.abs(pad.y-P.y)>span/2+50)continue;const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for (const c of G.cops) { const p = to(c.x, c.y); ctx.fillStyle = ((G.ticks / 8) | 0) % 2 ? "#ff3048" : "#3a6bff"; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5 * u, 0, TAU); ctx.fill(); }
   const at = currentObjectivePos(G);
@@ -3616,12 +3633,13 @@ function drawHUD(G) {
   drawExpansionHUD(G);drawFlightHUD(G);
 }
 function drawFlightHUD(G){
-  const hint=aviationHint(G);if(!hint)return;
+  if(G.touch&&G.action.messageT>0)return;
+  const circuit=circuitHint(G);if(G.touch&&circuit)return;const hint=circuit?circuit+'\n'+(G.circuitSession?.running?'Eight sectors in order. Runoff invalidates the lap.':'Technical circuit / five opponents / saved personal best'):aviationHint(G);if(!hint)return;
   const c=G.ctx,d=G.touch?G.dpr:G.ui,W=G.canvas.width,H=G.canvas.height;
   const w=Math.min(W-28*d,(G.touch?360:570)*d),x=(W-w)/2;
   const y=G.touch?(H>W?H*.32:H-145*d):H-190*d;
   c.save();c.setTransform(1,0,0,1,0,0);uiPanel(c,x,y,w,53*d,7*d,{accent:'#a0d8d2'});
-  const [status,controls]=hint.split('\n');c.textAlign='center';c.fillStyle=G.player.stall?'#ffb093':'#e9d4aa';c.font=uiFont(11*d,800);c.fillText(status,W/2,y+18*d,w-16*d);
+  const [status,originalControls]=hint.split('\n');const controls=dropReady(G)?(G.touch?'DROP':'K: DROP')+' / 45–220 ALT / blue reticle predicts impact':originalControls;c.textAlign='center';c.fillStyle=G.player.stall?'#ffb093':'#e9d4aa';c.font=uiFont(11*d,800);c.fillText(status,W/2,y+18*d,w-16*d);
   c.fillStyle='#b8d4cf';c.font=uiFont((G.touch?9:11)*d,600);c.fillText(controls,W/2,y+37*d,w-16*d);c.restore();
 }
 function wrapLines(ctx, text, max,limit=3) {
@@ -3678,7 +3696,7 @@ function drawMap(G) {
   const W = canvas.width, H = canvas.height, u = G.ui, M = G.minimap;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "rgba(4,2,10,0.9)"; ctx.fillRect(0, 0, W, H);
-  const k = Math.min((W - 40 * u) / M.c.width, (H - 80 * u) / M.c.height);
+  const k = Math.min((W - 40 * u) / M.c.width, (H - 112 * u) / M.c.height);
   const mw = M.c.width * k, mh = M.c.height * k, mx = W / 2 - mw / 2, my = 52 * u;
   G.mapView = { x: mx, y: my, w: mw, h: mh, k };
   ctx.drawImage(M.c, mx, my, mw, mh);
@@ -3689,7 +3707,7 @@ function drawMap(G) {
   for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();ctx.font=uiFont(7*u,800);ctx.textAlign='left';ctx.fillText(contact.name,p[0]+5*u,p[1]+10*u);}
   for(const s of G.services||[]){const p=to(s.x,s.y);ctx.fillStyle='#83d7d0';ctx.fillRect(p[0]-3*u,p[1]-3*u,6*u,6*u);}
   ctx.textAlign = "center"; ctx.font = uiFont(Math.max(9, 11 * u * Math.min(1, k * 6)), 900);
-  const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["SUNSET HILLS", 3000, 8000], ["CROWN AIRFIELD", 8300, 7300]]];
+  const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["SUNSET HILLS", 5000, 8500], ["CROWN AIRFIELD", 8300, 7300]]];
   for (const [n, x, y] of labels.concat((G.world.expansion?.landmarks||[]).filter(p=>p.name!=="CROWN AIRFIELD").map(p=>[p.name,p.x,p.y]))) { const p = to(x, y); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(n, p[0], p[1]); ctx.fillStyle = "rgba(255,240,200,0.92)"; ctx.fillText(n, p[0], p[1]); }
   if (G.gpsPts) { ctx.strokeStyle = G.waypoint ? "#29d7ff" : "#ffd65a"; ctx.lineWidth = 2.5 * u; ctx.beginPath(); const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); } ctx.stroke(); }
   const at = currentObjectivePos(G);
@@ -3700,7 +3718,7 @@ function drawMap(G) {
     ctx.beginPath(); ctx.arc(wp[0], wp[1], 9 * u, 0, TAU); ctx.stroke();
   }
   ctx.fillStyle = '#c5dbe6'; ctx.font = uiFont(11 * u, 800); ctx.textAlign = 'center';
-  ctx.fillText('MAP: WAYPOINT · GOLD: JOB · M/R: RAIL · PINK: YOU', W / 2, Math.min(H - 12 * u, my + mh + 22 * u),W-24*u);
+  drawMapPlaces(G,to);placeButtons(G,uiButton);
   uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = G.action?.contract?streetJobTarget(G,G.action.contract):null; G.gps = null; updateGPS(G); }, {});
   const pp = to(G.player.x, G.player.y);
   ctx.fillStyle = "#ff2d9b"; ctx.beginPath(); ctx.arc(pp[0], pp[1], 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();

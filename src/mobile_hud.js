@@ -1,3 +1,4 @@
+import {circuitHint} from './motorsport.js';
 import { WEAPONS, CONTRACTS } from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px system-ui, sans-serif`;
 const wrapped=new Map();
@@ -17,7 +18,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  panel(R-cashW,T,cashW,44*d);text(Math.round(G.chips).toLocaleString('en-US')+'  CHIPS',R-cashW+9*d,T+17*d,12,'#e5c486',800);
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');
  const mx=portrait?L+mm+10*d:Math.max(L+mm+18*d,W*.28),mw=portrait?R-mx:Math.min(W*.42,340*d),my=portrait?T+52*d:T;
- const hint=G.expansionHint||G.hint||'Explore Crown City. The crew always has work.';
+ const hint=circuitHint(G)||G.expansionHint||G.hint||'Explore Crown City. The crew always has work.';
  c.font=font(11*d,650);const rows=wrap(c,hint.replace(/\(E\)/g,'').replace(/press E/gi,'tap TAKE'),mw-20*d,5);
  panel(mx,my,mw,(26+rows.length*15)*d,'#ddba7c');text(missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
  rows.forEach((line,i)=>text(line,mx+10*d,my+(31+i*15)*d,11));

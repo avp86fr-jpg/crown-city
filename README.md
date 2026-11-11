@@ -14,6 +14,8 @@ The published game is static and needs no runtime packages. For development, run
 | Sprint / Nyx boost | Shift | RUN / BOOST |
 | Interact / enter / exit / station | E | CAR / EXIT / TAKE / TALK / RAIL |
 | Shoot / aim | K / J / click to aim | Hold AIM / FIRE; drag to aim independently |
+| Airplane cargo release (Paper Wings) | K / J | DROP |
+| Circuit time trial (at pit desk) | E | TRIAL |
 | Change weapon | Q | WEAPON |
 | Reload | X | RELOAD |
 | Dodge on foot / drift in a vehicle | Space | ROLL / DRIFT |
@@ -30,6 +32,10 @@ Weapons have distinct magazines, cadence, spread and damage. Moving and sustaine
 ## Campaign and crew work
 
 Six connected jobs follow Gold Mage's forged debt ledger: intercept and disable the van, earn Fire's trust in a two-lap race, obtain Neural's blackout, scout the Palace on foot, transfer the archive under pressure and escape by boat/Nyx. Protecting the ledger or selling a decoy changes the payout and ending. Quiet/loud entry changes pursuit pressure; Neural's deferred fee is deducted once from the vault cut.
+
+Two additional crew contracts extend the evidence story: **Paper Wings** requires three manual airplane drops and a runway return; **The Eighth Sector** requires a clean timed lap and a telemetry upload. **Bugatti / Crown Circuit** occupies the southwest edge, with five opponents, pits, runoff, grandstands and repeatable time trials. Visit the pit desk for a loaner; personal bests save locally. The map has direct routes to the casino, circuit and airport.
+
+[Road, circuit and AI review](docs/coherence-and-circuit.md) records validation and the limits of mobile performance testing.
 
 C opens repeatable crew contracts: Neural's timed courier run, Mask's black-box pickup and escape, Fire's drift challenge, Hunter's witness pickup/escape, Vera's three dead drops plus evidence upload, and Low Tide: a dock pickup, stationary offshore boat upload and on-foot return. The latter jobs require stopped vehicles or quiet on-foot holds; route markers and progress survive saves and campaign advancement. Contracts pay chips and reputation. CUSTOMS, RESPRAY and MED / AMMO markers offer repairs, three stages of handling/power upgrades, heat-clearing resprays and health/ammunition supplies. Break police line of sight before using a workshop while wanted. Cyan map markers show services; opening a workshop remotely can mark the nearest one in blue.
 

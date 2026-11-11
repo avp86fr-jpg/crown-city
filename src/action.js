@@ -10,13 +10,14 @@ export const WEAPONS=[
 ];
 export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
+ circuitBest:number(s.circuitBest,0,0,240),circuitLaps:Math.floor(number(s.circuitLaps,0,0,1e6)),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
  completedJobs:[...new Set((Array.isArray(s.completedJobs)?s.completedJobs:[]).filter(id=>CONTRACTS.some(c=>c.id===id)))],
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork','airdrop','circuit'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {return {weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {return {circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}
@@ -70,6 +71,7 @@ export const CONTRACTS=[
 export function startContract(G,id) {
  const A=G.action;if(A.contract)return false;
  const c=CONTRACTS.find(c=>c.id===id);if(!c)return false;
+ G.circuitSession=null;G.parcel=null;
  A.contract={id,t:c.time,progress:0,stage:0};
  message(G,c.contact,id==='courier'?"The drive is at Hunter's garage. Pick it up. The clock starts when you do.":id==='ghost'?'Black box is marked blue. Pick it up, then make the city forget you.':id==='drift'?'Show me a long slide, not an expensive crash.':c.text);
  if(id==='courier'){const at=G.meta.spawns.garage;G.waypoint={x:at[0],y:at[1]};}
@@ -90,11 +92,14 @@ export function tickAction(G,dt,hooks) {
  A.cover=false;
  if(P.type==='foot'&&(P.speed||0)<35){for(const [x,y] of [[30,0],[-30,0],[0,30],[0,-30]])if(G.solidAt(P.x+x,P.y+y)){A.cover=true;break;}}
  if(I.dodgeP&&P.type==='foot'&&A.stamina>=24&&A.dodgeCool===0){
-  A.stamina-=24;A.dodgeT=.34;A.dodgeCool=.75;A.dodgeRot=Math.hypot(I.x,I.y)>.1?Math.atan2(I.x,I.y)+G.cam.rot:P.rot;
+  A.stamina-=24;A.dodgeT=.48;A.dodgeCool=.9;A.dodgeBlocked=false;A.dodgeRot=Math.hypot(I.x,I.y)>.1?Math.atan2(I.x,I.y)+G.cam.rot:P.rot;
   G.audio?.dodge?.();
  }
  if(A.dodgeT>0&&P.type==='foot'){
-  A.dodgeT=Math.max(0,A.dodgeT-dt);hooks.moveFoot(G,P,Math.sin(A.dodgeRot)*390*dt,-Math.cos(A.dodgeRot)*390*dt);P.rot=A.dodgeRot;P.dist+=390*dt;
+  const phase=1-A.dodgeT/.48,velocity=120+240*Math.sin(Math.PI*phase),x=P.x,y=P.y;
+  A.dodgeT=Math.max(0,A.dodgeT-dt);hooks.moveFoot(G,P,Math.sin(A.dodgeRot)*velocity*dt,-Math.cos(A.dodgeRot)*velocity*dt);P.rot=A.dodgeRot;
+  const travelled=Math.hypot(P.x-x,P.y-y);P.dist=(P.dist||0)+travelled;P.speed=travelled/Math.max(.001,dt);
+  if(travelled<velocity*dt*.15&&phase<.72){A.dodgeBlocked=true;A.dodgeT=Math.min(A.dodgeT,.12);}
  }
  A.messageT=Math.max(0,A.messageT-dt);
  if(A.messageT===0&&A.messages.length){const next=A.messages.shift();message(G,next.name,next.text,next.color);}
