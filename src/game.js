@@ -2032,7 +2032,7 @@ function viewForLife(cam) {
 function worldZoom(G) {
   const base = Math.sqrt(G.canvas.width * G.canvas.height) / Math.sqrt(1280 * 720);
   const small = G.cssW && Math.min(G.cssW, G.cssH) < 520 ? 1.12 : 1;
-  return base * small;
+  return base * small * (G.zoomMul || 1);
 }
 function viewRect(G) {
   const S = G.cam.scale * worldZoom(G);
