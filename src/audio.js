@@ -98,7 +98,8 @@ export function createAudio() {
   A.setMaster = (v) => { A.masterVol = v; if (master) master.gain.value = v; };
   A.ui = () => { tone(880, 0.05, "triangle", 0.05); tone(1320, 0.06, "triangle", 0.035, 0, sfx, ctx && now() + 0.035); };
   A.click = () => tone(1400, 0.025, "square", 0.025);
-  A.type = () => {if(!lite)effects?.('ui',.025);};
+  let lastType=0;
+  A.type=()=>{if(ctx&&now()-lastType>.12){lastType=now();effects?.('ui',.012);}};
   A.reload = () => effects?.('reload',.34);
   A.transit = kind => effects?.(kind,.24);
   A.wildlife = (kind,vol=.12,pan=0) => effects?.(kind,vol,pan);
@@ -210,7 +211,7 @@ export function createAudio() {
   }
   function schedule() {
     if (!ctx || ctx.state !== "running") return;
-    if(A.recordedMusic||document.hidden){seqT=now()+.1;return;}
+    if(A.recordedMusic||A.musVol<=.001||document.hidden){seqT=now()+.1;return;}
     const S = STYLES[style];
     const spb = 60 / S.bpm / 4; // 16th
     while (seqT < now() + 0.25) {
@@ -320,15 +321,16 @@ export function createAudio() {
       const dop = Math.max(0.85, Math.min(1.15, 1 - rel / 1200));
       set(S.o.frequency, (620 + 520 * wail) * dop, 0.03);
       set(S.g.gain, 0.09 * Math.pow(1 - bd / 1400, 1.6), 0.08);
-      if (S.p.pan) set(S.p.pan, Math.max(-0.9, Math.min(0.9, (best.x - P.x) / 600)), 0.1);
+      if(S.p.pan){const rot=G.cam.rot||0,screenX=(best.x-P.x)*Math.cos(rot)+(best.y-P.y)*Math.sin(rot);set(S.p.pan,Math.max(-.9,Math.min(.9,screenX/600)),.1);}
     } else set(S.g.gain, 0, 0.2);
     // ambience by district / place
     const dist = (G.district || "").toUpperCase();
     const strip = P.x > 1650 && P.x < 2300 && P.y > 800 && P.y < 3800 || dist.includes("METAWIN");
     const water = G.surfaceAt && (["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y - 260)) || ["water", "pier", "canal"].includes(G.surfaceAt(P.x, P.y + 260)) || P.y < 1000);
     const night = G.time > 20 || G.time < 6;
-    const busy = Math.min(1, G.vehicles.filter((v) => v.traffic && Math.abs(v.x - P.x) < 700 && Math.abs(v.y - P.y) < 700).length / 8);
-    set(L.traffic.g.gain, play ? 0.10 + 0.2 * busy : 0.05, 0.6);
+    let nearbyTraffic=0;if(play)for(const v of G.vehicles)if(v.traffic&&!v.dead&&Math.abs(v.x-P.x)<700&&Math.abs(v.y-P.y)<700)nearbyTraffic++;
+    const busy=Math.min(1,nearbyTraffic/8);
+    set(L.traffic.g.gain, play ? .025+.16*busy : 0, 0.6);
     set(L.crowd.g.gain, play ? (strip ? 0.11 : dist.includes("MIDTOWN") || dist.includes("DOWNTOWN") ? 0.05 : 0.015) * (night && strip ? 1.3 : 1) : 0, 0.8);
     set(L.crowd.f.frequency, 600 + 300 * Math.sin(now() * 0.7), 0.4);
     set(L.surf.g.gain, play && water ? 0.16 + 0.08 * Math.sin(now() * 0.5) : 0, 0.8);

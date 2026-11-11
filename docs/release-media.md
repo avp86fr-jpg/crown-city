@@ -8,7 +8,7 @@ The About page uses current game captures, the existing illustrated key art and 
 
 `tools/capture-final-trailer.cjs` starts the actual game in Chromium, stages starting locations, vehicles, weather and wanted levels, then advances real game controls, physics, AI and rendering in 1/60-second steps. The film presents two steps per frame. Cameras and typography are directed for the edit; most gameplay HUD elements are hidden. This offline capture is not a device frame-rate measurement. `--preview` captures representative stills; `--only=name,...` replaces individual shots. `tools/build-final-trailer.py` assembles the edit, sound mix, poster and WebP gallery exports.
 
-All seven gallery images and the story image are from the current capture. The poster is a gameplay frame. The hero/social cover remains separate promotional illustration: Chaos beside one red Riot V8 with ivory stripes. Gold Mage uses the exact supplied JPEG, not a regenerated portrait. See [character-references.md](character-references.md). Anton is locally hosted under its included SIL Open Font License.
+The seven gallery images are from the Night Dividend gameplay capture. The story image was refreshed for Return to Crown and shows the current dialogue presentation; the existing trailer retains its earlier story shot. The poster is a gameplay frame. The hero/social cover remains separate promotional illustration: Chaos beside one red Riot V8 with ivory stripes. Gold Mage uses the exact supplied JPEG, not a regenerated portrait. See [character-references.md](character-references.md). Anton is locally hosted under its included SIL Open Font License.
 
 ## Music and sound
 

@@ -12,7 +12,7 @@ const CONDITIONS = Object.freeze({
   ghost: Object.freeze({ id: 'ghost', title: 'Leave no face', description: 'Keep your weapon holstered and avoid Palace security detection.', reward: 250 }),
 });
 const JOBS = [
-  ['COLD WALLET', 'HUNTER', 'A stolen ledger can buy the block a future. Get the van open and bring the evidence home.', 'The convoy is the target. The pavement belongs to everybody.', ['neighbors', 'measured']],
+  ['COLD WALLET', 'HUNTER', 'The convoy carries the key to the Palace debt archive. Get the van open and bring that key home.', 'The convoy is the target. The pavement belongs to everybody.', ['neighbors', 'measured']],
   ['BURNING BRIDGES', 'FIRE', 'Win two laps and earn Fire’s Palace service route. Every numbered gate counts.', 'Brake before the bend. You cannot spend a wrecked engine.', ['neighbors', 'wheels']],
   ['DEAD AIR', 'NEURAL', 'A Metro scrambler can hide the archive transfer. Settle my fee, lift the unit, and lose your tail.', 'Take the hardware. Leave the precinct’s people standing.', ['neighbors', 'wheels']],
   ['THE INSIDE LINE', 'MASK', 'Read the south doors, learn the lot, and trace the water exit. A good escape starts before the alarm.', 'Walk like you belong here. Running past a uniform invites a second look.', ['neighbors', 'ghost']],
@@ -27,9 +27,9 @@ Object.freeze(JOBS);
 const GUIDANCE = [
   { enter_car: ['HUNTER', 'Riot is on the lot. Get close and enter; save your bullets for the van.'],
     hit_van: ['HUNTER', 'Put the convoy engine out. Four clean sidearm hits should do it. Keep the sidewalk clear.'],
-    grab: ['HUNTER', 'Engine is done. Stop beside the van, then interact to take the sealed plate.'],
+    grab: ['HUNTER', 'Engine is done. Stop beside the van, then interact to take the sealed archive key.'],
     lose_heat: ['MASK', 'Turn out of their sight. A building between you and Metro is worth more than another mile.'],
-    stash: ['HUNTER', 'Bring the ledger into the garage. Those names need to reach somebody who will listen.'] },
+    stash: ['HUNTER', 'Bring the key into the garage. Next we find a way into the Palace.'] },
   { to_track: ['FIRE', 'Bring your wheels to the loop. The lights give you three seconds to get straight.'],
     race: ['FIRE', 'Two laps, every gold gate. Ease off before the corner and drive out of it.'] },
   { pay: ['NEURAL', 'Come to the loft. If you took credit, the six hundred comes from the archive cut.'],

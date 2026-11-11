@@ -197,9 +197,9 @@ export function missionFlow(id, flags) {
         objectives: [
           { id: "enter_car", kind: "enter", near: "garage", hint: "Get in the Riot V8 on the garage lot. (E)" },
           { id: "hit_van", kind: "intercept", at: "van", r: 170, hint: "Disable the convoy van. Ram it or shoot its engine." },
-          { id: "grab", kind: "collect", at: "van", r: 80, hint: "Stop close to the van and press E to take the crate." },
+          { id: "grab", kind: "collect", at: "van", r: 80, hint: "Stop close to the van and press E to take the sealed archive key." },
           { id: "lose_heat", kind: "loseWanted", hint: "Lose the Metro heat." },
-          { id: "stash", kind: "goto", at: "garage", r: 90, hint: "Take the crate back to Hunter's garage." },
+          { id: "stash", kind: "goto", at: "garage", r: 90, hint: "Take the archive key back to Hunter's garage." },
         ],
         winVN: () => (flags.stash === "flip" ? "m1_win_flip" : "m1_win_safe"),
         onStart: { wanted: 0, spawnVan: true, unlock: ["riot"] },

@@ -1,5 +1,7 @@
 # Mobile, collisions and Free Ride
 
+Historical release notes. The separate mobile canvas described below has since been replaced; see [current mobile and AI notes](mobile-ai-pass.md).
+
 This release keeps the illustrated overhead view and fixes the reported Redmi Note rendering load, altered promotional Gold Mage, doubled-car cover composition and inconsistent impacts.
 
 ## Rendering and presentation

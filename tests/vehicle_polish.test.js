@@ -31,6 +31,15 @@ test('boats brake under forward mobile stick input, never produce road tire skid
  Object.assign(boat,{x:420,y:500,vx:70,vy:-130});for(let i=0;i<220;i++){W.ticks++;T.tickDrive(W,boat,{x:1,y:1,hand:true},1/60,true);assert.equal(worldBodyHit(W,boat,boat.x,boat.y),null);}
  assert.equal(boat.drifting,false);assert.equal(W.skids.length,0);assert.ok(!W.particles.some(p=>p.kind==='dust'));
 });
+test('holding the brake stops cars and boats without engaging reverse; the reverse stick still works',()=>{
+ for(const kind of ['riot','wake']){
+  const W=scene(()=>kind==='wake'?'water':'road'),v=T.makeVeh(kind,500,1500,0,{vx:0,vy:-100,parked:false});W.player=v;W.vehicles=[v];
+  for(let i=0;i<300;i++){W.ticks++;T.tickDrive(W,v,{x:0,y:1,brake:true},1/60,true);assert.ok(v.vy<=.001,kind+' reversed while braking');}
+  assert.ok(Math.hypot(v.vx,v.vy)<.01);const y=v.y;
+  for(let i=0;i<120;i++){W.ticks++;T.tickDrive(W,v,{x:0,y:-1},1/60,true);}
+  assert.ok(v.y>y+5,kind+' cannot reverse');
+ }
+});
 test('destroyed wrecks cannot coast through a wall and explosions apply only once',()=>{
  const W=scene((x,y)=>y<430?'build':'road'),wreck=T.makeVeh('fare',500,490,0,{dead:true,health:0,vy:-200,loose:true});
  for(let i=0;i<60;i++)T.tickDrive(W,wreck,{},1/60,false);assert.ok(wreck.y>=482);assert.equal(worldBodyHit(W,wreck,wreck.x,wreck.y),null);

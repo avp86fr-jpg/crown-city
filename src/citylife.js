@@ -116,7 +116,7 @@ export function drawRoofDetail(G,r){
   const seed=hash(b.x*.13+b.y),k=(b.core?0:b.hgt)/D;
   const x=b.x+(b.x-G.cam.x)*k,y=b.y+(b.y-G.cam.y)*k,w=b.w*(1+k),h=b.h*(1+k);
   c.save();
-  if(G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;
+  if(!b.core&&G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;
   c.translate(x,y);c.scale(1+k,1+k);
   // Parapet with inset lighting and weathered edge.
   c.strokeStyle='rgba(218,204,174,.22)';c.lineWidth=2;c.strokeRect(5,5,b.w-10,b.h-10);

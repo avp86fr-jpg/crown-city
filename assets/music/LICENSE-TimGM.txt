@@ -1,9 +1,9 @@
-Night Dividend
-Original Crown City arrangement: tools/compose-night-dividend.py.
+Night Dividend and Return to Crown
+Original Crown City arrangements: tools/compose-night-dividend.py and tools/compose-return-to-crown.py.
 Instruments rendered using FluidSynth and the TimGM6mb SoundFont.
 TimGM6mb: Copyright 2004 Tim Brechbill; 2010 David Bolton.
 Source: https://github.com/musescore/musescore-old/commit/90c33ef9d87b3f5ff92efd3b07d89eb455fb1fef
-The new arrangement and its rendered Night Dividend music files are provided under GPL-2.0.
+The new arrangement and its rendered Night Dividend and Return to Crown music files are provided under GPL-2.0.
 The SoundFont itself is not bundled.
 
                     GNU GENERAL PUBLIC LICENSE
