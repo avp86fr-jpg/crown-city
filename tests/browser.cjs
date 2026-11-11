@@ -256,12 +256,33 @@ async function dialogue(page, choices) {
       console.log('Battery sample:',JSON.stringify(result));await live.close();
     });
     await check('arranged music streams, changes station and yields to the pursuit track',async()=>{
-      await page.evaluate(()=>{const G=__CC.G;G.audio.unlock();G.audio.update(G,.1)});
-      await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});
+      await page.evaluate(()=>{const G=__CC.G;G.scene='play';G.wanted=0;G.audio.station=0;if(G.player.type!=='veh')T.enterVeh(G,G.vehicles.find(v=>!v.dead&&!v.def.boat),true);G.audio.unlock();G.audio.update(G,.1)});
+      await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});
       assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('AFTERHOURS')));
       await page.evaluate(()=>{const G=__CC.G;G.audio.nextStation();G.audio.update(G,.1)});
-      await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('SIDEWALK')));
-      await page.evaluate(()=>{const G=__CC.G;G.wanted=4;G.audio.update(G,.1)});await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('NO CLEAN EXIT')));
+      await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('SIDEWALK')));
+      await page.evaluate(()=>{const G=__CC.G;G.wanted=4;G.audio.update(G,.1)});await page.waitForFunction(()=>{__CC.G.audio.update(__CC.G,.1);return __CC.G.audio.recordedMusic;},null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('NO CLEAN EXIT')));
+    });
+    await check('on-foot score pauses inactive stations and Free Ride preserves the story save',async()=>{
+      await page.evaluate(()=>{const G=__CC.G;G.wanted=0;G.player=T.makeFoot(G,760,3180,0);G.audio.update(G,.1);});
+      await page.waitForFunction(()=>{const G=__CC.G;G.audio.update(G,.1);return G.audio.recordedMusic&&G.audio.trackTitle.includes('MIDNIGHT')&&G.audio.activeStreams===1;},null,{polling:100});
+      const story=await page.evaluate(()=>localStorage.getItem('mw_crown_city_v1'));
+      await page.evaluate(()=>{const G=__CC.G;G.scene='title';T.render(G);});await button(page,'FREE RIDE');
+      assert.equal(await page.evaluate(()=>__CC.G.mode),'freeride');assert.equal(await page.evaluate(()=>__CC.G.scene),'play');
+      assert.equal(await page.evaluate(()=>localStorage.getItem('mw_crown_city_v1')),story);
+      await page.evaluate(()=>{__CC.G.chips=2244;__CC.save();__CC.G.scene='title';T.render(__CC.G);});await button(page,'FREE RIDE');assert.equal(await page.evaluate(()=>__CC.G.chips),2244);
+    });
+    await check('mobile world layer survives menus, quality switches and both orientations',async()=>{
+      for(const [width,height] of [[390,844],[844,390]]){
+        await phone.setViewportSize({width,height});
+        await phone.evaluate(()=>{const G=__CC.G;G.scene='play';G.settings.quality='low';T.fit(G);T.render(G);});
+        assert.equal(await phone.locator('#world-layer').isVisible(),true);
+        assert.ok(await phone.evaluate(()=>__CC.G.worldWidth<__CC.G.canvas.width));
+        await phone.evaluate(()=>{__CC.G.scene='pause';T.render(__CC.G);});assert.equal(await phone.locator('#world-layer').isVisible(),true);
+        await phone.evaluate(()=>{__CC.G.scene='title';T.render(__CC.G);});assert.equal(await phone.locator('#world-layer').isVisible(),false);
+        await phone.evaluate(()=>{const G=__CC.G;G.scene='play';G.settings.quality='high';T.fit(G);T.render(G);});assert.equal(await phone.locator('#world-layer').isVisible(),false);
+        await phone.evaluate(()=>{const G=__CC.G;G.settings.quality='low';T.fit(G);T.render(G);});assert.equal(await phone.locator('#world-layer').isVisible(),true);
+      }
     });
     await check('Web Audio starts, produces a signal and mutes through the master bus',async()=>{
       const result=await page.evaluate(async()=>{

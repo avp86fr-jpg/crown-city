@@ -2,7 +2,7 @@
 
 ## Current scope
 
-The illustrated overhead camera and original collision/world layout are retained. The game now combines six narrative jobs, five repeatable crew contracts, three weapon behaviors, stamina/roll/cover mechanics, vehicle workshops and post-story free roam.
+The illustrated overhead camera and original collision/world layout are retained. The game now combines six narrative jobs, six repeatable crew contracts, three weapon behaviors, stamina/roll/cover mechanics, vehicle workshops and post-story free roam.
 
 | Job | Mechanics and stakes |
 | --- | --- |
@@ -58,3 +58,5 @@ GitHub Pages publishes the game and release page from the repository’s main br
 ## After Hours release page
 
 The replacement About page includes new cover art, four reference portraits, six fresh in-game screenshots, original story copy, responsive controls/help and a keyboard-accessible screenshot lightbox. A 31.1-second 1280×720 H.264/AAC trailer uses actual staged gameplay and the original Afterhours score, with optional captions. Media loads on demand. See [release-media.md](release-media.md) for provenance and the dedicated browser checks.
+
+The subsequent Redmi Note performance/collision pass is documented in [mobile-collision-pass.md](mobile-collision-pass.md), including immediate Free Ride, Low Tide, corrected artwork and audio resource limits.

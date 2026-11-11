@@ -4,13 +4,13 @@ The About page at `about/` is the release landing page. It uses a new illustrate
 
 ## Art and source material
 
-- The new cover was generated from the repository’s Chaos and Gold Mage portraits, retaining their recognizable helmet/armor/coat identities. It is promotional illustration, not a gameplay screenshot. The original generated PNG remains in the working environment; the repository contains optimized full/small WebP exports and a social JPEG.
-- The four crew portraits are resized/cropped from the existing Chaos, Hunter, Fire and Gold Mage reference images. Character provenance is in [character-references.md](character-references.md). Story roles and events are original fan fiction, not claims about collectible lore.
+- The corrected cover depicts Chaos beside one complete red muscle coupe with ivory stripes. Gold Mage was removed from the generated composition. The same cover is used on the title screen, About hero, social card, trailer poster and trailer title cards. It is promotional illustration, not a gameplay screenshot. The original generated PNG remains in the working environment; the repository contains optimized full/small WebP exports and a social JPEG.
+- The crew portraits retain the existing Chaos, Hunter, Fire and Gold Mage references and display without cropping. Gold Mage loads the original `assets/portraits/gold_mage.jpg` directly, without regeneration, retouching or recoloring. Character provenance is in [character-references.md](character-references.md). Story roles and events are original fan fiction, not claims about collectible lore.
 - Anton is locally hosted as a Latin WOFF subset, with the upstream SIL Open Font License in `about/assets/fonts/OFL.txt`. Source: https://github.com/google/fonts/tree/main/ofl/anton.
 
 ## Trailer
 
-`about/assets/crown-city-trailer-720p.mp4`: 31.1 seconds, 1280×720, 30 fps H.264, stereo 48 kHz AAC, approximately 8.5 MB, with the metadata at the front for progressive playback. The trailer has no voice-over. English WebVTT captions describe the score and on-screen text.
+`about/assets/crown-city-trailer-720p.mp4`: 31.1 seconds, 1280×720, 30 fps H.264, stereo 48 kHz AAC,  with the metadata at the front for progressive playback. The trailer has no voice-over. English WebVTT captions describe the score and on-screen text.
 
 The edit uses new Chromium canvas recordings of Southside street activity, Strip driving, the Gold Mage story scene, a two-star pursuit and a moving harbour boat. Scenes were staged by choosing locations, time/weather, the wanted level and a story node. Movement and city animation run through the normal game loop; most captures hide the HUD. Intro/outro cards use the generated cover with HTML typography. All screenshots are actual game captures; the cover is clearly described as illustration.
 
@@ -18,6 +18,6 @@ The soundtrack is **Afterhours** from VEIL FM, an original funk/bass/keys/brass 
 
 ## Verification
 
-Run `npm run test:about` with the local server at port 8000. Set `CC_ABOUT_URL` to test another deployment. The suite checks every page image/font, desktop/portrait/landscape layouts including 320px width, gallery navigation and focus, play and section links, details controls, actual 720p playback with decoded audio, captions, reduced motion and failed requests/browser errors. Game regressions and all 17 gameplay browser checks were also rerun before release.
+Run `npm run test:about` with the local server at port 8000. Set `CC_ABOUT_URL` to test another deployment. The suite checks every page image/font, desktop/portrait/landscape layouts including 320px width, gallery navigation and focus, play and section links, details controls, actual 720p playback with decoded audio, captions, reduced motion and failed requests/browser errors. Game regressions and all 19 gameplay browser checks were also rerun before release.
 
 Physical-device testing remains separate from browser emulation. The video captures the game in the shared environment and does not promise a particular phone’s frame rate.
