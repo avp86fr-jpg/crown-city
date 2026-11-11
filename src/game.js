@@ -181,6 +181,7 @@ export async function boot() {
   G.minimap = buildMinimap(G, minimapCore);
   audio.setSfx && audio.setSfx(settings.sfx);
   audio.setMus && audio.setMus(settings.mus);
+  if (settings.master != null && audio.setMaster) audio.setMaster(settings.master);
 
   setupTouch(G);
   bindKeys(G);
@@ -193,6 +194,8 @@ export async function boot() {
 
   window.__CC = api(G);
   window.addEventListener("pointerdown", () => G.audio.unlock(), { once: true });
+  window.addEventListener("touchend", () => G.audio.unlock(), { once: true });
+  window.addEventListener("keydown", () => G.audio.unlock(), { once: true });
 
   let acc = 0, last = now();
   const STEP = 1 / 60;
@@ -558,8 +561,18 @@ function setupTouch(G) {
 }
 
 function hookFullscreen(G) {
-  G.toggleFS = async () => {
+  const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  G.fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  G.isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  G.standalone = matchMedia("(display-mode: fullscreen)").matches || matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  G.isFS = isFS;
+  let pending = 0;
+  G.toggleFS = async (want) => {
     const el = document.documentElement;
+    if (performance.now() - pending < 600) return; // first-tap auto FS + button tap in the same gesture
+    pending = performance.now();
+    if (want === true && isFS()) return;
+    if (!G.fsSupported) { if (G.isIOS) toast(G, "iPhone: tap Share, then Add to Home Screen to play full screen."); return; }
     try {
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: "hide" });
@@ -574,8 +587,12 @@ function hookFullscreen(G) {
   G.firstTap = () => {
     if (tried || !G.touch) return;
     tried = true;
-    if (!document.fullscreenElement && G.settings.autoFS !== false) G.toggleFS();
+    if (!isFS() && G.settings.autoFS !== false && G.fsSupported) G.toggleFS(true);
   };
+  const fsB = document.getElementById("tFS");
+  const syncFS = () => { document.body.classList.toggle("isfs", isFS() || G.standalone || !G.fsSupported); setTimeout(() => fit(G), 120); };
+  document.addEventListener("fullscreenchange", syncFS); document.addEventListener("webkitfullscreenchange", syncFS); syncFS();
+  if (fsB) fsB.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); G.audio.unlock(); G.audio.click && G.audio.click(); pending = 0; G.toggleFS(); });
   window.addEventListener("resize", () => fit(G));
   window.addEventListener("orientationchange", () => setTimeout(() => fit(G), 200));
   document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
@@ -720,6 +737,8 @@ function tick(G, dt) {
   else if (G.scene === "pause" || G.scene === "map") tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
   else tickPlay(G, dt);
+  G._auT = (G._auT || 0) + 1;
+  if ((G._auT & 3) === 0 && G.audio.update) G.audio.update(G, dt * 4);
   const I = G.input;
   I.enterP = I.fireP = I.pauseP = I.skipP = I.confirmP = I.radioP = I.upP = I.downP = I.leftP = I.rightP = I.mapP = I.vnTap = false;
 }
@@ -2024,12 +2043,13 @@ function adaptRes(G, dt) {
   else if (avg < 1 / 58 && r < 1) nr = Math.min(1, r + 0.05);
   if (nr !== r) { G.resScale = nr; fit(G); }
 }
+function volStep(v, d) { const n = Math.round((v + d * 0.1) * 10) / 10; return n > 1.001 ? 0 : n < -0.001 ? 1 : n; }
 function applyQuality(G) {
   const q = G.settings.quality;
   if (G.traffic) G.traffic.target = q === "low" ? 18 : q === "med" ? 26 : 34;
   if (G.pedsys) G.pedsys.target = q === "low" ? 32 : q === "med" ? 48 : 64;
 }
-function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; }
+function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.translate(G.canvas.width / 2 / div + ox / div, G.canvas.height / 2 / div + oy / div);
@@ -2910,10 +2930,13 @@ function drawHUD(G) {
   const W = canvas.width, H = canvas.height;
   const pad = 10 * u;
   const L = pad + sf.l, T = pad + sf.t, R = W - pad - sf.r;
+  let _t = performance.now();
   updateGPS(G);
+  prof(G, "h_gps", performance.now() - _t); _t = performance.now();
   // minimap + vitals (top-left)
   const mm = Math.round(clamp(Math.min(W, H) * 0.3, 96 * u, 150 * u));
   drawMinimap(G, L, T, mm, G.player.type === "veh" ? 2200 : 1400);
+  prof(G, "h_mini", performance.now() - _t);
   const vy = T + mm + 6 * u;
   uiPanel(ctx, L, vy, mm, 30 * u, 8 * u);
   ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(L + 8 * u, vy + 7 * u, mm - 16 * u, 5 * u);
@@ -2937,6 +2960,7 @@ function drawHUD(G) {
     ctx.drawImage(i < G.wanted ? G.assets.starOn : G.assets.starOff, rr - cw + 12 * u + i * 26 * u, T + 27 * u, 19 * u, 19 * u);
   }
   ctx.globalAlpha = 1;
+  prof(G, "h_stars", performance.now() - _t); _t = performance.now();
   // objective (top-center)
   const narrow = W / u < 640;
   const midW = narrow ? R - (L + mm + 10 * u) : Math.min(W * 0.46, 460 * u);
@@ -2981,6 +3005,7 @@ function drawHUD(G) {
     ctx.fillStyle = "#fff"; ctx.fillText(G.toast, W / 2, ty + 18.5 * u);
     ctx.globalAlpha = 1;
   }
+  prof(G, "h_obj", performance.now() - _t); _t = performance.now();
   // district title card
   if (G.districtT > 0 && G.district) {
     ctx.globalAlpha = Math.min(1, G.districtT, (3 - G.districtT) * 3);
@@ -2990,6 +3015,7 @@ function drawHUD(G) {
     ctx.fillStyle = "#ffe27a"; ctx.fillText(G.district, midX, dy);
     ctx.globalAlpha = 1;
   }
+  prof(G, "h_dist", performance.now() - _t); _t = performance.now();
   // speedo (bottom-center)
   if (G.player.type === "veh") {
     const v = G.player, spd = Math.hypot(v.vx, v.vy), kmh = (spd * 0.5) | 0;
@@ -3002,6 +3028,7 @@ function drawHUD(G) {
     ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(bx + bw - 72 * u, by + 26 * u, 60 * u, 5 * u);
     ctx.fillStyle = (v.health ?? 100) > 40 ? "#3ce06a" : "#ff8a2a"; ctx.fillRect(bx + bw - 72 * u, by + 26 * u, 60 * u * clamp((v.health ?? 100) / 100, 0, 1), 5 * u);
   }
+  prof(G, "h_spd", performance.now() - _t); _t = performance.now();
   // off-screen objective arrow
   const at = currentObjectivePos(G);
   if (at) {
@@ -3022,6 +3049,7 @@ function drawHUD(G) {
       ctx.fillText(`${Math.round(dist / 10)}m`, ex, ey + 24 * u);
     }
   }
+  prof(G, "h_arrow", performance.now() - _t); _t = performance.now();
   // floating chip popups (true world positions)
   ctx.textAlign = "center"; ctx.font = uiFont(15 * u, 900);
   for (const f of G.floaters) {
@@ -3119,7 +3147,7 @@ function drawTitle(G) {
   items.push(["NEW GAME", () => startNew(G), { primary: !G.saveExists }]);
   if (G.saveExists) items.push(["CONTINUE", () => { if (loadSave(G)) { G.scene = "play"; toast(G, "Welcome back to Crown City."); } }, { primary: true }]);
   items.push(["SETTINGS", () => { G.pausedFrom = "title"; G.scene = "settings"; G.menuSel = 0; }, {}]);
-  if (!document.fullscreenElement) items.push(["FULL SCREEN", () => G.toggleFS(), {}]);
+  if (!G.isFS() && !G.standalone && (G.fsSupported || G.isIOS)) items.push([G.fsSupported ? "FULL SCREEN" : "ADD TO HOME SCREEN", () => G.toggleFS(), {}]);
   const bw = Math.min(portrait ? W - x0 * 2 : 280 * u, 320 * u), bh = 44 * u, gap = 10 * u;
   let by = portrait ? H - sf.b - 30 * u - items.length * (bh + gap) : Math.max(y + 22 * u, H - sf.b - 34 * u - items.length * (bh + gap));
   for (const [label, act, o] of items) { uiButton(G, x0, by, bw, bh, label, act, { ...o, align: "left" }); by += bh + gap; }
@@ -3139,6 +3167,7 @@ function drawPause(G) {
     ["CITY MAP", () => { G.scene = "map"; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
     ["SAVE GAME", () => save(G), {}],
+    ...(G.fsSupported && !G.standalone ? [[G.isFS() ? "EXIT FULL SCREEN" : "FULL SCREEN", () => G.toggleFS(), {}]] : []),
     ["QUIT TO TITLE", () => { G.scene = "title"; G.menuSel = 0; G.saveExists = !!localStorage.getItem(SAVE_KEY); }, {}],
   ];
   const bh = Math.min(42 * u, (H - 150 * u) / items.length - 8 * u);
@@ -3184,8 +3213,9 @@ function drawSettings(G) {
   ctx.fillStyle = "rgba(4,2,10,0.82)"; ctx.fillRect(0, 0, W, H);
   const speeds = ["FROZEN", "NORMAL", "SLOW", "SLOWER"];
   const rows = [
-    ["SOUND FX", `${Math.round(G.audio.sfxVol * 100)}%`, (d) => { G.audio.setSfx(clamp(G.audio.sfxVol + d * 0.1, 0, 1)); S.sfx = G.audio.sfxVol; saveSettings(G); }],
-    ["MUSIC", `${Math.round(G.audio.musVol * 100)}%`, (d) => { G.audio.setMus(clamp(G.audio.musVol + d * 0.1, 0, 1)); S.mus = G.audio.musVol; saveSettings(G); }],
+    ["MASTER", `${Math.round((G.audio.masterVol ?? 0.9) * 100)}%`, (d) => { G.audio.setMaster(volStep(G.audio.masterVol ?? 0.9, d)); S.master = G.audio.masterVol; saveSettings(G); }],
+    ["SOUND FX", `${Math.round(G.audio.sfxVol * 100)}%`, (d) => { G.audio.setSfx(volStep(G.audio.sfxVol, d)); S.sfx = G.audio.sfxVol; saveSettings(G); }],
+    ["MUSIC", `${Math.round(G.audio.musVol * 100)}%`, (d) => { G.audio.setMus(volStep(G.audio.musVol, d)); S.mus = G.audio.musVol; saveSettings(G); }],
     ["GRAPHICS", S.quality === "low" ? "PERFORMANCE" : S.quality === "med" ? "BALANCED" : "QUALITY", () => { S.quality = S.quality === "low" ? "med" : S.quality === "med" ? "high" : "low"; G.resScale = 1; saveSettings(G); fit(G); applyQuality(G); }],
     ["FPS COUNTER", S.showFps ? "ON" : "OFF", () => { S.showFps = !S.showFps; saveSettings(G); }],
     ["TIME OF DAY", speeds[S.timeSpeed ?? 1], (d) => { S.timeSpeed = ((S.timeSpeed ?? 1) + (d || 1) + 4) % 4; saveSettings(G); }],

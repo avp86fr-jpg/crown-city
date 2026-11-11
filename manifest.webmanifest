@@ -1,0 +1,16 @@
+{
+  "name": "Crown City",
+  "short_name": "Crown City",
+  "description": "Fan-made top-down heist. Play chips only.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#12071C",
+  "theme_color": "#12071C",
+  "icons": [
+    { "src": "assets/ui/icon_192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/ui/icon_512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

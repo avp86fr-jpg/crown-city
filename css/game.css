@@ -29,6 +29,9 @@ canvas#c { display: block; width: 100%; height: 100%; background: #0a0810; touch
 #touch .btn.sprint { right: 172px; bottom: 6px; width: 58px; height: 58px; }
 #touch .btn.pause { top: calc(10px + var(--sat)); right: calc(10px + var(--sar)); width: 44px; height: 44px; border-radius: 12px; }
 #touch .btn.pause svg { width: 20px; height: 20px; }
+#touch .btn.fsb { top: calc(62px + var(--sat)); right: calc(10px + var(--sar)); width: 44px; height: 44px; border-radius: 12px; }
+#touch .btn.fsb svg { width: 20px; height: 20px; }
+body.isfs #touch .btn.fsb, #touch.menu .fsb { display: none; }
 #touch.foot .drive-only, #touch.drive .foot-only, #touch.menu .cluster, #touch.menu #joyZone, #touch.menu .pause { display: none; }
 #touch.drive .btn.boost.off { display: none; }
 @media (max-height: 380px) { #touch .cluster { transform: scale(0.88); transform-origin: right bottom; } }

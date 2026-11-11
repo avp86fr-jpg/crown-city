@@ -12,6 +12,9 @@
   <meta property="og:description" content="A fan-made classic top-down heist. Chaos, a casino city, and play chips only.">
   <meta property="og:image" content="assets/ui/title.jpg">
   <link rel="icon" href="assets/ui/icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/ui/icon_192.png">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="css/game.css">
 </head>
 <body>
@@ -27,6 +30,7 @@
         <button class="btn boost drive-only" id="tBoost" type="button"><span>BOOST</span></button>
         <button class="btn sprint foot-only" id="tSprint" type="button"><span>RUN</span></button>
       </div>
+      <button class="btn fsb" id="tFS" type="button" aria-label="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="btn pause" id="tPause" type="button" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
     </div>
     <div id="safe"></div>
