@@ -1,0 +1,42 @@
+{
+  "baseline_commit": "be56a601779ed43240b51cfae9788c9a2dbd19ef",
+  "method": "Chromium headless, 844\u00d7390 CSS, DPR 2, touch emulation, 4\u00d7 CDP CPU throttling, warmed audio, performance quality, rain and night driving, auto resolution off. Software-emulated comparison; not a physical Redmi Note measurement.",
+  "before": {
+    "seconds": 5.068400000000373,
+    "frames": 15,
+    "ticks": 90,
+    "world": [
+      971,
+      448
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "peds": 86,
+    "vehicles": 333
+  },
+  "after": {
+    "seconds": 4.122599999999627,
+    "frames": 33,
+    "ticks": 127,
+    "world": [
+      844,
+      390
+    ],
+    "ui": [
+      1688,
+      780
+    ],
+    "peds": 82,
+    "vehicles": 331
+  },
+  "smoothed_render_ms": {
+    "before": 156.01633155014437,
+    "after": 59.64908311661278
+  },
+  "smoothed_tick_ms": {
+    "before": 10.450531248957095,
+    "after": 14.752591107424937
+  }
+}

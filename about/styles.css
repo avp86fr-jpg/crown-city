@@ -7,3 +7,5 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
 
 .arrow{width:18px;height:18px;display:inline-block;vertical-align:middle;flex-shrink:0}.play-icon{width:16px;height:16px;flex-shrink:0}.expand .arrow{width:23px;height:23px}.media-caption .arrow,.crew-note .arrow,.footer-bottom .arrow{width:12px;height:12px}
+
+.crew-card>img{height:auto;aspect-ratio:1;object-fit:contain}.crew-card:after{background:linear-gradient(0deg,#081213 0%,#081213e6 12%,transparent 55%)}

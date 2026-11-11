@@ -6,12 +6,12 @@ function lines(c,text,width){const out=[];let line='';for(const w of String(text
 function label(c,text,x,y,size,color=paper,weight=700){c.font=font(size,weight);c.fillStyle=color;c.textAlign='left';c.fillText(text,x,y);}
 function paragraph(c,text,x,y,width,size,leading,color=muted,max=5){c.font=font(size,500);c.fillStyle=color;c.textAlign='left';const rows=lines(c,text,width).slice(0,max);rows.forEach((l,i)=>c.fillText(l,x,y+i*leading));return rows.length*leading;}
 function shade(G,alpha=.9){const {ctx:c,canvas:{width:W,height:H}}=G;c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(8,18,24,${alpha})`;c.fillRect(0,0,W,H);}
-export function drawTitleScreen(G,{button,startNew,continueGame,settings}){
+export function drawTitleScreen(G,{button,startNew,continueGame,freeRide,settings}){
  const c=G.ctx,W=G.canvas.width,H=G.canvas.height,u=G.ui,portrait=H>W,compact=!portrait&&H/u<500;
  c.setTransform(1,0,0,1,0,0);
- const fade=c.createLinearGradient(0,0,W,0);fade.addColorStop(0,'rgba(5,16,22,.96)');fade.addColorStop(.55,'rgba(5,16,22,.73)');fade.addColorStop(1,'rgba(5,16,22,.22)');c.fillStyle=fade;c.fillRect(0,0,W,H);
  const image=G.assets.hero;
- if(image){const hh=H*(portrait?.59:1.05),ww=hh/image.height*image.width;const x=portrait?W-ww*.94:W-ww*.93,y=portrait?H*.12:H-hh+12*u;c.save();c.globalAlpha=portrait?.72:.96;c.drawImage(image,x,y,ww,hh);c.restore();}
+ if(image){const scale=Math.max(W/image.width,H/image.height),ww=image.width*scale,hh=image.height*scale;c.drawImage(image,portrait?W-ww:(W-ww)/2,(H-hh)/2,ww,hh);}
+ const fade=c.createLinearGradient(0,0,W,0);fade.addColorStop(0,'rgba(5,16,22,.88)');fade.addColorStop(.55,'rgba(5,16,22,.28)');fade.addColorStop(1,'rgba(5,16,22,.03)');c.fillStyle=fade;c.fillRect(0,0,W,H);
  const bottom=c.createLinearGradient(0,H*.48,0,H);bottom.addColorStop(0,'rgba(6,17,23,0)');bottom.addColorStop(.65,'rgba(6,17,23,.92)');bottom.addColorStop(1,'#061117');c.fillStyle=bottom;c.fillRect(0,H*.48,W,H*.52);
  const x=(portrait?24:48)*u+(G.safe?.l||0),top=(compact?30:52)*u+(G.safe?.t||0);
  label(c,'METAWINNERS  /  AFTER HOURS',x,top,10*u,gold,800);
@@ -23,7 +23,7 @@ export function drawTitleScreen(G,{button,startNew,continueGame,settings}){
  if(!compact)paragraph(c,'Six jobs. A stolen identity. A crew with everything to lose.',x,taglineY+23*u,portrait?W-2*x:310*u,12*u,17*u,muted,2);
  const items=[];
  if(G.saveExists)items.push(['CONTINUE',continueGame,true]);
- items.push(['NEW GAME',startNew,!G.saveExists],['SETTINGS',settings,false]);
+ items.push(['NEW GAME',startNew,!G.saveExists],['FREE RIDE',freeRide,false],['SETTINGS',settings,false]);
  const bw=Math.min(portrait?W-x*2:300*u,350*u),bh=Math.max(44*G.dpr,42*u),gap=8*u;
  let by=H-(G.safe?.b||0)-36*u-items.length*(bh+gap);
  for(const [text,act,primary] of items){button(G,x,by,bw,bh,text,act,{primary,align:'left'});by+=bh+gap;}

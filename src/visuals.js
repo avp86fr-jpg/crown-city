@@ -26,6 +26,11 @@ function ellipse(ctx, x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, Math.ma
 export function drawVehicleFinish(G, v, w, h, pose) {
   const ctx = G.ctx;
   ctx.save();
+  if(G.settings.quality==='low'){
+    if(v.fwd< -8){ctx.fillStyle='#d4eeeb';ctx.fillRect(-w*.25,h*.4,4,3);ctx.fillRect(w*.25-4,h*.4,4,3);}
+    if(G.input.hand||G.input.tBrake){ctx.fillStyle='#ff6756';ctx.fillRect(-w*.28,h*.4,5,3);ctx.fillRect(w*.28-5,h*.4,5,3);}
+    ctx.restore();return;
+  }
   // A moving clear-coat highlight follows the car's angle to the city lights.
   ctx.globalCompositeOperation = 'screen';
   const sheen = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);

@@ -56,7 +56,7 @@ def compose(name,bpm,root,style):
   for pos in [0,.75,1.5,2,2.75,3.5]:
    note=base+(12 if pos in [1.5,3.5] else 0)+(7 if pos==2.75 else 0)
    add(inst(note,beat*.7,'bass'),start+pos*beat,.24 if style!='chase' else .3)
-  for p in ([0,1.75,2.5] if style=='night' else [0,1.5,2,3.5] if style=='lofi' else [0,1,2,3]):add(DR['kick'],start+p*beat,.56)
+  for p in ([0,1.75,2.5] if style in ['night','noir'] else [0,1.5,2,3.5] if style=='lofi' else [0,1,2,3]):add(DR['kick'],start+p*beat,.56)
   if section!=0 or bar>=2:
    for p in [1,3]:add(DR['snare'],start+p*beat,.33);add(DR['clap'],start+(p+.02)*beat,.17)
   for k in range(8 if style!='chase' else 16):
@@ -65,13 +65,13 @@ def compose(name,bpm,root,style):
   # Syncopated Rhodes/guitar rhythm; the bridge removes the busier layer.
   if section!=2 or bar%2==0:
    for p in [.5,1.75,2.5,3.25]:
-    for j,n in enumerate([0,3,7,10]):add(inst(base+24+n,beat*.9,'keys' if style=='lofi' else 'guitar'),start+p*beat,.035+(section==3)*.01,(j-1.5)*.25)
+    for j,n in enumerate([0,3,7,10]):add(inst(base+24+n,beat*.9,'keys' if style in ['lofi','noir'] else 'guitar'),start+p*beat,.035+(section==3)*.01,(j-1.5)*.25)
   # Authored call-and-response hook, introduced after the intro.
   if section in [1,3] or style=='chase':
    for pos,n,d in MELODY:
     if int(pos//4)!=bar%4:continue
-    p=pos%4;note=root+24+n+(12 if style=='chase' else 0)
-    add(inst(note,beat*d,'brass' if style=='night' else 'lead'),start+p*beat,.09 if style!='chase' else .07,-.15)
+    p=pos%4;note=root+(12 if style=='noir' else 24)+n+(12 if style=='chase' else 0)
+    add(inst(note,beat*d,'brass' if style in ['night','noir'] else 'lead'),start+p*beat,.09 if style!='chase' else .07,-.15)
   if bar%8==7:
    for j in range(4):add(DR['tom'],start+(3+j*.25)*beat,.22+j*.025,j*.25-.4)
  # Stereo delays and a short room tail wrap across the loop boundary.
@@ -83,5 +83,7 @@ def compose(name,bpm,root,style):
  with tempfile.NamedTemporaryFile(suffix='.wav') as tmp:
   wavfile.write(tmp.name,SR,(mix*32767).astype(np.int16))
   subprocess.run(['ffmpeg','-y','-loglevel','error','-i',tmp.name,'-c:a','libvorbis','-q:a','4',str(OUT/(name+'.ogg'))],check=True)
+ subprocess.run(['ffmpeg','-y','-loglevel','error','-i',str(OUT/(name+'.ogg')),'-c:a','libmp3lame','-b:a','128k',str(OUT/(name+'.mp3'))],check=True)
  print(name,round(length/SR,2),'seconds')
-for args in [('veil-afterhours',108,40,'night'),('chip-sidewalk',92,43,'lofi'),('nightshift-escape',132,38,'chase')]:compose(*args)
+if __name__=='__main__':
+ for args in [('veil-afterhours',108,40,'night'),('chip-sidewalk',92,43,'lofi'),('nightshift-escape',132,38,'chase'),('crown-midnight',86,43,'noir')]:compose(*args)

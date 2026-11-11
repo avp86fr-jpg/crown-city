@@ -33,4 +33,4 @@ The browser streams the Ogg tracks into the game's Web Audio master bus, fades b
 
 ## Release cover and trailer
 
-The About page cover is a new generated crime-poster illustration referenced to the retained Chaos and Gold Mage portraits. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.
+The corrected About/title cover depicts Chaos and a single complete red muscle coupe. It does not contain a generated Gold Mage. Gold Mage’s About card and story scenes use the original `assets/portraits/gold_mage.jpg`, unchanged. The gallery contains actual updated-game screenshots. The 720p trailer combines staged Chromium gameplay captures with the cover title cards and the original Afterhours score. See [release-media.md](release-media.md) for the source material, encoding and validation.

@@ -9,7 +9,7 @@ boot().catch((err) => {
   const text = document.createElement("p"); text.textContent = "Check your connection and retry. Your saved game stays on this device.";
   const retry = document.createElement("button"); retry.textContent = "RETRY"; retry.type = "button";
   retry.addEventListener("click", () => window.location.reload());
-  const help = document.createElement("a"); help.textContent = "Controls and game guide"; help.href = "about/#controls";
+  const help = document.createElement("a"); help.textContent = "Controls and game guide"; help.href = "about/#play";
   el.append(title, text, retry, help);
   document.body.appendChild(el);
 });

@@ -1,3 +1,4 @@
+import {createEffects} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
 /** Crown City sound design: original arranged radio plus synthesized spatial effects.
  *  Buses: sfx / music / ambience -> glue compressor -> limiter -> master.
@@ -16,7 +17,7 @@ export function createAudio() {
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;
-  let soundtrack=null;
+  let soundtrack=null, effects=null;
   const STYLES = {
     score: { bpm: 96, root: 45, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 6], swing: 0 },
     synth: { bpm: 104, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 2, 6], swing: 0 },
@@ -49,7 +50,7 @@ export function createAudio() {
     { const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
     brownBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
     { const d = brownBuf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; } }
-    buildMusic(); buildLoops();
+    effects=createEffects(ctx,sfx);buildMusic(); buildLoops();
   }
   const now = () => ctx.currentTime;
   const noiseSrc = (buf = noiseBuf, loop = false) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = loop; if (!loop) s.playbackRate.value = 0.9 + Math.random() * 0.2; return s; };
@@ -97,8 +98,8 @@ export function createAudio() {
   A.setMaster = (v) => { A.masterVol = v; if (master) master.gain.value = v; };
   A.ui = () => { tone(880, 0.05, "triangle", 0.05); tone(1320, 0.06, "triangle", 0.035, 0, sfx, ctx && now() + 0.035); };
   A.click = () => tone(1400, 0.025, "square", 0.025);
-  A.type = () => tone(1800 + Math.random() * 300, 0.012, "square", 0.012);
-  A.reload = () => { noiseHit({dur:.16,vol:.12,type:'bandpass',f:3200,q:2});tone(130,.06,'triangle',.06); };
+  A.type = () => {if(!lite)effects?.('ui',.025);};
+  A.reload = () => effects?.('reload',.34);
   A.cock = () => noiseHit({dur:.055,vol:.16,type:'highpass',f:2800});
   A.dodge = () => noiseHit({dur:.23,vol:.17,type:'lowpass',f:1200,f2:280});
   A.radioChirp = () => {tone(1100,.04,'sine',.022);tone(1600,.05,'sine',.018,0,sfx,ctx&&now()+.06);};
@@ -106,20 +107,10 @@ export function createAudio() {
   A.star = () => { if (!ctx) return; const t = now(); tone(988, 0.09, "square", 0.04, 0, sfx, t); tone(740, 0.12, "square", 0.04, 0, sfx, t + 0.1); };
   A.enter = () => { noiseHit({ dur: 0.08, vol: 0.25, type: "lowpass", f: 600 }); tone(110, 0.08, "sine", 0.12, -40); };
   A.exit = () => { noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); tone(140, 0.06, "sine", 0.1, -50); };
-  A.hit = () => { tone(70, 0.18, "sine", 0.35, -40); noiseHit({ dur: 0.1, vol: 0.25, type: "lowpass", f: 500 }); };
-  A.shot = (pan = 0, far = 0) => {
-    const v = 0.55 * (1 - far * 0.7), r = 0.85 + Math.random() * 0.3;
-    noiseHit({ dur: 0.09 * r, vol: v, type: "bandpass", f: 2400 * r, q: 0.7, f2: 600, pan });
-    noiseHit({ dur: 0.35, vol: v * 0.35, type: "lowpass", f: 900, f2: 200, pan, out: verbSend || sfx });
-    tone(160 * r, 0.07, "sine", v * 0.6, -110);
-  };
-  A.crash = (amt = 1) => {
-    const v = Math.min(0.7, 0.25 + amt * 0.25);
-    noiseHit({ dur: 0.25, vol: v, type: "lowpass", f: 1600, f2: 300 });
-    noiseHit({ dur: 0.4, vol: v * 0.5, type: "bandpass", f: 2600 + Math.random() * 1500, q: 8 }); // metal ring
-    noiseHit({ dur: 0.18, vol: v * 0.4, type: "highpass", f: 5000, a: 0.01 }); // glass tinkle
-    tone(55, 0.22, "sine", v * 0.7, -25);
-  };
+  A.hit = () => effects?.('impact',.4);
+  A.shot = (pan=0,far=0,kind='pistol') => {effects?.(kind,.5*(1-far*.65),pan);};
+  A.crash = (amount=1) => {effects?.('metal',Math.min(.65,.25+amount*.2));};
+  A.splash = (amount=1) => effects?.('water',Math.min(.55,.2+amount*.2));
   A.boom = () => {
     noiseHit({ dur: 1.6, vol: 0.9, type: "lowpass", f: 2200, f2: 80, rate: 0.6 });
     noiseHit({ dur: 2.2, vol: 0.4, type: "lowpass", f: 600, f2: 60, out: verbSend || sfx, a: 0.02 });
@@ -217,7 +208,7 @@ export function createAudio() {
   }
   function schedule() {
     if (!ctx || ctx.state !== "running") return;
-    if(A.recordedMusic){seqT=now()+.1;return;}
+    if(A.recordedMusic||document.hidden){seqT=now()+.1;return;}
     const S = STYLES[style];
     const spb = 60 / S.bpm / 4; // 16th
     while (seqT < now() + 0.25) {
@@ -284,6 +275,7 @@ export function createAudio() {
     if (G.scene === "vn" || G.scene === "brief") target = 0.2;
     A._int += (target - A._int) * Math.min(1, dt * 0.6);
     A.recordedMusic=soundtrack?.update(G,A.station)||false;
+    A.activeStreams=soundtrack?.activeStreams||0;
     A.trackTitle=soundtrack?.title||'CROWN CITY / LIVE SCORE';
     if(A.recordedMusic){for(const s of Object.keys(MIX[0]))set(stems[s].gain,0,.35);}else applyMix(A._int);
     const inCar = play && P.type === "veh";

@@ -95,7 +95,7 @@ function baseline(G, D) {
 }
 export function beginJob(G) {
   const D = state(G), job = G.missionIndex;
-  if (!JOBS[job]) { D.active = null; return null; }
+  if (G.freeRoam || !JOBS[job]) { D.active = null; return null; }
   // Resuming the same attempt must not erase incidents or reset the clock.
   if (D.active?.job === job) { if (!sample.has(D)) baseline(G, D); return D.active; }
   D.attempt++; D.suspicion = 0; D.guidance = null;
