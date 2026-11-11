@@ -1,4 +1,5 @@
 /** Visual novel script + mission definitions. Text never sits over faces. */
+import {directStory} from './screenplay.js';
 export const CHAR = {
   chaos: { name: "CHAOS", color: "#9d5cff", portrait: "assets/portraits/chaos.jpg", side: "left" },
   hunter: { name: "HUNTER", color: "#5aaf40", portrait: "assets/portraits/hunter.jpg", side: "right" },
@@ -192,7 +193,7 @@ export function missionFlow(id, flags) {
         startVN: "intro_news",
         objectives: [
           { id: "enter_car", kind: "enter", near: "garage", hint: "Get in the Riot V8 on the garage lot. (E)" },
-          { id: "hit_van", kind: "goto", at: "van", r: 90, hint: "Catch the seed van heading down the Strip." },
+          { id: "hit_van", kind: "intercept", at: "van", r: 170, hint: "Disable the convoy van. Ram it or shoot its engine." },
           { id: "grab", kind: "collect", at: "van", r: 80, hint: "Stop close to the van and press E to take the crate." },
           { id: "lose_heat", kind: "loseWanted", hint: "Lose the Metro heat." },
           { id: "stash", kind: "goto", at: "garage", r: 90, hint: "Take the crate back to Hunter's garage." },
@@ -239,7 +240,7 @@ export function missionFlow(id, flags) {
         startVN: "m5_intro",
         objectives: [
           { id: "door", kind: "goto", at: "casinoDoor", r: 70, hint: "Hit the Palace south doors." },
-          { id: "vault", kind: "collect", at: "casino", r: 90, hint: "Stop at the vault marker. Press E to take the bag." },
+          { id: "vault", kind: "collect", at: "casino", r: 90, hack: 3, hint: "Stop at the archive. Press E, then stay still for the transfer." },
           { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the bag to the marina." },
           { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in a boat." },
           { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Run the harbour to the drop island." },
@@ -264,3 +265,5 @@ export function missionFlow(id, flags) {
       return null;
   }
 }
+
+directStory(VN, MISSIONS);

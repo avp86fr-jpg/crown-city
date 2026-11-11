@@ -87,13 +87,31 @@ async function dialogue(page, choices) {
       await page.evaluate(async () => { window.T = (await import(new URL('src/game.js', location.href).href)).testing; T.render(__CC.G); });
       await button(page, 'CONTINUE'); assert.equal(await page.evaluate(() => __CC.G.scene), 'play');
     });
+    await check('weapon changes, reloads, dodge and crew contracts respond to keyboard input', async () => {
+      await page.keyboard.press('KeyQ'); await step(page);assert.equal(await page.evaluate(()=>__CC.G.action.weapon),1);
+      await page.keyboard.down('KeyK');await step(page,7);await page.keyboard.up('KeyK');assert.ok(await page.evaluate(()=>__CC.G.action.ammo[1]<28));
+      await page.keyboard.press('KeyX');await step(page);assert.ok(await page.evaluate(()=>__CC.G.action.reloadT>0));await step(page,100);assert.equal(await page.evaluate(()=>__CC.G.action.ammo[1]),28);
+      await page.keyboard.press('Space');await step(page);assert.ok(await page.evaluate(()=>__CC.G.action.dodgeT>0));await step(page,30);
+      await page.keyboard.press('KeyC');await step(page);assert.equal(await page.evaluate(()=>__CC.G.scene),'crew');
+      await button(page,'TAKE JOB / +650');assert.equal(await page.evaluate(()=>__CC.G.action.contract.id),'courier');
+      await page.evaluate(()=>{const G=__CC.G;__CC.save();T.loadSave(G);T.render(G)});assert.equal(await page.evaluate(()=>__CC.G.action.contract.id),'courier');assert.ok(await page.evaluate(()=>__CC.G.waypoint));
+      await page.keyboard.press('KeyC');await step(page);await button(page,'CANCEL CONTRACT');await button(page,'BACK TO CITY');
+    });
+    await check('workshop buttons repair, tune and respray a nearby car with persistent costs',async()=>{
+      await page.evaluate(()=>{const G=__CC.G,s=G.services.find(s=>s.id==='garage');const car=T.makeVeh('riot',s.x,s.y,0);G.vehicles.push(car);T.enterVeh(G,car,true);car.health=20;car.wrecked=true;G.chips=1400;G.wanted=0;G.evading=true;});
+      await page.keyboard.press('KeyC');await step(page);assert.equal(await page.evaluate(()=>__CC.G.scene),'garage');
+      await button(page,'REPAIR / 120');assert.equal(await page.evaluate(()=>__CC.G.player.health),100);assert.equal(await page.evaluate(()=>__CC.G.chips),1280);
+      await button(page,'ENGINE + TIRES / 500');assert.equal(await page.evaluate(()=>__CC.G.action.upgrades),1);
+      await button(page,'LOSE HEAT / 250');assert.equal(await page.evaluate(()=>__CC.G.player.paint),1);assert.equal(await page.evaluate(()=>__CC.G.chips),530);
+      await button(page,'BACK TO CITY');await page.evaluate(()=>{T.loadSave(__CC.G);T.render(__CC.G)});assert.equal(await page.evaluate(()=>__CC.G.action.upgrades),1);assert.equal(await page.evaluate(()=>__CC.G.player.paint),1);
+    });
     await check('desktop and phone menus stay in bounds with Continue available', async () => {
       for (const [width, height] of [[1280,720],[844,390],[390,844],[667,375]]) {
         await page.setViewportSize({width,height});
-        for (const scene of ['title','pause','map','settings','brief']) {
+        for (const scene of ['title','pause','map','settings','brief','crew','garage']) {
           await page.evaluate(scene => { const G = __CC.G; G.scene = scene; G.pausedFrom = 'play'; T.fit(G); T.render(G); }, scene);
           assert.deepEqual(await page.evaluate(() => { const G = __CC.G; return G.buttons.filter(b => b.x < 0 || b.y < 0 || b.x + b.w > G.canvas.width + 1 || b.y + b.h > G.canvas.height + 1).map(b => b.label); }), []);
-          if (scene === 'title' || scene === 'settings') await page.screenshot({path:path.join(output,`${scene}-${width}.png`)});
+          if (['title','settings','crew','garage'].includes(scene)) await page.screenshot({path:path.join(output,`${scene}-${width}.png`)});
         }
       }
     });
@@ -117,6 +135,14 @@ async function dialogue(page, choices) {
       await phone.evaluate(() => { const G=__CC.G; G.objectiveIndex=2; const at=__CC.objPos(); G.player=T.makeFoot(G,at.x,at.y,0); G.van.vx=G.van.vy=0; G.van.loose=true; });
       await step(phone,8); assert.equal(await phone.locator('#tEnterL').textContent(),'TAKE');
       await phone.locator('#tEnter').tap(); await step(phone); assert.equal(await phone.evaluate(() => __CC.G.objectiveIndex),3);
+    });
+    await check('phone weapon, reload, roll and crew buttons are usable',async()=>{
+      await phone.locator('#tWeapon').tap();await step(phone);assert.equal(await phone.evaluate(()=>__CC.G.action.weapon),1);
+      const fire=await phone.locator('#tFire').boundingBox(),cdp=await mobile.newCDPSession(phone);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:fire.x+fire.width/2,y:fire.y+fire.height/2,id:19}]});await step(phone,5);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await phone.locator('#tReload').tap();await step(phone);assert.ok(await phone.evaluate(()=>__CC.G.action.reloadT>0));
+      await phone.locator('#tDodge').tap();await step(phone);assert.ok(await phone.evaluate(()=>__CC.G.action.dodgeT>0));await step(phone,25);
+      await phone.locator('#tCrew').tap();await step(phone);assert.equal(await phone.evaluate(()=>__CC.G.scene),'crew');await button(phone,'BACK TO CITY',true);
     });
     await check('touch HUD clears the DOM controls at both phone orientations', async () => {
       for (const [width,height] of [[390,844],[844,390]]) {
@@ -154,9 +180,10 @@ async function dialogue(page, choices) {
               if(obj.foot||obj.kind==='stealCop')G.player=T.makeFoot(G,at.x,at.y,0);
               else {G.player.x=at.x;G.player.y=at.y;G.player.vx=G.player.vy=0;}
               if(obj.clearHeat)G.wanted=0;
+              if(obj.kind==='intercept')G.van.health=65;
               G.interactP=['collect','stealCop'].includes(obj.kind);
             }
-            for(let f=0;f<(obj.hold?125:1);f++)T.tickMission(G,1/60);
+            for(let f=0;f<((obj.hold||obj.hack)?Math.ceil((obj.hold||obj.hack)*60)+1:1);f++)T.tickMission(G,1/60);
             G.interactP=false;T.render(G);
           });
         }
@@ -166,6 +193,8 @@ async function dialogue(page, choices) {
         assert.equal(state.flags.neuralDebt,0);
         await page.screenshot({path:path.join(output,`ending-${choices.stash}.png`)});
         await page.evaluate(()=>{T.loadSave(__CC.G);T.render(__CC.G)});assert.equal(await page.evaluate(()=>__CC.G.scene),'end');
+        await button(page,'KEEP DRIVING');assert.equal(await page.evaluate(()=>__CC.G.scene),'play');
+        await page.evaluate(()=>{T.loadSave(__CC.G);T.render(__CC.G)});assert.equal(await page.evaluate(()=>__CC.G.scene),'play');assert.equal(await page.evaluate(()=>__CC.G.freeRoam),true);
       });
     }
     await check('automatic resolution changes keep a rendered frame on screen', async () => {
@@ -182,6 +211,14 @@ async function dialogue(page, choices) {
         }));
       });
       assert.equal(result.resized, true); assert.equal(result.painted, true); await live.close();
+    });
+    await check('arranged music streams, changes station and yields to the pursuit track',async()=>{
+      await page.evaluate(()=>{const G=__CC.G;G.audio.unlock();G.audio.update(G,.1)});
+      await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});
+      assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('AFTERHOURS')));
+      await page.evaluate(()=>{const G=__CC.G;G.audio.nextStation();G.audio.update(G,.1)});
+      await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('SIDEWALK')));
+      await page.evaluate(()=>{const G=__CC.G;G.wanted=4;G.audio.update(G,.1)});await page.waitForFunction(()=>__CC.G.audio.recordedMusic,null,{polling:100});assert.ok(await page.evaluate(()=>__CC.G.audio.trackTitle.includes('NO CLEAN EXIT')));
     });
     await check('Web Audio starts, produces a signal and mutes through the master bus',async()=>{
       const result=await page.evaluate(async()=>{

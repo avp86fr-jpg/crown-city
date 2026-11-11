@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import { harness, root } from './harness.js';
 import { VN, MISSIONS, missionFlow } from '../src/story.js';
 import { readJSON, settingsFrom, flagsFrom, raceCourse, screenToWorld } from '../src/session.js';
+import {actionState} from '../src/action.js';
 let h, G, T;
 before(async () => { h = await harness({ stored: { mw_crown_city_settings: '{broken' } }); ({ G, T } = h); });
 function mission(index, flags = {}) {
+  G.action=actionState();
   G.flags = flagsFrom(flags); G.race = null; G.vnQueue = []; G.ended = false; G.needsBegin = false;
   G.player = T.makeFoot(G, ...G.meta.spawns.player, 0); G.health = 100; G.chips = 400;
   G.wanted = 0; G.interactP = false; G.input.enterP = false;
@@ -94,6 +96,25 @@ test('casing the Palace requires being on foot and holding still', () => {
   assert.equal(G.objectiveIndex, 1);
 });
 
+test('the convoy must be disabled with actual weapon damage before collecting its plate',()=>{
+  mission(0);G.objectiveIndex=1;G.van.health=100;G.van.dead=false;G.bullets=[];
+  G.player=T.makeFoot(G,G.van.x,G.van.y-100,Math.PI);G.input.mouse.fire=false;
+  T.tickMission(G,1/60);assert.equal(G.objectiveIndex,1);
+  for(let shot=0;shot<4;shot++){
+    G.action.shotT=0;T.shoot(G,G.player,true);
+    for(let f=0;f<14;f++)T.tickBullets(G,1/60);
+  }
+  assert.ok(G.van.health<=65);T.tickMission(G,1/60);assert.equal(G.objectiveIndex,2);assert.equal(G.van.loose,true);
+});
+
+test('archive transfer can be interrupted by firing and pays only after the full stationary hold',()=>{
+  mission(4);G.objectiveIndex=1;position(T.currentObjectivePos(G),true);G.input.fire=false;G.interactP=true;T.tickMission(G,1/60);G.interactP=false;
+  for(let f=0;f<60;f++)T.tickMission(G,1/60);assert.equal(G.objectiveIndex,1);
+  G.input.fire=true;T.tickMission(G,1/60);assert.equal(G.missionState.holdT,0);G.input.fire=false;
+  for(let f=0;f<200;f++)T.tickMission(G,1/60);assert.equal(G.objectiveIndex,1);
+  G.interactP=true;for(let f=0;f<181;f++)T.tickMission(G,1/60);G.interactP=false;assert.equal(G.objectiveIndex,2);
+});
+
 test('race gates close the lap at the start, freeze the countdown and can be lost', () => {
   mission(1); G.objectiveIndex = 1;
   const car = T.makeVeh('dart', ...G.meta.spawns.raceStart, Math.PI / 2); G.player = car; G.vehicles.push(car);
@@ -137,7 +158,9 @@ test('a starter Riot can win both laps using real physics and collision data', (
 test('quiet and loud heists differ; deferred fees are paid exactly once', () => {
   for (const [heist, wanted] of [['quiet', 2], ['loud', 5]]) {
     mission(4, { heist, scrambler: true, neuralDebt: 600 }); G.objectiveIndex = 1;
-    position(T.currentObjectivePos(G), true); G.interactP = true; T.tickMission(G, 1 / 60); G.interactP = false;
+    position(T.currentObjectivePos(G), true); G.interactP = true;
+    for(let n=0;n<181;n++)T.tickMission(G,1/60);
+    G.interactP = false;
     assert.equal(G.wanted, wanted); assert.equal(G.flags.neuralDebt, 0); assert.equal(G.chips, 4800);
     assert.equal(G.missionState.scramblerT, heist === 'quiet' ? 90 : 0);
     const saved = T.snapshot(G); T.restoreState(G, saved);
@@ -263,10 +286,11 @@ for (const choices of [
     } else {
       const at = T.currentObjectivePos(G); assert.ok(at, obj.id);
       position(at, obj.foot || obj.kind === 'stealCop');
+      if(obj.kind==='intercept')G.van.health=65;
       if (obj.clearHeat) G.wanted = 0;
       if (obj.kind === 'collect' || obj.kind === 'stealCop') G.interactP = true;
     }
-    if (obj.hold) { for (let n = 0; n < 125; n++) T.tickMission(G, 1 / 60); }
+    if (obj.hold || obj.hack) { for (let n = 0; n < Math.ceil((obj.hold||obj.hack)*60)+1; n++) T.tickMission(G, 1 / 60); }
     else T.tickMission(G, 1 / 60);
     G.interactP = false;
   }

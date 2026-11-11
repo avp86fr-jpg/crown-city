@@ -42,7 +42,7 @@ export function raceCourse(meta, laps = 1) {
 }
 export function resetInput(I) {
   for (const k of ['enterP', 'fireP', 'pauseP', 'skipP', 'confirmP', 'mapP', 'radioP',
-    'upP', 'downP', 'leftP', 'rightP', 'vnTap', 'fire', 'tFire', 'tBrake', 'tHand', 'tBoost', 'tSprint']) I[k] = false;
+    'upP', 'downP', 'leftP', 'rightP', 'vnTap', 'fire', 'tFire', 'tBrake', 'tHand', 'tBoost', 'tSprint','weaponP','reloadP','crewP','dodgeP']) I[k] = false;
   I.x = I.y = 0;
   I.mouse.down = I.mouse.fire = false;
   I.touchJoy = { x: 0, y: 0, active: false };

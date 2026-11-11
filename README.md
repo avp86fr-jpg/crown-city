@@ -1,33 +1,51 @@
 # METAWINNERS: CROWN CITY
 
-Fan-made top-down city action game starring Chaos. Play chips only, no real money.
+An illustrated overhead crime game starring Chaos. Steal a Palace archive, assemble a crew, drive through a living city and decide who gets to read the evidence. Fan-made fiction; play chips have no real-money value.
 
 [Play](https://avp86fr-jpg.github.io/crown-city/) · [Guide](https://avp86fr-jpg.github.io/crown-city/about/)
 
-Serve this directory with any static HTTP server; no build or runtime dependencies are required. For example, `python -m http.server 8000`.
+Serve this directory with any static HTTP server; the game has no build step or runtime package dependencies. For example, `python -m http.server 8000`.
 
 ## Controls
 
-WASD / arrows move or drive, E enters/exits and takes marked packages, K / J / click fires, Space drifts, Shift sprints/boosts, R changes radio, M opens the map, Escape pauses. Click the map to set a blue waypoint; JOB ROUTE returns to the gold objective. Touch controls include TAKE/ENTER and MAP. Settings include graphics quality, automatic resolution and reduced motion.
+| Action | Keyboard / mouse | Touch |
+| --- | --- | --- |
+| Walk / drive | WASD / arrows | Left stick |
+| Sprint / Nyx boost | Shift | RUN / BOOST |
+| Interact / enter / exit | E | CAR / EXIT / TAKE |
+| Shoot | K / J / click to aim | FIRE |
+| Change weapon | Q | WEAPON |
+| Reload | X | RELOAD |
+| Dodge on foot / drift in a vehicle | Space | ROLL / DRIFT |
+| Crew contracts / nearby workshop | C | CREW |
+| Radio station | R | Settings → Radio |
+| Map / waypoint | M, click the map | MAP, tap the map |
+| Pause | Escape | Pause button |
 
-## Campaign
+Weapons have distinct magazines, cadence, spread and damage. Empty magazines reload automatically; X reloads early. The silenced .45 is quieter, the Vulture SMG fires quickly and the Breacher shoots a spread of pellets. Sprinting and dodge rolls use stamina. Standing still beside a wall grants cover protection; rolls briefly evade shots. Ammunition refills per magazine without a separate reserve-ammo inventory.
 
-Six connected jobs: intercept the seed-plate van, win a two-lap street race, deliver to Neural, scout the Palace on foot, execute the quiet/loud heist and escape by boat, then take the Nyx from the marina to the highway. An unpaid Neural fee comes out of the vault payout. Quiet preparation grants a temporary scrambler window; new crimes cancel it.
+## Campaign and crew work
 
-Objectives create local checkpoints. RETRY OBJECTIVE restores the current checkpoint, including cash and payment state. Version 2 saves retain race progress, dialogue transitions, vehicle condition and the ending; previous saves are accepted with defaults. Saves remain in browser local storage on the same device and origin.
+Six connected jobs follow Gold Mage's forged debt ledger: intercept and disable the van, earn Fire's trust in a two-lap race, obtain Neural's blackout, scout the Palace on foot, transfer the archive under pressure and escape by boat/Nyx. Protecting the ledger or selling a decoy changes the payout and ending. Quiet/loud entry changes pursuit pressure; Neural's deferred fee is deducted once from the vault cut.
 
-## Graphics and animation
+C opens repeatable crew contracts: Neural's timed courier run, Mask's black-box pickup and escape, and Fire's drift challenge. Contracts pay chips and reputation. CUSTOMS, RESPRAY and MED / AMMO markers offer repairs, three stages of handling/power upgrades, heat-clearing resprays and health/ammunition supplies. Break police line of sight before using a workshop while wanted. Cyan map markers show services; opening a workshop remotely can mark the nearest one in blue.
 
-The renderer adds commercial neon accents, wet-road light streaks, rain ripples, drifting steam, layered tree canopies with wind and a cached vignette. Vehicles articulate their front wheels, react to acceleration/braking, bob on water and run rain wipers. Characters have footplant motion, breathing and shot recoil. Boat wakes, smoke, dust, sparks, fire and explosions use continuous lifetime-based effects. Water frames blend on medium/high quality. Cutscenes use a slow cover-cropped camera move. Reduced Motion disables the new decorative actor/camera motion and trims lightning.
+KEEP DRIVING after the ending opens persistent free roam with contracts and workshops. Objectives create checkpoints. Version 3 saves retain weapon magazines, upgrades, reputation, active contract, paint and free roam alongside campaign/race/dialogue progress. Version 1/2 saves are accepted with defaults. Saves remain in local storage on the same device and origin.
 
-[Animated renderer preview](docs/previews/graphics-animation.webp) · [Night race still](docs/previews/graphics-night.webp)
+## Art, city and audio
+
+New illustrated atlases cover six cars, Chaos locomotion/aiming and civilian/police walking. Vehicles have steering, suspension, wipers, entry doors, damage and respray feedback. The city adds cafés, market carts, bus shelters, newsstands, loading bays, roof fans/ducts/solar panels, pavement wear, workshop forecourts and pedestrian gestures. Population budgets scale by graphics quality. Roofs fade when they cover the on-foot player. Existing collision-aligned painted city, bikes, boats and utility vehicles are retained.
+
+Three original arranged radio loops total about 3½ minutes: funk/brass night driving, swung electric-key street music and a faster pursuit track. They stream through the game's Web Audio master bus, crossfade for chases/stations and duck during dialogue/menus. Synthesized fallback score and spatial city/vehicle effects remain available. New reload, weapon-change, dodge and radio cues support the action.
+
+[MetaWinners character references and art/audio provenance](docs/character-references.md) · [Implementation and validation notes](docs/improvement-pass.md)
+
+[Gameplay video with sound](docs/previews/premium-preview.mp4) · [City capture](docs/previews/premium-city.webp) · [Night driving](docs/previews/premium-driving.webp) · [Crew board](docs/previews/premium-crew.webp)
 
 ## Validation
 
-Run `npm test` and `npm run check` with Node 20 or later. Tests use the actual world, collision mask, mission logic and vehicle physics with a mocked browser/canvas. They cover presentation bounds and reduced motion, both campaign choice routes (moving between objectives in the test), a physically driven two-lap race, reachability, checkpoint/save recovery, controls, responsive button bounds and asset request behavior.
+Run `npm test` and `npm run check` with Node 20 or later. The regression suite exercises actual world/collision/mission/physics logic with a mocked browser, plus action/economy/save validation.
 
-For browser checks, run `npm ci` and `npx playwright install chromium` (or set `CHROMIUM_PATH` to an installed Chromium), start the static server above, then run `npm run test:browser`. Set `GAME_URL` to test a different served copy. Screenshots are saved under `.qa/browser/`.
+For real-browser checks, run `npm ci` and `npx playwright install chromium` (or set `CHROMIUM_PATH`), start the static server, then run `npm run test:browser`. `GAME_URL` selects another served copy. Screenshots are saved under `.qa/browser/`.
 
-The Chromium suite covers desktop and emulated multi-touch controls, menu layouts, saves, both campaign routes, a physically simulated race, automatic resolution changes and Web Audio signal/muting. It repositions between mission locations and does not replace a fully manual campaign run or testing on physical phones. See [the improvement notes](docs/improvement-pass.md) for scope and verification.
-
-[Browser phone capture](docs/previews/browser-touch.png) · [Browser landscape capture](docs/previews/browser-landscape.png)
+The browser suite covers keyboard and emulated multi-touch controls, responsive menus, saves, crew work, both campaign routes, a physically simulated race, free roam, automatic resolution changes, streamed station/pursuit music and master muting. It repositions between most mission locations. A fully manually driven campaign, physical-phone/Safari testing and subjective audio/art review remain separate; no device FPS benchmark is claimed.

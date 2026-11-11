@@ -508,6 +508,9 @@ export function makeBuildings(W, tex, coreRoofs) {
         const x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h;
         const P = (px, py) => project(cam, D, px, py, h);
         const r00 = P(x0, y0), r10 = P(x1, y0), r11 = P(x1, y1), r01 = P(x0, y1);
+        const hero=opts.player;
+        const covered=hero?.type==='foot' && hero.x>r00[0]-12 && hero.x<r11[0]+12 && hero.y-22>r00[1] && hero.y-22<r11[1];
+        ctx.save();if(covered)ctx.globalAlpha*=.24;
         const col = wallCol(b);
         const fp = !opts.low && b.kind !== "container" && b.kind !== "hangar" ? (b.wall === "glass" ? fac.glass : fac.day) : null;
         if (cam.y > y1) wall(ctx, [x0, y1], [x1, y1], r01, r11, col[0], h, fp, sun, 0, 1);
@@ -532,6 +535,7 @@ export function makeBuildings(W, tex, coreRoofs) {
           }
         }
         // ambient occlusion at the base of tall buildings
+        ctx.restore();
       }
     },
     drawLit(ctx, cam, r, night) {

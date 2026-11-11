@@ -1,40 +1,42 @@
-# Campaign and reliability improvement pass
+# Crown City implementation and verification
 
-## Mission progression
+## Current scope
 
-| Job | Gameplay change |
+The illustrated overhead camera and original collision/world layout are retained. The game now combines six narrative jobs, three repeatable crew contracts, three weapon behaviors, stamina/roll/cover mechanics, vehicle workshops and post-story free roam.
+
+| Job | Mechanics and stakes |
 | --- | --- |
-| Cold Wallet | Deliberate package collection; an intercepted van stops cruising when disabled. |
-| Neon Mile | Two ordered laps, a frozen countdown, a shared course for both drivers and real defeat/retry. A stock Riot can win. |
-| Neural | Reachable entrance, clear-heat handoff, upfront payment or a fee deducted once from vault loot. A short balance can be deferred. |
-| Casing the Palace | Two distinct reachable locations, on foot, with a short stationary scouting hold. Optional scrambler can be taken on foot or obtained with a police car. |
-| Palace Heist | Quiet preparation grants a temporary no-new-dispatch window; loud entry begins at five stars. Loot is awarded once. A reserved boat waits at a reachable slip. |
-| Exit Liquidity | Return to the marina, take the unlocked Nyx, reach the highway and lose the police. |
+| Cold Wallet | Disable the convoy van with weapon or collision damage, then deliberately collect the archive key. |
+| Burning Bridges | Win two ordered laps against Fire; a stock Riot can win. Defeat returns to a retry. |
+| Dead Air | Pay/defer the blackout fee, steal the Metro scrambler and deliver it without heat. |
+| The Inside Line | Scout two reachable Palace locations on foot while stationary; choose quiet/loud entry. |
+| House of Glass | Loud entry attracts police immediately; start a stationary three-second archive transfer, then escape to the reserved boat. Movement or shooting interrupts the transfer. |
+| Exit Wounds | Return to the marina for the Nyx, carry the evidence to the highway and lose pursuit. The ledger choice changes the ending. |
 
-## Controls and presentation
+The original screenplay in `src/screenplay.js` gives the crew personal motives, connects the jobs to Southside's forged debts and ties the finale to Chaos's erased history. Dialogue and encrypted radio messages follow mission state. The events are fictional adaptations, not NFT lore claims.
 
-Keyboard north/forward now agrees with touch and vehicle steering. Mouse aim uses the inverse camera transform. Focus loss releases held controls and pauses active play. Touch gains MAP and contextual TAKE. The map supports a blue personal waypoint and a return to the job route. HUD includes objective progress, race progress and pursuit feedback. Landscape settings use two columns. Existing painted city, character portraits and vehicle art are retained.
+## Action and economy
 
-## Loading and performance
+The .45, SMG and shotgun have distinct capacity, rate, spread and damage; magazines reload on empty or X. Sprinting consumes stamina, rolls cost a fixed amount and have a cooldown, stationary cover reduces incoming damage, and part of the roll avoids bullets. These remain arcade mechanics: there is no separate reserve-ammo inventory or skeletal/3D character system.
 
-Story art loads per scene rather than blocking the title. The shared image loader handles cached events, missing decode support, errors and timeouts. Tile preloads share pending requests, missing tiles back off and small tile layers can evict old images. GPS work is limited by simulation ticks. Paused screens reuse a frozen world render. Unsupported audio and malformed settings no longer prevent starting the game.
+Crew work includes a timed clean-heat courier delivery, a marked pickup followed by a two-star escape, and a timed drift-points challenge. Completion pays once and earns reputation. Contracts and their remaining time persist in saves; personal/contract waypoints remain separate from the gold mission marker.
+
+Workshops charge chips for repairs, respray/heat removal, health/magazine supplies and three tuning stages. Vehicle and line-of-sight requirements prevent remote repair/instant escape. Tuning derives from stock definitions so repeated entry cannot compound it or alter NPC vehicle definitions. Checkpoint/save restoration can roll it back. KEEP DRIVING enables saved free roam after the final story scene.
+
+## Presentation and loading
+
+The new atlases provide cars, Chaos and civilian/police art. Runtime effects add steering, suspension, rain wipers, entry/exit doors, recoil, breathing, dodges and falls. Cached street furniture, pavement detail and roof equipment enrich the existing painted world; quality tiers bound crowd/traffic budgets and roof detail. Roof transparency improves on-foot readability. Existing motorcycles, boats and utility vehicles are retained.
+
+Three original arranged Ogg radio tracks stream after audio unlock. Stations and high-intensity pursuit crossfade through the existing master/music buses, with dialogue/menu ducking and synthesized fallback. Their provenance and character reference links are recorded in [the reference notes](character-references.md).
+
+Story art remains deferred, tile requests coalesce and missing tiles back off. Navigation work is bounded by simulation ticks. Menu scenes reuse a frozen world. Adaptive resolution changes happen before rendering to avoid a cleared/black frame. Focus loss releases inputs and pauses play. Corrupt settings, unsupported audio and blocked save storage are handled without preventing gameplay.
 
 ## Verification and limits
 
-31 automated tests pass against the actual repository world and collision PNG with mocked canvas/DOM/audio. Two choice routes traverse all six mission state machines, with test repositioning between objectives. The separate stock-Riot race test drives both laps using real physics, road data and collision checks without checkpoint teleporting. Button bounds are checked at 1280×720, 844×390 and 390×844.
+43 Node tests and 13 real Chromium checks pass. Run `npm test`, `npm run check` and `npm run test:browser` against a served copy. Node regressions include real collision data, reachable mission anchors, physically driven racing, campaign branches, archive interruption, actual bullet damage to the convoy, contract payments, workshop requirements, stamina/cover/roll behavior and save migration.
 
-The modified build now passes nine real Chromium checks (`npm run test:browser`): opening dialogue with E, keyboard movement/shooting, map waypoints, pause/save/reload, menu bounds at 1280×720, 844×390, 390×844 and 667×375, emulated multi-touch movement/RUN and TAKE/MAP/PAUSE, both campaign choice routes, a rendered frame during automatic resolution changes, and actual Web Audio output/master muting. Each campaign run physically simulates the two-lap race with the stock Riot; travel between the other objectives is repositioned. Browser exceptions and HTTP asset failures fail the suite. Browser screenshots are saved under `.qa/browser/`.
+Real Chromium checks include keyboard and emulated multi-touch controls, magazine/reload/roll/crew controls, menus at 1280×720, 844×390, 390×844 and 667×375, saves/contract guidance, both six-job choice routes, post-story free roam, adaptive-resolution rendering, actual streamed station/pursuit playback and master muting. Browser exceptions and failed asset requests fail the suite. Browser campaign travel is repositioned between most objectives; racing uses actual physics and road collision.
 
-Browser testing found and fixed landscape title-menu clipping when Continue is present, objective text beneath phone buttons, a black frame during automatic resolution changes, E failing to advance dialogue, and delayed touch controls when leaving a menu. Touch pickup hints now say TAKE; phone pursuit/race/scrambler feedback fits the available space. The ending uses the game world and shows completed jobs/chips, removing the old menu baked into the title-image background. Quitting to the title tolerates blocked local storage, and the keyboard shooting instructions match the controls.
+A scripted normal-frame-loop capture demonstrates driving, firing, rolling, city animation and actual mixed audio. It is not a manually completed campaign. Physical phones, Safari, subjective listening/art review and a full manually driven campaign remain unverified; no device performance benchmark is claimed.
 
-The real-browser run is automated. A fully manually driven campaign, physical phone/Safari testing and listening-based audio review remain separate; no device performance or frame-rate benchmark is claimed. These changes are prepared on the existing pull request; production has not been changed.
-
-## Graphics and animation pass
-
-The later visual pass adds directional vehicle finish highlights, steered wheels, suspension pitch, windshield wipers, idle boat heave, character footplant/breathing/recoil and a cleaner hero rim. Hero visibility through roofs is applied only when a projected roof covers the player. New effects include soft expanding smoke/dust, moving spark streaks, layered fire, an explosion shockwave and widening directional wakes. Medium/high quality blends water animation frames. Tree canopies gain layered volume and wind. Commercial signs and trim lights, road-only wet light streaks, world-space rain ripples, street steam and a cached vignette add depth without replacing collision-aligned city art.
-
-Race gates have a segmented ground halo and illuminated side posts. The countdown has staged lights, and the speed display includes a speed bar and vehicle health. Story backdrops are cover-cropped with a slow push rather than stretched; portrait motion is subtler. Reduced Motion freezes new decorative movement and suppresses camera shake/strong lightning. Low graphics caps reflections/signs and omits steam and canopy detail.
-
-The [animation](previews/graphics-animation.webp) and [still](previews/graphics-night.webp) come from the actual engine running a scripted race with real assets and a native Canvas backend. They are renderer previews, not browser captures. No video assets are downloaded by gameplay. The test harness optionally accepts a native Canvas backend for inspection; normal tests require no extra packages.
-
-The graphics verification also rendered 18 native Canvas combinations: three viewport sizes × three graphics tiers × two motion settings, plus the story screen. Vera now uses a newly generated high-resolution transparent portrait, with its art brief recorded in [art direction](art-direction.md). Real-browser/touch verification is described above.
+Production is unchanged until the source pull request is merged/published.
