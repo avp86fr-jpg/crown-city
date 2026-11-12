@@ -195,13 +195,12 @@ async function dialogue(page, choices) {
             else if(obj.kind==='enterBoat') { T.ensureGetawayBoat(G); T.enterVeh(G,G.vehicles.find(v=>v.getawayBoat&&!v.dead),true); }
             else if(obj.kind==='loseWanted') G.wanted=0;
             else if(obj.kind==='race') {
-              T.startRace(G,obj); G.race.countdown=0; G.race.started=true;
+              const {circuitPilot}=await import('./src/motorsport.js');
+              T.startRace(G,obj); G.player.racerIndex=0;G.race.countdown=0; G.race.started=true;
               let frames=0;
-              while(G.race&&frames++<7200) {
-                G.ticks++;const car=G.player,cp=G.race.pts[G.race.i];
-                let delta=Math.atan2(cp[0]-car.x,-(cp[1]-car.y))-car.rot;
-                while(delta>Math.PI)delta-=Math.PI*2;while(delta< -Math.PI)delta+=Math.PI*2;
-                T.tickDrive(G,car,{x:Math.max(-1,Math.min(1,delta*2.4)),y:Math.abs(delta)>.8?.4:1,hand:Math.abs(delta)>1.1},1/60,true);
+              while(G.race&&frames++<60*240) {
+                G.ticks++;const car=G.player;
+                T.tickDrive(G,car,circuitPilot(G,car,1/60),1/60,true);G.cam.x=car.x;G.cam.y=car.y;
                 T.tickVehicles(G,1/60);T.tickRace(G,obj,1/60);
               }
               if(G.missionIndex!==2)throw Error('Physics race did not finish with a win');

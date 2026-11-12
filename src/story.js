@@ -15,7 +15,7 @@ export const CHAR = {
 
 export const MISSIONS = [
   { id: "cold_wallet", title: "COLD WALLET", blurb: "Jack a whale's seed-plate van." },
-  { id: "pink_slip", title: "PINK SLIP HEAT", blurb: "Beat Fire on the Crown Loop." },
+  { id: "pink_slip", title: "PINK SLIP HEAT", blurb: "Beat Fire at the Crown Grand Prix circuit." },
   { id: "gas_fees", title: "GAS FEES", blurb: "Pay Neural in cred. Lift a scrambler." },
   { id: "the_tell", title: "THE TELL", blurb: "Case the Palace. Pick a door." },
   { id: "house_odds", title: "HOUSE ODDS", blurb: "Vault, car, boat. Don't get rugged." },
@@ -74,7 +74,7 @@ export const VN = {
 
   m2_intro: {
     bg: "strip_night", left: "chaos", right: "fire", speaker: "fire",
-    text: "Two laps of the Crown Loop. Hit every gold gate, then cross the start line. You want a crew, Chaos? Show me you can drive.",
+    text: "One full lap of the Crown Grand Prix circuit. Hit every gold gate, then cross the start line. You want a crew, Chaos? Show me you can drive.",
     next: "m2_intro2",
   },
   m2_intro2: {
@@ -209,8 +209,8 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m2_intro",
         objectives: [
-          { id: "to_track", kind: "goto", at: "raceStart", r: 80, vehicle: true, hint: "Meet Fire at the Crown Loop." },
-          { id: "race", kind: "race", laps: 2, hint: "Beat Fire over two laps. Follow every glowing gate." },
+          { id: "to_track", kind: "goto", at: "circuitPit", r: 100, vehicle: true, hint: "Meet Fire at the Crown Grand Prix pit desk." },
+          { id: "race", kind: "race", laps: 1, hint: "Beat Fire over one full circuit lap. Follow every glowing gate." },
         ],
         winVN: "m2_win",
         loseVN: "m2_lose",

@@ -6,9 +6,9 @@ import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const number=(v,d,a,b)=>Number.isFinite(v)?clamp(v,a,b):d;
 export const WEAPONS=[
- {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:780,pellets:1,spread:.018,range:560,falloff:340,kick:.13,quiet:true},
- {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:860,pellets:1,spread:.075,range:600,falloff:280,kick:.16},
- {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:680,pellets:6,spread:.28,range:340,falloff:100,kick:.35},
+ {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:1100,pellets:1,spread:.009,range:620,falloff:380,kick:.10,quiet:true},
+ {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:1250,pellets:1,spread:.045,range:620,falloff:300,kick:.14},
+ {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:1050,pellets:6,spread:.23,range:340,falloff:100,kick:.32},
 ];
 export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),

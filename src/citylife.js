@@ -1,7 +1,7 @@
 import {inCityHub} from './world_hubs.js';
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
-import {loadImage} from './assets.js';
+import {loadScenery} from './assets.js';
 import {projectedRoofBounds} from './render_world.js';
 const TAU=Math.PI*2;
 const colors=['#ac4540','#2c6663','#d0b47b','#304f68','#736047'];
@@ -37,13 +37,13 @@ export function loadStreetArt(G){
  const street=G.street;if(!street)return Promise.resolve();
  if(street.atlas||(street.retryAt||0)>performance.now())return Promise.resolve();
  if(street.loading)return street.loading;
- street.loading=loadImage('assets/premium/street-furniture.webp').then(im=>{
+ street.loading=loadScenery('assets/premium/street-furniture.webp',576).then(im=>{
   street.atlas=im;for(const canvas of street.cache.values())canvas.width=1;street.cache.clear();street.revision++;
  }).catch(()=>{street.retryAt=performance.now()+10000;}).finally(()=>{street.loading=null;});return street.loading;
 }
 function fixtureArt(G,kind,seed){
  const key=kind+':'+Math.floor(seed*4);let canvas=G.street.cache.get(key);if(canvas)return canvas;
- canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d');c.translate(80,80);
+ canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d',{willReadFrequently:true});c.translate(80,80);
  const col=colors[Math.floor(seed*colors.length)];
  // Concrete base, worn edge, warm contact shadows.
  oval(c,4,11,51,32,'rgba(0,0,0,.18)');
@@ -84,10 +84,10 @@ function fixtureArt(G,kind,seed){
  }
  G.street.cache.set(key,canvas);return canvas;
 }
-function roadArt(G,ix,iy){
+function* roadArtSteps(G,ix,iy){
  const key=ix+':'+iy;let c=G.street.roadCache.get(key);if(c)return c;
- c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');
- for(let j=0;j<24;j++){
+ c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d',{willReadFrequently:true});
+ for(let j=0;j<24;j++){yield;
   const seed=ix*138+iy*73+j*9,px=hash(seed)*500,py=hash(seed+4)*500,wx=ix*512+px,wy=iy*512+py;
   if(!['road','walk','lot'].includes(G.surfaceAt(wx,wy)))continue;
   if(j%4===0){
@@ -102,14 +102,15 @@ function roadArt(G,ix,iy){
  if(G.street.roadCache.size>=limit){const oldest=G.street.roadCache.keys().next().value;const old=G.street.roadCache.get(oldest);G.street.roadCache.delete(oldest);old.width=old.height=1;}
  G.street.roadCache.set(key,c);return c;
 }
-export function drawStreetScene(G,r){
- if(!G.street)buildStreetScene(G);const c=G.ctx;
+export function* streetSceneSteps(G,r,c=G.ctx){
+ if(!G.street)buildStreetScene(G);
  if(!G.street.atlas)loadStreetArt(G);
- for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++)c.drawImage(roadArt(G,ix,iy),ix*512,iy*512);
- for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
+ for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++){const art=yield* roadArtSteps(G,ix,iy);c.drawImage(art,ix*512,iy*512);}
+ for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
 }
+export function drawStreetScene(G,r){for(const step of streetSceneSteps(G,r)){} }
 export function drawRoofDetail(G,r){
  if(G.settings.quality==='low')return;
  const c=G.ctx,roof={},t=G.settings.reducedMotion?0:G.ticks/60;

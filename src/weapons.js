@@ -1,0 +1,50 @@
+import {WEAPONS} from './action.js';
+// World-unit dimensions shared by the held artwork and the projectile origin.
+// The hero is 50 units tall; even the long gun stays below half that height.
+export const WEAPON_ART={sidearm:{length:13,width:4,muzzle:22},smg:{length:18,width:6,muzzle:27},shotgun:{length:24,width:5,muzzle:33}};
+const cache=new Map();
+function sprite(id){
+ if(cache.has(id))return cache.get(id);
+ const spec=WEAPON_ART[id]||WEAPON_ART.sidearm,c=document.createElement('canvas');c.width=128;c.height=48;
+ const x=c.getContext('2d',{willReadFrequently:true});x.scale(4,4);x.translate(3,6);
+ const L=spec.length,metal=x.createLinearGradient(0,-3,0,3);metal.addColorStop(0,'#d4dce0');metal.addColorStop(.3,'#596c77');metal.addColorStop(.55,'#26343d');metal.addColorStop(1,'#101c25');
+ const block=(px,py,w,h,col)=>{x.fillStyle=col;x.beginPath();x.roundRect(px,py,w,h,.65);x.fill();};
+ if(id==='sidearm'){
+  block(0,-1.9,8.5,3.8,metal);block(8,-1.25,5,2.5,metal);
+  x.fillStyle='#15212a';x.beginPath();x.moveTo(2,.7);x.lineTo(5,1);x.lineTo(4.3,5);x.lineTo(1.7,4.6);x.closePath();x.fill();
+  x.strokeStyle='#8d9d9d';x.lineWidth=.55;x.strokeRect(4,1,2.6,2.2);
+  block(1,-2.2,1,1,'#ccdacd');block(6.5,-2.2,.7,1,'#ccdacd');
+  x.fillStyle='#91a7ac';x.fillRect(1,-1.9,6,.45);x.fillRect(8.5,-1.1,3.8,.4);
+  x.fillStyle='#20303a';for(let i=1;i<4;i++)x.fillRect(i,-1.4,.35,1.5);
+ }else if(id==='smg'){
+  x.strokeStyle='#93a8a9';x.lineWidth=.7;x.beginPath();x.moveTo(2,-1);x.lineTo(-2,-2);x.lineTo(-2,2);x.lineTo(2,1);x.stroke();
+  block(1,-2.2,10,4.4,metal);block(10,-1.4,8,2.8,metal);block(3,1.4,2.3,3.7,'#25323a');
+  x.fillStyle='#1b2932';x.beginPath();x.moveTo(7,1);x.lineTo(10,1);x.lineTo(9.2,6);x.lineTo(6.8,5.5);x.closePath();x.fill();
+  block(5,-3.1,3.3,1.2,'#30424b');x.fillStyle='#c4a777';x.fillRect(7,-1.2,2,1);
+  x.fillStyle='#9cb0b6';x.fillRect(2,-2.2,8,.5);x.fillRect(11,-1.3,5,.45);x.fillRect(7.3,2,.5,3);
+  x.fillStyle='#172833';for(let i=11;i<15;i++)x.fillRect(i,-1.4,.4,1.2);
+ }else{
+  const wood=x.createLinearGradient(0,-2,0,3);wood.addColorStop(0,'#bd9668');wood.addColorStop(.5,'#836246');wood.addColorStop(1,'#493c31');
+  x.fillStyle=wood;x.beginPath();x.moveTo(-2,-1);x.lineTo(6,-1.3);x.lineTo(7,1);x.lineTo(1,3.1);x.lineTo(-2,2.8);x.closePath();x.fill();
+  block(5,-1.7,7,3.4,metal);block(11,-1.1,13,2.2,metal);block(12,-1.7,6,3.4,wood);
+  x.fillStyle='#503c2c';for(let i=13;i<18;i+=1.2)x.fillRect(i,-1.4,.4,2.8);
+  x.fillStyle='#b8caca';x.fillRect(6,-1.7,5,.45);x.fillRect(18,-1,5,.4);x.fillStyle='#cee0b9';x.fillRect(23,-1.5,.8,.6);
+  x.strokeStyle='#8d9d9d';x.lineWidth=.6;x.strokeRect(6,1,3,2);
+ }
+ block(L-.8,-1,.8,2,'#0b1721');
+ cache.set(id,c);return c;
+}
+export function drawHeldWeapon(G,a,rot){
+ const c=G.ctx,id=WEAPONS[G.action.weapon].id,spec=WEAPON_ART[id]||WEAPON_ART.sidearm,reload=G.action.reloadT>0;
+ const recoil=Math.max(0,1-(G.ticks-(a.shotTick??-100))/7)*2;
+ c.save();c.translate(0,-23);c.rotate(rot-Math.PI/2+(reload?.35*Math.sin(G.action.reloadT*5):0));
+ // Sleeve, support hand and grip: separate from the body atlas, so muzzle
+ // direction follows continuous aim instead of snapping between eight poses.
+ const sleeve=c.createLinearGradient(0,-6,12,5);sleeve.addColorStop(0,'#77607e');sleeve.addColorStop(.45,'#493652');sleeve.addColorStop(1,'#281f35');
+ const arm=(support=false)=>{c.beginPath();c.moveTo(-3,support?-6:3);c.quadraticCurveTo(support?8:2,support?-6:6,(support?(id==='shotgun'?22:18):11)-recoil,support?-1:1);};
+ for(const support of id==='sidearm'?[false]:[true,false]){arm(support);c.lineCap='round';c.strokeStyle='#242131';c.lineWidth=4;c.stroke();c.strokeStyle=sleeve;c.lineWidth=3;c.stroke();}
+ c.drawImage(sprite(id),spec.muzzle-spec.length-3-recoil,-6,32,12);
+ c.fillStyle='#29493e';c.beginPath();c.ellipse(11-recoil,1,1.8,1.4,0,0,Math.PI*2);c.fill();
+ if(id!=='sidearm'){c.beginPath();c.ellipse((id==='shotgun'?22:18)-recoil,-.5,1.7,1.5,0,0,Math.PI*2);c.fill();}
+ c.restore();
+}

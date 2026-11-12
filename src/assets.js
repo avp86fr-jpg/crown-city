@@ -16,3 +16,12 @@ export function loadImage(src, timeout = 15000) {
     im.src = src;
   });
 }
+
+// Immutable, pre-decoded scenery at its actual sampling size. This avoids the
+// first tiny fixture forcing a full atlas upload/readback inside a play frame.
+export async function loadScenery(src,maxWidth=1024){
+ const im=await loadImage(src);
+ if(typeof createImageBitmap!=='function')return im;
+ const scale=Math.min(1,maxWidth/im.width);
+ try{return await createImageBitmap(im,{resizeWidth:Math.round(im.width*scale),resizeHeight:Math.round(im.height*scale),resizeQuality:'high'});}catch{return im;}
+}

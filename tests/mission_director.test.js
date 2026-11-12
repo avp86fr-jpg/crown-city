@@ -28,9 +28,9 @@ test('all six job briefs contain fixed original guidance and immutable bonus def
 test('objective guidance fires once per objective and remains available after restore', () => {
   const G = game(); beginJob(G);
   assert.equal(tickDirector(G, 0.1).name, 'FIRE'); assert.equal(tickDirector(G, 0.1), null);
-  G.objectiveIndex = 1; assert.match(tickDirector(G, 0.1).text, /Two laps/);
+  G.objectiveIndex = 1; assert.match(tickDirector(G, 0.1).text, /One full lap/);
   G.director = directorState(directorSave(G.director)); beginJob(G);
-  assert.equal(tickDirector(G, 0.1), null); assert.match(G.director.guidance.text, /Two laps/);
+  assert.equal(tickDirector(G, 0.1), null); assert.match(G.director.guidance.text, /One full lap/);
   G.scene = 'pause'; const before = G.director.active.elapsed; tickDirector(G, 20);
   assert.equal(G.director.active.elapsed, before);
 });

@@ -13,7 +13,7 @@ const CONDITIONS = Object.freeze({
 });
 const JOBS = [
   ['COLD WALLET', 'HUNTER', 'The convoy carries the key to the Palace debt archive. Get the van open and bring that key home.', 'The convoy is the target. The pavement belongs to everybody.', ['neighbors', 'measured']],
-  ['BURNING BRIDGES', 'FIRE', 'Win two laps and earn Fire’s Palace service route. Every numbered gate counts.', 'Brake before the bend. You cannot spend a wrecked engine.', ['neighbors', 'wheels']],
+  ['BURNING BRIDGES', 'FIRE', 'Win a full lap at Crown Grand Prix and earn Fire’s Palace service route. Every numbered gate counts.', 'Brake before the bend. You cannot spend a wrecked engine.', ['neighbors', 'wheels']],
   ['DEAD AIR', 'NEURAL', 'A Metro scrambler can hide the archive transfer. Settle my fee, lift the unit, and lose your tail.', 'Take the hardware. Leave the precinct’s people standing.', ['neighbors', 'wheels']],
   ['THE INSIDE LINE', 'MASK', 'Read the south doors, learn the lot, and trace the water exit. A good escape starts before the alarm.', 'Walk like you belong here. Running past a uniform invites a second look.', ['neighbors', 'ghost']],
   ['HOUSE OF GLASS', 'NEURAL', 'The Palace archive names the people Gold Mage erased. Hold the transfer, reach the marina, get it offshore.', 'Quiet buys ninety seconds with the scrambler. Loud buys five stars.', ['neighbors', 'ghost']],
@@ -30,8 +30,8 @@ const GUIDANCE = [
     grab: ['HUNTER', 'Engine is done. Stop beside the van, then interact to take the sealed archive key.'],
     lose_heat: ['MASK', 'Turn out of their sight. A building between you and Metro is worth more than another mile.'],
     stash: ['HUNTER', 'Bring the key into the garage. Next we find a way into the Palace.'] },
-  { to_track: ['FIRE', 'Bring your wheels to the loop. The lights give you three seconds to get straight.'],
-    race: ['FIRE', 'Two laps, every gold gate. Ease off before the corner and drive out of it.'] },
+  { to_track: ['FIRE', 'Meet me at the Crown Grand Prix pit desk, south of the river. The lights give you three seconds to get straight.'],
+    race: ['FIRE', 'One full lap, every gold gate. Ease off before the corner and drive out of it.'] },
   { pay: ['NEURAL', 'Come to the loft. If you took credit, the six hundred comes from the archive cut.'],
     lift: ['NEURAL', 'The unit is beside Metro. Lift it on foot with interact, or take a cruiser. Your call.'],
     back: ['NEURAL', 'Lose the stars before you bring that thing to my door. I like my windows intact.'] },

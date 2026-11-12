@@ -1,3 +1,4 @@
+import {repairCoreWater} from './urban_courts.js';
 import {applyStreetGateways} from './world_streets.js';
 import {applyCircuit,inCircuit} from './circuit_world.js';
 import {SLOT_MACHINES} from './slots.js';
@@ -75,6 +76,7 @@ function normalizePaintedRoads(meta,mask,size){
 }
 export function buildWorld(meta, coreMask, coreMS) {
   normalizePaintedRoads(meta,coreMask,coreMS);
+  repairCoreWater(coreMask,coreMS);
   const rnd = mulberry(1337);
   const R = (a, b) => a + (b - a) * rnd();
   const grid = new Uint8Array(GW * GH);

@@ -65,3 +65,15 @@ test('narrow coast roads use one viable lane per direction, preserving the diago
  const graph=buildGraph({roads:[],signals:[]},{roads:[{k:'coast',w:180,a:[100,100],b:[1900,100]},{k:'highway',w:200,a:[1900,100],b:[2060,240]},{k:'arterial',w:200,a:[2060,240],b:[2060,1600]}]});
  assert.equal(graph.edges.find(e=>e.k==='coast').lanes,1);assert.equal(graph.nodes.find(n=>n.x===1900&&n.y===100).edges.length,2);
 });
+
+test('a stopped obstruction queue can retry after the passing lane clears, without moving parked cars',()=>{
+ const graph=buildGraph({roads:[{v:false,c:2000,a:100,b:3900,w:260,lanes:2,med:0,k:'arterial'}],signals:[]},{roads:[]});
+ const G={graph,player:{x:2400,y:2400,type:'foot'},cam:{x:2000,y:2000,scale:1},canvas:{width:800,height:500},ticks:1,vehicles:[],peds:[],audio:{}};
+ const traffic=createTraffic(G);traffic.target=0;const e=graph.edges[0];
+ const parked={...edgePoint(e,true,2100,0),def:{},kind:'fare',parked:true,vx:0,vy:0},beside={...edgePoint(e,true,1940,1),def:{},kind:'fare',parked:true,vx:0,vy:0};
+ const v={...edgePoint(e,true,1800,0),type:'veh',def:{},kind:'fare',traffic:true,cruise:90,vx:0,vy:0,tr:{e,fwd:true,s:1800,lane:0,spd:0,turn:null}};G.vehicles=[parked,beside,v];
+ for(let i=0;i<12*60;i++){G.ticks++;traffic.tick(1/60);}assert.ok(v.tr.spd<2,'must wait while passing lane is occupied');
+ G.vehicles=G.vehicles.filter(c=>c!==beside);let reversed=false;
+ for(let i=0;i<30*60;i++){G.ticks++;traffic.tick(1/60);reversed ||= v.fwd<0;assert.equal(bodyContact(v,parked),null);}
+ assert.ok(reversed,'stopped car creates steering clearance');assert.equal(v.tr.lane,1);assert.ok(v.x>parked.x+180);assert.equal(parked.x,2200);
+});

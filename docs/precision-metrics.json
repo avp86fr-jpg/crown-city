@@ -1,0 +1,153 @@
+{
+  "base": "8830fd1debb78c3f6f31777fae701a05b06cee3f",
+  "method": "Chrome headless, 844x390 touch viewport, DPR2, 4x CPU throttle, Performance quality; 120 manually rendered frames per cold location. Boot assets settle for 1.8 seconds. These are synchronous render-work measurements, not device FPS.",
+  "before": [
+    {
+      "scene": "circuit",
+      "p50": 1.2999999970197678,
+      "p95": 12.300000011920929,
+      "max": 341.90000000596046,
+      "framesToReady": 21,
+      "tiles": {
+        "work": 1.9000000059604645,
+        "pending": 0,
+        "tiles": 15,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "airfield",
+      "p50": 3,
+      "p95": 15,
+      "max": 38.20000000298023,
+      "framesToReady": 54,
+      "tiles": {
+        "work": 2.0999999940395355,
+        "pending": 0,
+        "tiles": 25,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "forest",
+      "p50": 1.0999999940395355,
+      "p95": 10.200000002980232,
+      "max": 333.59999999403954,
+      "framesToReady": 31,
+      "tiles": {
+        "work": 0.20000000298023224,
+        "pending": 0,
+        "tiles": 33,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "junction",
+      "p50": 1.7000000029802322,
+      "p95": 31.700000002980232,
+      "max": 223,
+      "framesToReady": 39,
+      "tiles": {
+        "work": 1.5999999940395355,
+        "pending": 0,
+        "tiles": 40,
+        "ground": 0
+      }
+    }
+  ],
+  "after": [
+    {
+      "scene": "circuit",
+      "p50": 1.2999999970197678,
+      "p95": 6.800000011920929,
+      "max": 60.599999994039536,
+      "framesToReady": 19,
+      "tiles": {
+        "work": 0.09999999403953552,
+        "pending": 0,
+        "tiles": 15,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "airfield",
+      "p50": 4.5,
+      "p95": 14.299999997019768,
+      "max": 58.900000005960464,
+      "framesToReady": 67,
+      "tiles": {
+        "work": 2.0999999940395355,
+        "pending": 0,
+        "tiles": 25,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "forest",
+      "p50": 1.4000000059604645,
+      "p95": 10.700000002980232,
+      "max": 21.399999991059303,
+      "framesToReady": 33,
+      "tiles": {
+        "work": 1.300000011920929,
+        "pending": 0,
+        "tiles": 33,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "junction",
+      "p50": 4.4000000059604645,
+      "p95": 12,
+      "max": 26.200000002980232,
+      "framesToReady": 82,
+      "tiles": {
+        "work": 2.7999999970197678,
+        "pending": 0,
+        "tiles": 40,
+        "ground": 0
+      }
+    }
+  ],
+  "traffic": {
+    "seed": 9921,
+    "seconds": 240,
+    "moving_final_minute_percent": 62.1,
+    "maximum_stop_seconds": 49,
+    "maximum_turn_stop_seconds": 8,
+    "final_samples_stopped_over_45s_percent": 0.1
+  },
+  "water": [
+    {
+      "cells": 20,
+      "x": 5840,
+      "y": 2960,
+      "w": 80,
+      "h": 64,
+      "feature": [
+        "fountain"
+      ],
+      "pool": false
+    },
+    {
+      "cells": 25,
+      "x": 5280,
+      "y": 2272,
+      "w": 80,
+      "h": 80,
+      "feature": [
+        "fountain"
+      ],
+      "pool": false
+    },
+    {
+      "cells": 45582,
+      "x": 0,
+      "y": 0,
+      "w": 12288,
+      "h": 6800,
+      "feature": [],
+      "pool": false
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import {drawUrbanCourts} from './urban_courts.js';
 import {drawStreetGateways} from './world_streets.js';
 import {drawDropMission} from './airdrop.js';
 import {drawCircuitActivity} from './motorsport.js';
@@ -6,7 +7,7 @@ import {CIRCUIT} from './circuit_world.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadImage} from './assets.js';
-import {drawStreetScene,loadStreetArt} from './citylife.js';
+import {streetSceneSteps,loadStreetArt} from './citylife.js';
 import {drawExpansionPeople} from './expansion.js';
 import {drawExpansionOverhead} from './expansion_world.js';
 import {WORLD_W,WORLD_H} from './world.js';
@@ -29,8 +30,8 @@ function* composeOuter(G,tx,ty){
  const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
  const circuit=r.x0>=CIRCUIT.x&&r.y0>=CIRCUIT.y&&r.x1<=CIRCUIT.x+CIRCUIT.w&&r.y1<=CIRCUIT.y+CIRCUIT.h;
  if(!circuit){
-  yield; G.bld.staticDraw(c,r);
-  yield; const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,r);}finally{G.ctx=prior;}
+  yield* G.bld.staticSteps(c,r);
+  yield* streetSceneSteps(G,r,c);
  }
  return canvas;
 }
@@ -101,7 +102,7 @@ export function drawMobileWorld(G,H) {
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
-  drawStreetGateways(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
+  drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
   drawCasinoWorld(G,r);

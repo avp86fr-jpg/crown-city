@@ -238,22 +238,35 @@ export function createTraffic(G) {
   }
   function lanePose(tr,s){
     const p=edgePoint(tr.e,tr.fwd,s,tr.lane),m=tr.merge;if(!m)return p;
-    const from=edgePoint(tr.e,tr.fwd,s,m.from),u=clamp((s-m.start)/140,0,1),blend=u*u*(3-2*u);
+    const from=edgePoint(tr.e,tr.fwd,s,m.from),u=clamp((s-m.start)/(m.length||140),0,1),blend=u*u*(3-2*u);
     const dx=p.x-from.x,dy=p.y-from.y;p.x=from.x+dx*blend;p.y=from.y+dy*blend;
-    p.rot=Math.atan2(p.dx+dx*6*u*(1-u)/140,-(p.dy+dy*6*u*(1-u)/140));return p;
+    p.rot=Math.atan2(p.dx+dx*6*u*(1-u)/(m.length||140),-(p.dy+dy*6*u*(1-u)/(m.length||140)));return p;
   }
   function passParked(v,gap){
-    const tr=v.tr,e=tr.e;if(tr.turn||tr.merge||e.lanes<2||gap<125||gap>190||tr.s<250||e.len-tr.s<550)return;
+    const tr=v.tr,e=tr.e;
+    if(tr.turn||tr.merge||tr.backoff!=null||tr.reserved!=null||e.lanes<2||gap>240||tr.s<180||e.len-tr.s<300)return;
+    if((tr.passCheck||0)>G.ticks)return;tr.passCheck=G.ticks+30;
     const hx=tr.fwd?e.dx:-e.dx,hy=tr.fwd?e.dy:-e.dy;
-    const parked=nearby(v.x+hx*220,v.y+hy*220,220,o=>o!==v&&o.def&&!o.traffic&&!o.ai&&!o.cop&&Math.hypot(o.vx||0,o.vy||0)<3&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
+    const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&!o.traffic&&!o.ai&&!o.cop&&Math.hypot(o.vx||0,o.vy||0)<3&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
     if(!parked)return;
     for(const lane of [tr.lane-1,tr.lane+1]){
       if(lane<0||lane>=e.lanes)continue;
-      let clear=true;for(let ds=-180;ds<=300;ds+=40)if(!poseClear(v,edgePoint(e,tr.fwd,tr.s+ds,lane))){clear=false;break;}
+      let clear=true;for(let ds=-160;ds<=220;ds+=35)if(!poseClear(v,edgePoint(e,tr.fwd,tr.s+ds,lane))){clear=false;break;}
       if(!clear)continue;
-      const plan={...tr,lane,merge:{from:tr.lane,start:tr.s}};
-      for(let ds=0;ds<=140;ds+=10)if(!poseClear(v,lanePose(plan,tr.s+ds))){clear=false;break;}
-      if(clear){tr.merge=plan.merge;tr.lane=lane;tr.route=null;return;}
+      // Try a swept, gradual lane change, including cars that were already
+      // stopped when the other lane cleared. Recheck occupancy every half second.
+      for(const length of [140,100,72]){
+        const plan={...tr,lane,merge:{from:tr.lane,start:tr.s,length}};
+        for(let ds=0;ds<=length;ds+=4)if(!poseClear(v,lanePose(plan,tr.s+ds))){clear=false;break;}
+        if(clear){tr.merge=plan.merge;tr.lane=lane;tr.route=null;tr.candidates=null;return;}clear=true;
+      }
+      // A nose-to-tail stop needs steering room. Back up slowly only after
+      // checking the entire rear corridor; queued cars and walkers have priority.
+      if(gap<90&&tr.spd<2){
+        const distance=100-gap;let safe=true;
+        for(let ds=0;ds<=distance+18;ds+=4)if(!poseClear(v,edgePoint(e,tr.fwd,tr.s-ds,tr.lane))){safe=false;break;}
+        if(safe){tr.backoff=tr.s-distance;tr.passLane=lane;tr.spd=0;return;}
+      }
     }
   }
   function trafficPose(v,p,dt){const decay=Math.exp(-dt*4);p.x+=(v.tr.offsetX||0)*decay;p.y+=(v.tr.offsetY||0)*decay;return p;}
@@ -352,6 +365,14 @@ export function createTraffic(G) {
         let want = v.cruise;
         const gap=tr.turn?300:ahead(v,hx,hy,300);
         passParked(v,gap);
+        if(tr.backoff!=null){
+          const next=Math.max(tr.backoff,tr.s-18*dt),p=edgePoint(tr.e,tr.fwd,next,tr.lane),travel=tr.s-next;
+          if(poseClear(v,p)){tr.s=next;commit(v,p,dt);v.vx=-Math.sin(v.rot)*travel/dt;v.vy=Math.cos(v.rot)*travel/dt;}
+          else{tr.backoff=null;v.vx=v.vy=0;tr.passCheck=G.ticks+60;}
+          v.fwd=-Math.hypot(v.vx,v.vy);v.braking=true;v.turnSign=Math.sign(tr.passLane-tr.lane);
+          if(tr.backoff!=null&&tr.s<=tr.backoff+.01){tr.backoff=null;tr.passCheck=0;}
+          continue;
+        }
         if(tr.merge)want=Math.min(want,55);
         if(gap<300)want=Math.min(want,Math.sqrt(2*110*gap),gap/0.85);
         v.blockedT=gap<12?(v.blockedT||0)+dt:0;
@@ -402,7 +423,7 @@ export function createTraffic(G) {
             tr.turn.u=0;tr.waitSince=null;
             v.turnSign=Math.sign(tr.turn.p0.dx*tr.turn.p2.dy-tr.turn.p0.dy*tr.turn.p2.dx)||0;
           } else {
-            if(tr.merge&&tr.s>=tr.merge.start+140)tr.merge=null;
+            if(tr.merge&&tr.s>=tr.merge.start+(tr.merge.length||140))tr.merge=null;
             v.turnSign = tr.merge?Math.sign(tr.lane-tr.merge.from):0;
           }
         }
