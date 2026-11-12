@@ -1,5 +1,5 @@
 import {stepPedestrian,pedestrianClear} from './pedestrian_motion.js';
-import {trafficDemand,spawnWeight} from './street_population.js';
+import {trafficDemand,spawnWeight,trafficFlowBudget} from './street_population.js';
 import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
@@ -366,7 +366,9 @@ export function createTraffic(G) {
           return Math.hypot(v.x - P.x, v.y - P.y) < 2400;
         });
         let n=0,blocked=0;for(const v of G.vehicles)if(v.traffic&&v.tr&&!v.dead){n++;if(v.tr.waitSince!=null&&G.ticks-v.tr.waitSince>600||v.blockedT>4)blocked++;}
-        T.effectiveTarget=trafficDemand(G,T.target);T.population={active:n,queued:blocked,target:T.effectiveTarget};
+        const elapsed=Math.min(1,(G.ticks-(T.populationTick??G.ticks-15))/60);T.populationTick=G.ticks;
+        const flow=trafficFlowBudget(T,blocked,n,elapsed);
+        T.effectiveTarget=Math.round(trafficDemand(G,T.target)*flow);T.population={active:n,queued:blocked,target:T.effectiveTarget,flow};
         if(n>T.effectiveTarget){
           const i=G.vehicles.findIndex(v=>v!==P&&v.ambient&&v.traffic&&!v.mission&&!v.isVan&&!v.keep&&!v.siren&&!v.role&&!v.pdCar&&!v.chasing&&!visibleSpawn(G,v.x,v.y));
           if(i>=0){G.vehicles.splice(i,1);n--;}

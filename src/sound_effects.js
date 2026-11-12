@@ -76,7 +76,7 @@ export function engineMotion(v,input={},out={}){
 export function createEffects(ctx,bus){
  const bank=new Map(),variations=new Map();let voices=0;
  const rate=24000,TAU=Math.PI*2;
- const durations={raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.18,smg:.22,shotgun:.45,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
+ const durations={rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.18,smg:.22,shotgun:.45,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
  const varied=new Set(['pistol','smg','shotgun','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood']);
  function sample(kind){
   const varying=varied.has(kind),variant=varying?(variations.get(kind)||0)%3:0,key=kind+variant;
@@ -85,7 +85,9 @@ export function createEffects(ctx,bus){
   for(let i=0;i<n;i++){
    const t=i/rate;seed=(Math.imul(seed,1664525)+1013904223)>>>0;const noise=seed/2147483648-1;low+=.17*(noise-low);
    let x=0;
-   if(kind==='pistol')x=(low*.65+Math.sin(t*2*Math.PI*(140-80*t))*.35)*Math.exp(-t*38)+noise*.12*Math.exp(-t*150);
+   if(kind==='rocket')x=(low*.6+Math.sin(TAU*(95*t-35*t*t))*.4)*Math.exp(-t*13)+noise*.16*Math.sin(Math.PI*t/dur)**2;
+   else if(kind==='explosion')x=(low*.85+Math.sin(TAU*(52*t-8*t*t))*.65)*Math.exp(-t*4.3)+noise*.25*Math.exp(-t*26)+low*.16*Math.sin(t*37)**8*Math.exp(-t*2.8);
+   else if(kind==='pistol')x=(low*.65+Math.sin(t*2*Math.PI*(140-80*t))*.35)*Math.exp(-t*38)+noise*.12*Math.exp(-t*150);
    else if(kind==='smg')x=(noise*.55+low*.2+Math.sin(t*2*Math.PI*95)*.25)*Math.exp(-t*31);
    else if(kind==='shotgun')x=(noise*.35+low*.45+Math.sin(t*2*Math.PI*65)*.3)*Math.exp(-t*13);
    else if(kind==='impact')x=(low*.4+Math.sin(2*Math.PI*(72*t-40*t*t))*.6)*Math.exp(-t*20);

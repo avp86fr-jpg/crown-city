@@ -47,7 +47,32 @@ export function timeLabel(t) {
 }
 // Continuous crossfade for baked mobile light layers, rather than a Boolean night switch.
 export function nightMix(t){const v=clamp((darkness(t)-.12)/.42,0,1);return v*v*(3-2*v);}
-export function mobileTint(t){const rgb=ambientAt(t),n=nightMix(t);return {night:n,alpha:.025+n*.145,warm:Math.max(0,(rgb[0]-rgb[2])/255)*.12};}
+export function mobileTint(t){const rgb=ambientAt(t),n=nightMix(t);return {night:n,alpha:.025+n*.225,warm:Math.max(0,(rgb[0]-rgb[2])/255)*.12};}
+export function weatherSun(t,rain=0,fog=0,sand=0){const sun=sunAt(t);sun.alpha*=1-clamp(rain*.65+fog*.5+sand*.35,0,.85);return sun;}
+export function vehicleLightStrength(v,night,rain=0,fog=0){
+ if(v.dead||v.def?.aircraft)return 0;
+ return clamp(night+rain*.35+fog*.6,0,1);
+}
+export function emergencyLightsOn(v){return !!v.siren&&!v.dead;}
+// Ordinary headlights, navigation lights and emergency beacons are separate.
+// A parked or stolen police car does not flash merely because it is a cruiser.
+export function drawMobileVehicleLights(G,actors,night){
+ const c=G.ctx;c.save();
+ for(const v of actors){
+  if(!v.def||v.dead||v.def.aircraft||!(v===G.player||v.traffic||v.ai||v.siren||v.role||v.loose&&v.looseT<6))continue;
+  const light=vehicleLightStrength(v,night,G.rainAmt,G.fog),siren=emergencyLightsOn(v);if(!light&&!siren)continue;
+  c.save();c.translate(v.x,v.y);c.rotate(v.rot);
+  const dot=(x,y,r,col,alpha)=>{c.globalAlpha=alpha;c.fillStyle=col;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();};
+  if(v.def.boat){dot(-15,-16,2.5,'#ff695f',light);dot(15,-16,2.5,'#88d6a3',light);dot(0,30,2,'#ece7cc',light);}
+  else if(light){const front=v.def.bike?22:Math.max(32,v.r*1.05),side=v.def.bike?0:17;
+   dot(-side,-front,2.7,'#e9ecc4',light*.85);if(side)dot(side,-front,2.7,'#e9ecc4',light*.85);
+   dot(-side,front*.85,2,'#e77365',light*.6);if(side)dot(side,front*.85,2,'#e77365',light*.6);
+   if(v===G.player){c.globalAlpha=.13*light;c.fillStyle='#e7e5b6';c.beginPath();c.moveTo(-14,-front);c.lineTo(-48,-front-120);c.lineTo(48,-front-120);c.lineTo(14,-front);c.fill();}
+  }
+  if(siren){const steady=G.settings.reducedMotion,phase=G.ticks%36<18;dot(-8,-7,4,'#ff5676',steady?.55:phase?.95:.15);dot(8,-7,4,'#65a8ff',steady?.55:phase?.15:.95);}
+  c.restore();
+ }c.restore();
+}
 
 // Effects use simulation time, independent of rendering or skipped frames.
 export function tickLightEffects(G,dt){

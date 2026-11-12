@@ -1,4 +1,7 @@
-import {bloodImpact,tickBlood,drawBlood} from './blood_fx.js';
+import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
+import {sleepSafeGround} from './pedestrian_motion.js';
+import {drawBikeRider} from './rider_art.js';
+import {bloodImpact,runoverBlood,tickBlood,drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {CIRCUIT,trackPoint,nearestTrack} from './circuit_world.js';
 import {drawAtlasLabels} from './map_labels.js';
@@ -34,7 +37,7 @@ import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
 import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
 import {releaseBakedWorld} from './baked_world.js';
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
-import { createLighting, ambientAt, darkness, sunAt, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
+import { createLighting, ambientAt, darkness, weatherSun, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
@@ -347,7 +350,7 @@ function navOk(G, x, y) {
 }
 
 function spawnWorld(G) {
-  G.bloodFX=null;
+  G.bloodFX=null;G.blastFX=null;G.rockets=[];
   G.circuitRespawns=null;
   const meta = G.meta;
   G.props = meta.props.map((p) => ({ ...p, broken: false, vx: 0, vy: 0, spin: 0 }));
@@ -1274,6 +1277,8 @@ function tickPlay(G, dt) {
   tickLife(G, dt);
   tickBullets(G, dt);
   if(recovery!==(G.recoverySerial||0))return;
+  tickRockets(G,dt);
+  if(recovery!==(G.recoverySerial||0))return;
   tickProps(G, dt);
   tickParticles(G, dt);
   tickPickups(G, dt);
@@ -1610,18 +1615,10 @@ function tickVehDamage(G, v, dt) {
 function explode(G, v) {
   if(v.dead)return;
   v.burning = false; v.dead = true; v.wrecked = true; v.health = 0; v.vx *= 0.3; v.vy *= 0.3;
-  G.particles.push({ kind: "boom", x: v.x, y: v.y, life: 0.6, frame: 0, big: true });
-  for (let i = 0; i < 26; i++) G.particles.push({ kind: "spark", x: v.x, y: v.y, vx: (Math.random() - 0.5) * 520, vy: (Math.random() - 0.5) * 520, life: 0.3 + Math.random() * 0.3 });
-  for (let i = 0; i < 10; i++) G.particles.push({ kind: "smoke", x: v.x, y: v.y, vx: (Math.random() - 0.5) * 80, vy: (Math.random() - 0.5) * 80, life: 1.2, frame: 0, dark: true });
-  G.flashes.push({ x: v.x, y: v.y, r: 760, col: "rgba(255,190,90,1)", life: 0.6, max: 0.6 });
-  G.audio.crash(); if (G.audio.boom) G.audio.boom();
-  addShake(G, 16);
-  scarePeds(G, v.x, v.y, 420);
-  if(airborne(v)){if(G.player===v)wasted(G);return;}
-  if (G.player === v) { exitVeh(G,true); G.health -= 60; if (G.health <= 0) wasted(G); }
-  else if (G.player.type === "foot" && Math.hypot(G.player.x - v.x, G.player.y - v.y) < 70) { G.health -= 45; if (G.health <= 0) wasted(G); }
-  for (const p of G.peds) if (!p.dead && Math.hypot(p.x - v.x, p.y - v.y) < 70) {if(v.playerIgnited&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,!!v.playerIgnited);}
-  for (const o of G.vehicles) if (o !== v && !o.dead && Math.hypot(o.x - v.x, o.y - v.y) < 90) damageVeh(G, o, 40,!!v.playerIgnited);
+  const flying=airborne(v),inside=G.player===v;
+  if(inside&&!flying){exitVeh(G,true);G.health-=60;}
+  detonate(G,{x:v.x,y:v.y,radius:120,damage:65,carDamage:55,waterLevel:!!v.def.boat,airborne:flying,source:v,attributed:!!v.playerIgnited},blastHooks);
+  if(inside&&(flying||G.health<=0)&&!(G._endT>0))wasted(G);
   if (v.cop&&v.playerIgnited) crime(G, 1, v.x, v.y, true);
 }
 
@@ -1814,6 +1811,7 @@ function spawnPlayerCar(G, kind, x, y, rot) {
 }
 
 function shoot(G, from, onFoot) {
+  if(!onFoot&&WEAPONS[G.action?.weapon]?.rocket){if(!G.rocketHintAt||G.ticks>G.rocketHintAt){toast(G,'Crown RPG — exit the vehicle to fire.');G.rocketHintAt=G.ticks+180;}return;}
   const weapon=requestShot(G); if(!weapon) return;
   from.shotTick = G.ticks;
   G.lastShot = now();
@@ -1822,13 +1820,18 @@ function shoot(G, from, onFoot) {
   const sx = from.x + ax * muzzle, sy = from.y + ay * muzzle;
   const angle=Math.atan2(ax,-ay),spread=shotSpread(G,weapon,from),block=firstSolid(G,from.x,from.y,sx,sy);
   from.aimRot=angle;G.action.bloom=Math.min(1,(G.action.bloom||0)+(weapon.kick||.1));
-  for(let i=0;block===null&&i<weapon.pellets;i++) {
+  for(let i=0;!weapon.rocket&&block===null&&i<weapon.pellets;i++) {
     const spreadUnit=weapon.pellets>1?(i+.25+Math.random()*.5)/weapon.pellets-.5:Math.random()-.5;
     const a=angle+spreadUnit*spread;
     G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:weapon.range/speed,range:weapon.range,falloff:weapon.falloff,travel:0,height:onFoot?23:14,friend:true,waterLevel:!!from.def?.boat,damage:weapon.damage,carDamage:weapon.carDamage });
   }
-  G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
-  G.particles.push({kind:'casing',x:from.x+ay*9,y:from.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+  if(weapon.rocket){
+    G.audio.rocket?.();
+    // An obstructed barrel detonates in front of the wall, never through it.
+    if(block===null)launchRocket(G,sx,sy,ax*speed,ay*speed,weapon);
+    else {const d=Math.max(0,muzzle*block-2);detonate(G,{x:from.x+ax*d,y:from.y+ay*d,radius:145,damage:weapon.damage,carDamage:weapon.carDamage,attributed:true},blastHooks);return;}
+  }else G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
+  if(!weapon.rocket)G.particles.push({kind:'casing',x:from.x+ay*9,y:from.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
   const fx=block===null?sx:from.x+(sx-from.x)*block,fy=(block===null?sy:from.y+(sy-from.y)*block)-(onFoot?23:14);
   G.particles.push({ kind:block===null?"flash":"spark", x:fx, y:fy, life:block===null?.06:.18, a:1 });
   G.flashes.push({ x: sx, y: sy, r: 150, col: "rgba(255,210,140,0.9)", life: 0.07, max: 0.07 });
@@ -1839,6 +1842,9 @@ function shoot(G, from, onFoot) {
   G.shotsFired = (G.shotsFired || 0) + 1;
   if (!weapon.quiet && G.shotsFired % 6 === 0 && G.peds.some((p) => !p.dead && Math.hypot(p.x - from.x, p.y - from.y) < 300)) crime(G, 1, from.x, from.y, false, 1);
 }
+
+const blastHooks={damageVeh,killPed,wasted,scare:scarePeds,shake:addShake,blood:bloodImpact,incident:recordIncident};
+function tickRockets(G,dt){updateRockets(G,dt,blastHooks);}
 
 function bridgeAt(G,x,y){const E=G.world?.expansion;if(!E)return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||E.riverBridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
 
@@ -1905,7 +1911,7 @@ function clearRecoveryState(G) {
   }
   G.vehicles=(G.vehicles||[]).filter(v=>v!==rival&&(!units.has(v)||v===old||v.pdCar));
   G.peds=(G.peds||[]).filter(p=>!p.copPed);
-  G.cops=[];G.bullets=[];G.flashes=[];G.particles=[];G.floaters=[];
+  G.cops=[];G.bullets=[];G.rockets=[];G.flashes=[];G.particles=[];G.floaters=[];
   G.jack=null;G.race=null;G.contactNear=G.contactTalk=null;G.policeTarget=null;G.heliChase=false;G.evading=false;
   G.nearVehicles=null;G.movingVehicles=null;G.streetVehicleGrid=null;G.streetVehicleQueries=null;G.streetVehicleSource=null;G.interactP=false;G.hurtT=G.hitConfirmT=0;
   G.seenT=G.wantedCool=G._crimeCool=G._ramCool=G.starFlash=G._endT=G._ambT=0;
@@ -2248,7 +2254,7 @@ function tickPeds(G, dt, playerImpacts=true) {
   const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
   for (const p of G.peds) {
     if (p.dead) { p.deadT = (p.deadT || 0) + dt; if(p.deadT<.75){const x=p.x+(p.vx||0)*dt,y=p.y+(p.vy||0)*dt;if(!G.solidAt(x,y)){p.x=x;p.y=y;}p.vx*=Math.exp(-5*dt);p.vy*=Math.exp(-5*dt);}continue; }
-    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&G.surfaceAt(p.x,p.y)!=='road'&&![[14,0],[-14,0],[0,14],[0,-14]].some(([dx,dy])=>G.surfaceAt(p.x+dx,p.y+dy)==='road')) {p.speed=p.vx=p.vy=0;continue;}
+    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&sleepSafeGround(G,p)) {p.speed=p.vx=p.vy=0;continue;}
     const dx = p.x - pl.x, dy = p.y - pl.y;
     const dist = Math.hypot(dx, dy);
     // Impacts are resolved before a pedestrian's dodge; a dive is never invulnerability.
@@ -2261,6 +2267,7 @@ function tickPeds(G, dt, playerImpacts=true) {
       if(!circleBody(car,p.x,p.y,9)&&segmentBody(car,p.x+(car.x-px),p.y+(car.y-py),p.x,p.y,9)===null)continue;
       const speed=Math.hypot(car.vx,car.vy);p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
       if(p.hp<=0){if(car===pl&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,car===pl);}else{bloodImpact(G,p,car.vx,car.vy,speed/140);p.dive=.3;if(car===pl)crime(G,1,p.x,p.y,false,2);}
+      runoverBlood(G,p,car);
       if(car===pl){G.audio.hit();G.hitConfirmT=.2;car.vx*=.94;car.vy*=.94;}struck=true;break;
     }
     if(struck)continue;
@@ -2352,7 +2359,7 @@ function tickProps(G, dt) {
 }
 
 function tickParticles(G, dt) {
-  tickBlood(G,dt);
+  tickBlood(G,dt);tickBlastFX(G,dt);
   tickLightEffects(G,dt);
   for (const p of G.particles) {
     if (!p.maxLife) p.maxLife = p.life;
@@ -2885,7 +2892,7 @@ function renderWorldLayer(G) {
   if (G.wet > 0.15) { ctx.fillStyle = `rgba(30,40,60,${0.18 * G.wet})`; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
   _ph('w_ground');
   // 4. sun shadows
-  const sun = sunAt(G.time);
+  const sun = weatherSun(G.time,G.rainAmt,G.fog,G.sand);
   if (sun.alpha > 0.02) {
     const lt = G.light, sc = lt.sx;
     sc.setTransform(1, 0, 0, 1, 0, 0); sc.clearRect(0, 0, lt.sh.width, lt.sh.height);
@@ -2924,7 +2931,7 @@ function renderWorldLayer(G) {
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
-  drawBlood(G,r,true);
+  drawBlastFX(G,r,true);drawBlood(G,r,true);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -3021,7 +3028,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     }
     if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, lx, G.player, night, true);
     // muzzle flashes, explosions, fire
-    for (const f of G.flashes) { const k = f.max ? f.life / f.max : 1; lx.globalAlpha = clamp(k, 0, 1); const sp = LIGHT.radial(f.col); lx.drawImage(sp, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2); }
+    for (const f of G.flashes) { if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;const k = f.max ? f.life / f.max : 1; lx.globalAlpha = clamp(k, 0, 1); const sp = LIGHT.radial(f.col); lx.drawImage(sp, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2); }
     for (const p of G.particles) if (p.kind === "fire" || p.kind === "boom") { lx.globalAlpha = 0.5; const rr = p.kind === "boom" ? 200 : 60; lx.drawImage(LIGHT.radial("rgba(255,150,60,0.9)"), p.x - rr, p.y - rr, rr * 2, rr * 2); }
     if (G.heliChase || (dark > 0.4 && cam.scale < 1.65)) {
       const h = heliPos(G);
@@ -3060,7 +3067,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   }
   if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, ctx, G.player, night, false);
   // daytime flashes still pop
-  for (const f of G.flashes) { const k = f.max ? f.life / f.max : 1; ctx.globalAlpha = clamp(k, 0, 1) * (0.35 + 0.4 * (1 - dark)); ctx.drawImage(LIGHT.radial(f.col), f.x - f.r * 0.5, f.y - f.r * 0.5, f.r, f.r); }
+  for (const f of G.flashes) { if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;const k = f.max ? f.life / f.max : 1; ctx.globalAlpha = clamp(k, 0, 1) * (0.35 + 0.4 * (1 - dark)); ctx.drawImage(LIGHT.radial(f.col), f.x - f.r * 0.5, f.y - f.r * 0.5, f.r, f.r); }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
 }
 
@@ -3138,7 +3145,7 @@ function vehLights(G, c, v, night, map) {
 
 function drawParticles(G, r, top) {
   const ctx = G.ctx, assets = G.assets;
-  if(!top)drawBlood(G,r,false);
+  if(!top){drawBlastFX(G,r);drawBlood(G,r,false);}
   if(!top){ctx.save();ctx.lineWidth=1.8;ctx.lineCap='round';for(const b of G.bullets){if(b.x<r.x0||b.x>r.x1||b.y<r.y0||b.y>r.y1)continue;ctx.strokeStyle=b.friend?'#ffe0a0':'#ff8c7b';ctx.beginPath();ctx.moveTo(b.x-b.vx*.018,b.y-b.vy*.018-(b.height??23));ctx.lineTo(b.x,b.y-(b.height??23));ctx.stroke();}ctx.restore();}
   for (const p of G.particles) {
     if (p.x < r.x0 || p.x > r.x1 || p.y < r.y0 || p.y > r.y1) continue;
@@ -3249,8 +3256,7 @@ function drawVeh(G, v) {
     ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
     ctx.filter='none';drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
     if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
-      ctx.save();ctx.rotate((v.turnSign||0)*.08);ctx.fillStyle=v===G.player?'#513d5e':'#34434b';ctx.beginPath();ctx.ellipse(0,2,8,14,0,0,TAU);ctx.fill();
-      ctx.fillStyle=v===G.player?'#d2c5ad':'#27343b';ctx.beginPath();ctx.ellipse(0,-12,6,7,0,0,TAU);ctx.fill();ctx.strokeStyle='#acb7a0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-6,-4);ctx.lineTo(-11,-11);ctx.moveTo(6,-4);ctx.lineTo(11,-11);ctx.stroke();ctx.restore();
+      drawBikeRider(ctx,v,v===G.player);
     }
   }else{
     ctx.drawImage(sprUse, -sprUse.width * sc / 2, -sprUse.height * sc / 2, sprUse.width * sc, sprUse.height * sc);
@@ -3883,6 +3889,6 @@ export const testing = {
   clearRecoveryState, endLife, busted, wasted, tickPlay, drawAirborne,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,
   findSafe, footClear, clearAt, carHit, nearbyInteraction, ensureMissionCar, ensureGetawayBoat, updateGPS, worldToScreen,
-  tickWanted, tickCops, crime, damageVeh, tickVehDamage, drawVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, fit, drawHUD,
+  tickWanted, tickCops, crime, damageVeh, tickVehDamage, drawVeh, explode, makeFoot, makeVeh, enterVeh, exitVeh, shoot, tickBullets, tickRockets, fit, drawHUD,
   drawMap, drawSettings, drawPause, ensureStoryAssets, applyQuality, initTransit, tickTransit, tickWildlife,
 };

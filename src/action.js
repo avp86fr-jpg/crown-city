@@ -9,9 +9,10 @@ export const WEAPONS=[
  {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:1100,pellets:1,spread:.009,range:620,falloff:380,kick:.10,quiet:true},
  {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:1250,pellets:1,spread:.045,range:620,falloff:300,kick:.14},
  {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:1050,pellets:6,spread:.23,range:340,falloff:100,kick:.32},
+ {id:'rocket',name:'CROWN RPG',mag:1,reload:2.8,interval:1,damage:125,carDamage:115,speed:560,pellets:1,spread:0,range:950,kick:.5,rocket:true},
 ];
 export function actionState(s={}) {
- return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
+ return {weapon:Math.floor(number(s.weapon,0,0,WEAPONS.length-1)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
  circuitVersion:CIRCUIT_VERSION,circuitClass:['club','sport','pro'].includes(s.circuitClass)?s.circuitClass:'club',circuitRecords:Object.fromEntries(['club','sport','pro'].map(k=>[k,s.circuitVersion===CIRCUIT_VERSION?number(s.circuitRecords?.[k],0,0,240):0])),
  circuitBest:s.circuitVersion===CIRCUIT_VERSION?number(s.circuitBest,0,0,240):0,circuitLaps:Math.floor(number(s.circuitLaps,0,0,1e6)),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,

@@ -10,7 +10,7 @@ import {missionFlow} from '../src/story.js';
 import {flagsFrom} from '../src/session.js';
 let G,T,solid,surface;
 before(async()=>{({G,T}=await harness());solid=G.solidAt;surface=G.surfaceAt;});
-function flat(){G.wanted=0;G.scene='play';G.touch=false;G.settings.aimAssist=true;G.solidAt=()=>false;G.surfaceAt=()=> 'road';G.player=T.makeFoot(G,500,500,0);G.action=actionState();G.vehicles=[];G.peds=[];G.cops=[];G.bullets=[];G.input.fire=false;G.input.mouse.fire=false;G.input.x=G.input.y=0;G.cam.rot=.4;G.cam.x=G.cam.y=500;G._flow=null;}
+function flat(){G.wanted=0;G.scene='play';G.touch=false;G.settings.aimAssist=true;G.solidAt=()=>false;G.surfaceAt=()=> 'road';G.player=T.makeFoot(G,500,500,0);G.action=actionState();G.vehicles=[];G.peds=[];G.cops=[];G.bullets=[];G.rockets=[];G.input.fire=false;G.input.mouse.fire=false;G.input.x=G.input.y=0;G.cam.rot=.4;G.cam.x=G.cam.y=500;G._flow=null;}
 test('manual mouse targeting remains exact with aim assist enabled and a nearer cop off-axis',()=>{
  flat();G.cops=[{x:510,y:390}];const click=T.worldToScreen(G,500,277);Object.assign(G.input.mouse,click,{fire:true});
  assert.ok(Math.abs(playerAim(G,G.player).rot)<1e-10);T.shoot(G,G.player,true);
@@ -27,8 +27,8 @@ test('touch assistance favors alignment, has a narrow correction, and rejects oc
 });
 test('each weapon uses its proportional barrel tip, and shotgun pellets cover the cone evenly',()=>{
  for(let i=0;i<WEAPONS.length;i++){flat();G.action.weapon=i;T.shoot(G,G.player,true);const w=WEAPONS[i],art=WEAPON_ART[w.id];
-  assert.ok(art.length<25);assert.ok(art.width<=6);assert.equal(G.bullets.length,w.pellets);
-  for(const b of G.bullets)assert.ok(Math.abs(Math.hypot(b.x-500,b.y-500)-art.muzzle)<1e-8);
+  assert.ok(art.length<(w.rocket?30:25));assert.ok(art.width<=(w.rocket?7:6));assert.equal((w.rocket?G.rockets:G.bullets).length,w.pellets);
+  for(const b of (w.rocket?G.rockets:G.bullets))assert.ok(Math.abs(Math.hypot(b.x-500,b.y-500)-art.muzzle)<1e-8);
   if(w.pellets>1){const angles=G.bullets.map(b=>Math.atan2(b.vx,-b.vy));for(let j=1;j<angles.length;j++)assert.ok(angles[j]-angles[j-1]>w.spread/w.pellets*.49);}
  }
 });

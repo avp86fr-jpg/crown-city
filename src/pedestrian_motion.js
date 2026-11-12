@@ -1,9 +1,15 @@
 /* A shared, bounded local planner for walkers and venue visitors. */
 import {circleBody,localPoint,bodySize} from './collision.js';
 const EMPTY_CARS=[];
+const walkable=(G,x,y)=>{const s=G.surfaceAt(x,y);return s!=='build'&&s!=='water'&&s!=='canal';};
+// Only static ground is cached. Live vehicle avoidance and crossings still run.
+export function sleepSafeGround(G,p){
+ if(p._sleepX===p.x&&p._sleepY===p.y&&p._sleepSurface===G.surfaceAt)return p._sleepSafe;
+ p._sleepX=p.x;p._sleepY=p.y;p._sleepSurface=G.surfaceAt;
+ return p._sleepSafe=G.surfaceAt(p.x,p.y)!=='road'&&G.surfaceAt(p.x-14,p.y)!=='road'&&G.surfaceAt(p.x+14,p.y)!=='road'&&G.surfaceAt(p.x,p.y-14)!=='road'&&G.surfaceAt(p.x,p.y+14)!=='road';
+}
 export function pedestrianClear(G,x,y,r=6,vehicles=null){
- const pass=(x,y)=>!['build','water','canal'].includes(G.surfaceAt(x,y));
- if(!pass(x,y)||!pass(x-r,y)||!pass(x+r,y)||!pass(x,y-r)||!pass(x,y+r))return false;
+ if(!walkable(G,x,y)||!walkable(G,x-r,y)||!walkable(G,x+r,y)||!walkable(G,x,y-r)||!walkable(G,x,y+r))return false;
  let blocked=false;
  const check=v=>{if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&circleBody(v,x,y,r))blocked=true;};
  if(vehicles){for(const v of vehicles)check(v);}else if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(x,y,180,check);else for(const v of G.vehicles||[])if(Math.abs(v.x-x)<180&&Math.abs(v.y-y)<180)check(v);
