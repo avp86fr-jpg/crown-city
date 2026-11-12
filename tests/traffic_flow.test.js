@@ -80,3 +80,9 @@ test('buses are not dispatched into a wide approach whose onward lanes cannot fi
  try{assert.equal(traffic.spawnCar({x:1000,y:2000},0,4000,'bus'),null);}finally{Math.random=random;}
  assert.equal(G.vehicles.length,0);
 });
+
+test('a pedestrian touching the front corners of two queued cars can slide out of the gap',async()=>{
+ const {stepPedestrian}=await import('../src/pedestrian_motion.js');
+ const G={surfaceAt:()=> 'road',vehicles:[{type:'veh',kind:'fare',def:{},x:2031,y:2854,rot:0},{type:'veh',kind:'fare',def:{},x:2093,y:2854,rot:0}]},p={x:2061,y:2807.575,rot:Math.PI/2,speed:0};
+ const start={x:p.x,y:p.y};for(let i=0;i<360;i++)stepPedestrian(G,p,Math.PI/2,36,1/60,{road:true});assert.ok(p.x>2125,`walker still wedged at ${p.x}/${p.y}`);assert.ok(Math.hypot(p.x-start.x,p.y-start.y)<217,'avoidance is movement, not teleportation');
+});

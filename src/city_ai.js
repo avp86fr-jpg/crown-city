@@ -62,6 +62,7 @@ export function createCityAI(G) {
   }
   function safe(x, y, radius = 7) {
     if (!SAFE.has(G.surfaceAt(x, y))||!pedestrianClear(G,x,y,radius)) return false;
+    if([[14,0],[-14,0],[0,14],[0,-14]].some(([dx,dy])=>G.surfaceAt(x+dx,y+dy)==='road'))return false;
     if (!G.solidAt) return true;
     return !G.solidAt(x, y) && !G.solidAt(x - radius, y) && !G.solidAt(x + radius, y)
       && !G.solidAt(x, y - radius) && !G.solidAt(x, y + radius);

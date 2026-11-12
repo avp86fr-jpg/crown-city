@@ -114,8 +114,9 @@ export function createAudio() {
   const cueTimes=new Map();
   function cue(kind,gain,delay=.12,pan=0){if(!ctx)return false;const t=now();if(t-(cueTimes.get(kind)??-Infinity)<delay)return false;const played=fx(kind,gain,pan);if(played)cueTimes.set(kind,t);return played;}
   A.transit=(kind,vol=.24,pan=0)=>cue(kind,vol,kind==='rail'?.22:.6,pan);
-  const CASINO={card:'card',deal:'card',chips:'chips',chip:'chips',win:'casinoWin',lose:'casinoLose',push:'casinoPush',open:'casinoOpen'};
+  const CASINO={card:'card',deal:'card',chips:'chips',chip:'chips',win:'casinoWin',lose:'casinoLose',push:'casinoPush',open:'casinoOpen',reel:'reelStop'};
   A.casino=kind=>cue(CASINO[kind]||'card',kind==='win'?.25:.20,kind==='card'||kind==='deal'?.055:.15);
+  A.race=kind=>cue(({count:'raceCount',go:'raceGo',sector:'raceGate',finish:'raceFinish',invalid:'raceInvalid',service:'pitService'})[kind]||'raceGate',.19,.15);
   A.wildlife = (kind,vol=.12,pan=0) => fx(kind,vol,pan);
   A.cock = () => noiseHit({dur:.055,vol:.16,type:'highpass',f:2800});
   A.dodge = () => noiseHit({dur:.23,vol:.17,type:'lowpass',f:1200,f2:280});

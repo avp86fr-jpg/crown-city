@@ -10,7 +10,8 @@ test('spin debits once, saves all reels before reveal and settles exactly once a
  const again=game(R.chips);initCasino(again,casinoSave(R));for(let i=0;i<20;i++)tickCasino(again,.25,H);assert.equal(again.chips,790);
 });
 test('slot stakes reject insufficient or invalid balances and restored corrupt outcomes',()=>{for(const balance of [9,-1,Infinity,NaN])assert.equal(spinSlots(game(balance)),false);const G=game();spinSlots(G,{},()=>0);const save=casinoSave(G);save.slots.round.returned=999999;initCasino(G,save);assert.equal(G.slots.round,null);assert.equal(G.chips,390);});
-test('slot controls fit short landscape and portrait screens without overlap',()=>{
+test('slot controls fit short landscape and portrait screens without overlap',async()=>{
+ await harness();
  for(const [width,height] of [[320,568],[390,844],[844,390],[568,320],[1280,720]]){const G=game();G.canvas={width,height};G.dpr=1;G.safe={t:8,b:20,l:8,r:8};G.ctx=new Proxy({},{get:(o,k)=>o[k]||(()=>{}),set:(o,k,v)=>(o[k]=v,true)});const buttons=[];drawSlots(G,{button:(g,x,y,w,h,label)=>buttons.push({x,y,w,h,label})});for(const b of buttons){assert.ok(b.x>=8&&b.y>=8&&b.x+b.w<=width-8&&b.y+b.h<=height-20,b.label);}for(let i=0;i<buttons.length;i++)for(let j=i+1;j<buttons.length;j++){const a=buttons[i],b=buttons[j];assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);}}
 });
 test('all three cabinets have solid bodies, safe foot approaches and open-world interactions',async()=>{const {G,T}=await harness();T.startFreeRide(G);for(const m of SLOT_MACHINES){assert.equal(G.surfaceAt(m.x,m.y),'build');assert.ok(T.footClear(G,m.entryX,m.entryY,8));G.player=T.makeFoot(G,m.entryX,m.entryY,0);assert.equal(nearSlots(G),m);assert.equal(interactCasino(G),true);assert.equal(G.casino.mode,'slots');leaveCasino(G);}});

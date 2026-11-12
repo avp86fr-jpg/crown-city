@@ -1,3 +1,5 @@
+import {CIRCUIT,CIRCUIT_VERSION} from './circuit_world.js';
+import {recoverRiot} from './vehicle_recovery.js';
 import {EXPANSION_JOBS,EXPANSION_DEBRIEFS} from './expansion_jobs.js';
 /* Crown City action systems: weapons, stamina, crew work and vehicle workshops. */
 import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_jobs.js';
@@ -10,14 +12,15 @@ export const WEAPONS=[
 ];
 export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,2)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
- circuitBest:number(s.circuitBest,0,0,240),circuitLaps:Math.floor(number(s.circuitLaps,0,0,1e6)),
+ circuitVersion:CIRCUIT_VERSION,circuitClass:['club','sport','pro'].includes(s.circuitClass)?s.circuitClass:'club',circuitRecords:Object.fromEntries(['club','sport','pro'].map(k=>[k,s.circuitVersion===CIRCUIT_VERSION?number(s.circuitRecords?.[k],0,0,240):0])),
+ circuitBest:s.circuitVersion===CIRCUIT_VERSION?number(s.circuitBest,0,0,240):0,circuitLaps:Math.floor(number(s.circuitLaps,0,0,1e6)),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
  completedJobs:[...new Set((Array.isArray(s.completedJobs)?s.completedJobs:[]).filter(id=>CONTRACTS.some(c=>c.id===id)))],
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
  upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork','airdrop','circuit'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {return {circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}
@@ -40,6 +43,7 @@ export function servicePoints(G) {
  if(G.services)return G.services;
  const points=[['garage','HUNTER CUSTOMS','garage',0,0],['spray','MIDNIGHT RESPRAY','neural',130,70],['clinic','MERCY / SUPPLY','pd',-180,80]];
  G.services=points.map(([id,name,key,dx,dy])=>{const p=G.meta.spawns[key];const s=G.findSafeAction(p[0]+dx,p[1]+dy);return {id,name,x:s.x,y:s.y};});
+ G.services.push({id:'circuit',name:'CROWN CIRCUIT / PADDOCK',...CIRCUIT.pit});
  return G.services;
 }
 export function nearService(G) {
@@ -49,6 +53,7 @@ export function nearService(G) {
 }
 export function buyService(G,choice) {
  const A=G.action,P=G.player;
+ if(choice==='recover')return recoverRiot(G);
  const offers={repair:{cost:120},tune:{cost:500},supply:{cost:90},respray:{cost:250}};
  const offer=offers[choice];if(!offer)return false;
  if(G.wanted>0&&!G.evading){message(G,'HUNTER','Break their line of sight first. I am a mechanic, not a magician.');return false;}
@@ -68,6 +73,7 @@ export const CONTRACTS=[
  {id:'drift',title:'SMOKE SIGNAL',contact:'FIRE',text:'Bank 1,200 drift points in a car. Keep the speed up. You have 90 seconds.',reward:700,time:90},
  ...STREET_JOBS, ...EXPANSION_JOBS,
 ];
+export const contractClockRunning=c=>!!c&&(!!c.stage||c.id!=='courier'&&!EXPANSION_JOBS.some(j=>j.id===c.id));
 export function startContract(G,id) {
  const A=G.action;if(A.contract)return false;
  const c=CONTRACTS.find(c=>c.id===id);if(!c)return false;
@@ -104,7 +110,7 @@ export function tickAction(G,dt,hooks) {
  A.messageT=Math.max(0,A.messageT-dt);
  if(A.messageT===0&&A.messages.length){const next=A.messages.shift();message(G,next.name,next.text,next.color);}
  if(A.contract){
-  const c=A.contract,def=CONTRACTS.find(d=>d.id===c.id);if(c.id!=='courier'||c.stage)c.t=Math.max(0,c.t-dt);let done=false;
+  const c=A.contract,def=CONTRACTS.find(d=>d.id===c.id);if(contractClockRunning(c))c.t=Math.max(0,c.t-dt);let done=false;
   if(c.id==='courier'){
     const a=G.meta.interactions.neural,start=G.meta.spawns.garage;
     if(!c.stage&&Math.hypot(P.x-start[0],P.y-start[1])<85){c.stage=1;c.t=def.time;G.waypoint={x:a[0],y:a[1]};G.gps=null;message(G,'NEURAL','Drive collected. The clock is running. Bring it to the loft without heat.');}

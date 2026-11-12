@@ -1,6 +1,7 @@
+import {CIRCUIT} from './circuit_world.js';
 export const MAP_PLACES=[
  {id:'casino',name:'METAWIN CASINO',short:'CAS',x:8060,y:3100,color:'#e6c171'},
- {id:'circuit',name:'BUGATTI CIRCUIT',short:'RACE',x:3008,y:7656,color:'#91d5e3'},
+ {id:'circuit',name:'BUGATTI CIRCUIT',short:'RACE',x:CIRCUIT.pit.x,y:CIRCUIT.pit.y,color:'#91d5e3'},
  {id:'airport',name:'AIRPORT',short:'AIR',x:9840,y:7780,color:'#afdbc8'}
 ];
 export function drawMapPlaces(G,to,small=false){
