@@ -2,12 +2,25 @@ import {loadScenery} from './assets.js';
 import {BAKED_WORLD} from './baked_world_manifest.js';
 const available=new Set(BAKED_WORLD.sheets),TILE=512,SIDE=4,PIXEL=256;
 function release(e){e.retired=true;e.image?.close?.();e.image=null;}
+export const hasBakedWorldTile=(G,x,y)=>!!G.bakedWorld?.sheets.get(Math.floor(x/SIDE)+'_'+Math.floor(y/SIDE))?.image;
 export function releaseBakedWorld(G){if(!G.bakedWorld)return;for(const e of G.bakedWorld.sheets.values())release(e);G.bakedWorld.sheets.clear();G.bakedWorld=null;}
 export function prepareBakedWorld(G,tiles){
  const state=G.bakedWorld||(G.bakedWorld={sheets:new Map(),frame:0,pending:0,ready:0,bytes:0}),wanted=new Map();state.frame++;
  for(const p of tiles){const key=Math.floor(p.x/SIDE)+'_'+Math.floor(p.y/SIDE);if(!available.has(key))continue;wanted.set(key,Math.min(wanted.get(key)??Infinity,p.d));}
  const nearest=[...wanted].sort((a,b)=>a[1]-b[1]).slice(0,16),keep=new Set(nearest.map(([key])=>key));
  const limit=Math.min(16,Math.max(2,keep.size+1));
+ // Once the visible world is ready, use the existing spare slot for the next
+ // sheet along the vehicle's path. Decode before the camera crosses its edge;
+ // visible requests always win and neither memory nor concurrency grows.
+ const vx=G.player?.vx||0,vy=G.player?.vy||0;
+ if(keep.size&&keep.size<16&&Math.hypot(vx,vy)>55&&nearest.every(([key])=>state.sheets.get(key)?.image)){
+  let ahead=null,best=Infinity;
+  for(const p of tiles){const x=(p.x+.5)*TILE+vx*2,y=(p.y+.5)*TILE+vy*2,key=Math.floor(x/(TILE*SIDE))+'_'+Math.floor(y/(TILE*SIDE));
+   if(!available.has(key)||keep.has(key))continue;
+   const d=(x-(G.cam?.x||0)-vx*2)**2+(y-(G.cam?.y||0)-vy*2)**2;if(d<best){best=d;ahead=key;}
+  }
+  if(ahead){keep.add(ahead);nearest.push([ahead,Infinity]);}
+ }
  for(const [key,e] of state.sheets)if(keep.has(key))e.frame=state.frame;
  // Keep at most one previous sheet for small camera movements. The ordinary
  // flight view retains 3–5 sheets; an extreme zoom still has a hard ceiling.

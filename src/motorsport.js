@@ -1,6 +1,7 @@
 import {racePace} from './circuit_rules.js';
 import {CIRCUIT,TRACK_LENGTH,trackPoint,nearestTrack,inCircuit,inPitLane} from './circuit_world.js';
 import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
+import {streetViewport} from './traffic.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 export function pitDriveInput(v,input){
  if(v.def.boat||v.def.aircraft||!inPitLane(v.x,v.y))return input;
@@ -78,9 +79,20 @@ export function circuitPilot(G,v,dt){
 export function tickCircuit(G,dt,hooks){
  const nearby=inCircuit(G.player.x,G.player.y,650);
  if(!nearby&&G.circuitSleeping&&!G.circuitSession?.running)return;
- const cars=G.vehicles.filter(v=>v.circuitRacer);G.circuitSleeping=!nearby;
+ let cars=G.vehicles.filter(v=>v.circuitRacer);G.circuitSleeping=!nearby;
+ let view;
+ const visible=(x,y)=>{view||={...streetViewport(G),co:Math.cos(G.cam.rot||0),si:Math.sin(G.cam.rot||0)};const dx=x-G.cam.x,dy=y-G.cam.y;return Math.abs(dx*view.co+dy*view.si)<view.halfW+150&&Math.abs(-dx*view.si+dy*view.co)<view.halfH+150;};
+ // Circuit recovery trucks clear old wrecks only out of sight. Previously a
+ // destroyed opponent held its grid slot forever and the circuit emptied out.
+ let retired;
+ for(const v of cars){
+  if(v===G.player||!v.dead&&v.health>0){delete v.racerWreckAt;continue;}
+  v.racerWreckAt??=G.ticks;
+  if(G.ticks-v.racerWreckAt>=90*60&&!visible(v.x,v.y)){(retired||(retired=new Set())).add(v);(G.circuitRespawns||(G.circuitRespawns=new Set())).add(v.racerIndex);}
+ }
+ if(retired){G.vehicles=G.vehicles.filter(v=>!retired.has(v));cars=cars.filter(v=>!retired.has(v));}
  if(nearby&&cars.length<5){
-  for(let i=0;i<5;i++){if(cars.some(v=>v.racerIndex===i))continue;const p=trackPoint(800+i*TRACK_LENGTH/5);if(G.vehicles.some(v=>Math.hypot(v.x-p.x,v.y-p.y)<130))continue;G.vehicles.push(G.makeVeh(i%2?'dart':'nyx',p.x,p.y,p.rot,{ai:true,circuitRacer:true,racerIndex:i,parked:false,keep:true}));}
+  for(let i=0;i<5;i++){if(cars.some(v=>v.racerIndex===i))continue;const p=trackPoint(800+i*TRACK_LENGTH/5);if(G.circuitRespawns?.has(i)&&visible(p.x,p.y)||G.vehicles.some(v=>Math.hypot(v.x-p.x,v.y-p.y)<130))continue;G.vehicles.push(G.makeVeh(i%2?'dart':'nyx',p.x,p.y,p.rot,{ai:true,circuitRacer:true,racerIndex:i,parked:false,keep:true}));G.circuitRespawns?.delete(i);}
  }
  for(const v of cars){if(v===G.player)continue;if(!nearby){v.vx=v.vy=0;continue;}if(v.dead||v.health<=0){v.ai=false;v.vx=v.vy=0;continue;}v.ai=true;hooks.tickDrive(G,v,circuitPilot(G,v,dt),dt,false);}
  const s=G.circuitSession;if(!s?.running)return;

@@ -346,6 +346,7 @@ function navOk(G, x, y) {
 }
 
 function spawnWorld(G) {
+  G.circuitRespawns=null;
   const meta = G.meta;
   G.props = meta.props.map((p) => ({ ...p, broken: false, vx: 0, vy: 0, spin: 0 }));
   G.vehicles = [];
@@ -760,6 +761,7 @@ function restoreState(G, d) {
   G.missionState = d.missionState && typeof d.missionState === 'object' ? { ...d.missionState } : {};
   G.missionState.scramblerT = finite(G.missionState.scramblerT, 0, 0, 90);
   G.missionState.holdT = 0;
+  G.missionState.hacking = false;
   G.vnQueue = Array.isArray(d.vnQueue) ? d.vnQueue.filter(id => VN[id]) : [];
   G.needsBegin = d.needsBegin === true;
   G.ended = d.ended === true || G.missionIndex >= MISSIONS.length;
@@ -779,7 +781,7 @@ function restoreState(G, d) {
     const v = G.vehicles.find(v => !v.dead && !v.raceRival && v.kind === d.vehKind && (d.aircraft?.id&&v.aircraftId===d.aircraft.id || Math.hypot(v.x - spot.x, v.y - spot.y) < 80)) || spawnPlayerCar(G, d.vehKind, spot.x, spot.y, rot);
     v.x = spot.x; v.y = spot.y; v.rot = rot; v.vx = v.vy = 0; v.burning = false; v.sinkT = 0;
     if(v.def.boat){const at=waterBerth(G,v,v.x,v.y);if(at)Object.assign(v,at);}
-    finishEnter(G, v); v.health = finite(d.vehicleHealth, 100, 15, 100); v.wrecked = v.health < 35;
+    finishEnter(G, v, true); v.health = finite(d.vehicleHealth, 100, 15, 100); v.wrecked = v.health < 35;
     v.paint = Math.floor(finite(d.vehiclePaint,0,0,100));
     restoreDamage(v,d.vehicleDamage);
     if(v.def.aircraft) restoreAircraft(v,d.aircraft);
@@ -1749,10 +1751,10 @@ function enterVeh(G, v, instant) {
   finishEnter(G, v);
 }
 
-function finishEnter(G, v) {
+function finishEnter(G, v, restoring=false) {
   v.doorT=.55;
   // a traffic driver gets pulled out and runs
-  if (v.traffic || v.tr) {
+  if (!restoring&&(v.traffic || v.tr)) {
     const r = rightVec(v.rot);
     const s = findSafe(G, v.x - r.x * 30, v.y - r.y * 30, 8);
     G.peds.push({ x: s.x, y: s.y, rot: v.rot, vx: 0, vy: 0, sprite: ["m1", "m2", "cabbie", "m3"][(Math.random() * 4) | 0], speed: 0, walk: 40, dist: 0, flee: 5, threatX: v.x, threatY: v.y, r: 8, hp: 30, dead: false, ambient: true });
@@ -1768,7 +1770,7 @@ function finishEnter(G, v) {
   G.radioName = name;
   G.radioT = 3.2;
   if (G.audio.stinger) G.audio.stinger(G.audio.station || 0);
-  if (v.def && v.def.cop) crime(G, 1, v.x, v.y, false, 2);
+  if (!restoring&&v.def && v.def.cop) crime(G, 1, v.x, v.y, false, 2);
   G.cops = G.cops.filter((c) => c !== v);
 }
 
@@ -1781,17 +1783,21 @@ function exitVeh(G, emergency=false) {
   v.doorT=.75;
   const r = rightVec(v.rot);
   // Boats can only disembark at a nearby reachable bank, never teleport across the bay.
-  if(v.def.boat&&!emergency){const bank=findSafe(G,v.x,v.y,8,true);if(Math.hypot(bank.x-v.x,bank.y-v.y)>125){toast(G,"Pull alongside a pier or shore to get out.");return;}}
+  let bank=null;
+  if(v.def.boat&&!emergency){bank=findSafe(G,v.x,v.y,8,true);if(Math.hypot(bank.x-v.x,bank.y-v.y)>125){toast(G,"Pull alongside a pier or shore to get out.");return;}}
+  let spot = null;
+  const hull=bodySize(v),h=headingVec(v.rot);
+  const clear=(x,y)=>footClear(G,x,y,8)&&!G.vehicles.some(o=>!o.def.boat&&!airborne(o)&&circleBody(o,x,y,8));
+  for (const side of [-1, 1, 0]) {
+    const offset=v.def.aircraft?Math.max(70,hull.w+16):hull.w+10;
+    const x = v.x + r.x * offset * side-(side===0?h.x*(hull.l+12):0), y = v.y + r.y * offset * side-(side===0?h.y*(hull.l+12):0);
+    if (clear(x,y)) { spot = { x, y }; break; }
+  }
+  if (!spot) spot = bank||findSafe(G, v.x - r.x * 30, v.y - r.y * 30, 8);
+  if(!clear(spot.x,spot.y)){v.doorT=0;toast(G,'No safe space to exit. Move clear of the obstruction.');return;}
   v.driver = null;
   v.loose = true; v.parked = false; v.traffic = false; v.tr = null;
   v.siren = false;
-  let spot = null;
-  for (const side of [-1, 1, 0]) {
-    const offset=v.def.aircraft?Math.max(70,bodySize(v).w+16):bodySize(v).w+10;
-    const x = v.x + r.x * offset * side, y = v.y + r.y * offset * side + (side === 0 ? 40 : 0);
-    if (footClear(G, x, y, 7)) { spot = { x, y }; break; }
-  }
-  if (!spot) spot = findSafe(G, v.x - r.x * 30, v.y - r.y * 30, 8);
   const foot = makeFoot(G, spot.x, spot.y, v.rot);
   foot.exitT = 1;
   G.player = foot;
@@ -2385,7 +2391,8 @@ function nearbyInteraction(G) {
   return at && Math.hypot(G.player.x - at.x, G.player.y - at.y) < (obj.r || 90) ? obj : null;
 }
 function tickMission(G, dt) {
-  if(G.freeRoam||airborne(G.player))return;
+  if(G.freeRoam)return;
+  if(airborne(G.player)){G.missionState.holdT=0;G.missionState.hacking=false;return;}
   if (!MISSIONS[G.missionIndex]) return;
   const flow = G._flow || missionFlow(MISSIONS[G.missionIndex].id, G.flags);
   G._flow = flow;
@@ -2415,11 +2422,11 @@ function tickMission(G, dt) {
         else advanceObjective(G);
       }
     } else if (valid && obj.hold) {
-      const still = p.type === 'foot' && (p.speed || 0) < 30;
+      const still = p.type === 'foot' && (p.speed || 0) < 8 && !G.input.fire;
       G.missionState.holdT = still ? (G.missionState.holdT || 0) + dt : 0;
       if (G.missionState.holdT >= obj.hold) advanceObjective(G);
     } else if (valid) advanceObjective(G);
-    else G.missionState.holdT = 0;
+    else {G.missionState.holdT=0;G.missionState.hacking=false;}
   } else if (obj.kind === 'loseWanted') {
     if (G.wanted === 0) advanceObjective(G);
   } else if (obj.kind === 'enterBoat') {

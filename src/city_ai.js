@@ -81,6 +81,7 @@ export function createCityAI(G) {
     }
     const other = b.partner && brains.get(b.partner);
     if (other?.partner === p) {
+      b.partner.cityActivity = null;
       other.partner = null; other.mode = 'walk'; other.until = 0; other.next = clock + 1;
     }
     b.partner = null; b.goal = null; b.fixture = null; b.mode = 'walk'; b.blocked = 0;
@@ -294,14 +295,18 @@ export function createCityAI(G) {
         if(danger)d.cap=Math.min(d.cap,Math.max(0,(stopAt-body.l-radius-8)*1.4));
       });
       cars.query(v.x, v.y, 230, other => {
-        if (other === v || !other.siren) return;
+        if (other === v || other.dead || !other.siren) return;
         const along = (other.x - v.x) * hx + (other.y - v.y) * hy;
         const side = Math.abs((other.x - v.x) * hy - (other.y - v.y) * hx);
         if (along > -190 && along < 80 && side < 85) d.cap = Math.min(d.cap, 20);
       });
-      if (v.kind === 'bus' && clock > d.cooldown) {
+      // Shelter service belongs to the curb lane and the right-hand side.
+      // An opposite shelter must not halt a bus across a live carriageway.
+      if (v.kind === 'bus' && clock > d.cooldown && !v.tr?.turn && (v.tr?.lane??0)>=(v.tr?.e?.lanes??1)-1) {
         places.query(v.x, v.y, 100, f => {
           if (f.kind !== 2 || clock < d.until || Math.abs((f.x - v.x) * hx + (f.y - v.y) * hy) > 32) return;
+          const side=(f.x-v.x)*Math.cos(v.rot)+(f.y-v.y)*Math.sin(v.rot);
+          if(side<body.w+4||side>100)return;
           d.stop = f; d.until = clock + 4; d.cooldown = clock + 35; d.cap = 0;
         });
       }

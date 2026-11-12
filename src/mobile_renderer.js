@@ -4,7 +4,7 @@ import {drawDropMission} from './airdrop.js';
 import {drawCircuitActivity} from './motorsport.js';
 import {drawCityHubs} from './world_hubs.js';
 import {CIRCUIT} from './circuit_world.js';
-import {prepareBakedWorld,drawBakedWorldTile} from './baked_world.js';
+import {prepareBakedWorld,drawBakedWorldTile,hasBakedWorldTile} from './baked_world.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadScenery} from './assets.js';
@@ -78,7 +78,7 @@ export function visibleOuterTiles(G,r){
  const co=Math.cos(G.cam.rot),si=Math.sin(G.cam.rot),halfW=G.canvas.width/(2*r.S),halfH=G.canvas.height/(2*r.S),margin=OUTER*.708,revision=G.ground.revision*100+(G.street?.revision||0);let pending=false;
  for(const p of plan.slots){const dx=p.cx-G.cam.x,dy=p.cy-G.cam.y;
   if(Math.abs(dx*co+dy*si)>halfW+margin||Math.abs(-dx*si+dy*co)>halfH+margin)continue;
-  p.d=dx*dx+dy*dy;queue.push(p);const entry=G.mobileOuter?.get(p.key);if(!entry||entry.job||entry.revision!==revision)pending=true;
+  p.d=dx*dx+dy*dy;queue.push(p);const entry=G.mobileOuter?.get(p.key);if(!hasBakedWorldTile(G,p.x,p.y)&&(!entry||entry.job||entry.revision!==revision))pending=true;
  }
  if(pending)queue.sort((a,b)=>a.d-b.d);
  return queue;

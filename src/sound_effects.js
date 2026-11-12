@@ -62,6 +62,17 @@ export function surfaceMotion(v,surface='road',wet=0,out={}){
  out.roll=moving*(loose?.10:.025)+moving*limit(wet,0,1)*.045;out.frequency=loose?850:350+moving*450;
  out.tyre=loose?0:limit((side-45)/140,0,1)*.18;return out;
 }
+// Reverse is one continuous gear, including the mobile brake-to-reverse input.
+// Its engine should gain load as it accelerates, not sound like a held brake.
+export function engineMotion(v,input={},out={}){
+ const speed=Math.hypot(v.vx||0,v.vy||0),top=v.def?.max||300,k=Math.min(1,speed/top);
+ const forward=(v.vx||0)*Math.sin(v.rot||0)-(v.vy||0)*Math.cos(v.rot||0);
+ out.reverse=forward < -3||!!v.brakeReverse&&speed<15;
+ out.load=input.brake&&!v.brakeReverse?0:Math.abs(input.y||0)>.1||input.touchJoy?.active||v.brakeReverse?1:.55;
+ const gear=Math.min(3,(k*4)|0),inGear=k*4-gear;
+ out.rpm=v.def?.boat?.22+.68*k+.10*out.load:out.reverse?(.25+.70*Math.min(1,speed/(top*.32)))*(.7+.3*out.load):.25+.75*(gear===0?k*4:.35+.65*inGear)*(.7+.3*out.load);
+ return out;
+}
 export function createEffects(ctx,bus){
  const bank=new Map(),variations=new Map();let voices=0;
  const rate=24000,TAU=Math.PI*2;

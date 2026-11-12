@@ -1,5 +1,6 @@
 /* Deterministic scenery. Install geometry before navigation; bake paint into ground chunks. */
 const TAU=Math.PI*2;
+const hash=(x,y)=>{let n=(Math.imul(x,73856093)^Math.imul(y,19349663))>>>0;n=Math.imul(n^(n>>>16),2246822507);return ((n^(n>>>13))>>>0)/4294967296;};
 const visible=(r,x,y,w,h)=>x<r.x1&&x+w>r.x0&&y<r.y1&&y+h>r.y0;
 function box(c,x,y,w,h,col){c.fillStyle=col;c.fillRect(x,y,w,h);}
 function oval(c,x,y,w,h,col){c.fillStyle=col;c.beginPath();c.ellipse(x,y,w,h,0,0,TAU);c.fill();}
@@ -140,8 +141,54 @@ function destinations(c,W,r){
   }c.restore();
  }
 }
+// Patches use world coordinates rather than a chunk seed. Adjacent tiles paint
+// the same complete shape across their shared edge, without a visible seam.
+// Entire bounding boxes must be natural ground, protecting narrow roads and
+// destination courts as well as the centre of each decorative patch.
+export function frontierFloorPatches(r,codeAt){
+ if(r.x1<8800||r.x1<10400&&r.y1<9216)return [];
+ const patches=[];
+ for(let gy=Math.floor((r.y0-100)/192);gy<=Math.floor((r.y1+100)/192);gy++)for(let gx=Math.floor((r.x0-100)/192);gx<=Math.floor((r.x1+100)/192);gx++){
+  const n=hash(gx,gy),x=gx*192+40+hash(gx+71,gy)*100,y=gy*192+40+hash(gx,gy+53)*100;
+  const forest=x>=10400&&y<8400,mountain=x>=10400&&y>=8400||x>=8800&&y>=9216;if(!forest&&!mountain)continue;
+  const rx=forest?46+n*48:60+n*38,ry=forest?28+n*26:35+n*30;
+  if(x+rx<r.x0||x-rx>r.x1||y+ry<r.y0||y-ry>r.y1)continue;
+  let safe=true;for(let yy=Math.floor((y-ry)/16)*16;safe&&yy<=y+ry;yy+=16)for(let xx=Math.floor((x-rx)/16)*16;xx<=x+rx;xx+=16){if(codeAt(xx+8,yy+8)!==(forest?5:10)){safe=false;break;}}
+  if(safe)patches.push({x,y,rx,ry,n,forest});
+ }
+ return patches;
+}
+function frontierFloor(c,r,codeAt){
+ for(const p of frontierFloorPatches(r,codeAt)){
+  const {x,y,rx,ry,n,forest}=p;c.save();
+  c.fillStyle=forest?'rgba(151,133,83,.14)':'rgba(183,165,129,.16)';c.beginPath();
+  for(let i=0;i<12;i++){const a=i*TAU/12,k=.8+hash(i,Math.floor(x+y))*.2,px=x+Math.cos(a)*rx*k,py=y+Math.sin(a)*ry*k;i?c.lineTo(px,py):c.moveTo(px,py);}c.closePath();c.fill();
+  if(!forest){
+   // Low, weathered strata are surface markings, not uncollidable boulders.
+   c.strokeStyle='rgba(56,76,72,.2)';c.lineWidth=2;c.beginPath();
+   for(let j=-1;j<=1;j++){c.moveTo(x-rx*.55,y+ry*j*.34);c.bezierCurveTo(x-rx*.12,y+ry*(j*.34-.28),x+rx*.18,y+ry*(j*.34+.3),x+rx*.56,y+ry*j*.34);}c.stroke();
+   c.strokeStyle='rgba(230,222,194,.22)';c.lineWidth=1;c.beginPath();c.moveTo(x-rx*.55,y-2);c.quadraticCurveTo(x,y-ry*.3,x+rx*.56,y-2);c.stroke();
+  }else{
+   c.strokeStyle='rgba(184,159,104,.35)';c.lineWidth=1;c.beginPath();
+   for(let j=0;j<9;j++){const px=x+(hash(j,Math.floor(x))- .5)*rx,py=y+(hash(j,Math.floor(y))-.5)*ry;c.moveTo(px-3,py);c.lineTo(px+3,py+2+n*2);}c.stroke();
+  }c.restore();
+ }
+}
+function roadside(c,W,r,codeAt){
+ for(const s of W.roads){
+  if(s.k!=='frontier')continue;
+  const lo=Math.max(s.a+90,Math.floor((s.v?r.y0:r.x0)/144)*144),hi=Math.min(s.b-90,s.v?r.y1:r.x1);
+  if(s.c<(s.v?r.x0:r.y0)-100||s.c>(s.v?r.x1:r.y1)+100)continue;
+  for(let d=Math.ceil(lo/144)*144;d<=hi;d+=144)for(const side of [-1,1]){
+   const across=s.c+side*(s.w/2+14),x=s.v?across:d,y=s.v?d:across;
+   if(codeAt(x,y)!==10||W.roads.some(o=>o!==s&&(o.v?Math.abs(x-o.c)<o.w/2+55&&y>=o.a-55&&y<=o.b+55:Math.abs(y-o.c)<o.w/2+55&&x>=o.a-55&&x<=o.b+55)))continue;
+   box(c,x-2,y-3,5,8,'#555e53');box(c,x-2,y-5,4,7,'#d3cdb0');box(c,x-2,y-4,4,2,side<0?'#ad6651':'#e2ba6d');
+  }
+ }
+}
 export function drawWorldDetails(c,W,r,pats,codeAt){
  if(!W.details)return;
+ frontierFloor(c,r,codeAt);roadside(c,W,r,codeAt);
  let seed=(Math.imul(r.x0|0,73856093)^Math.imul(r.y0|0,19349663))>>>0;
  const rnd=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
  // Botanical clusters and pebble fans break up repeated terrain. No per-frame particles.

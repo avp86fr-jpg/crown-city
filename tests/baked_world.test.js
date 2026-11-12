@@ -49,3 +49,11 @@ test('unavailable sheets fall back immediately and retry with backoff',async()=>
  assert.equal(drawBakedWorldTile(G,{},8,0),false);G.ticks=1799;prepareBakedWorld(G,view);assert.equal(io.pending.length,0);
  G.ticks=1800;prepareBakedWorld(G,view);assert.equal(io.pending.length,1);await io.settle();assert.equal(drawBakedWorldTile(G,{drawImage(){}},8,0),true);releaseBakedWorld(G);
 });
+test('moving toward a new district preloads one sheet only after visible terrain is ready',async()=>{
+ const io=images(),G={ticks:0,cam:{x:5700,y:200},player:{vx:240,vy:0}},view=[{x:11,y:0,d:0}];
+ prepareBakedWorld(G,view);assert.equal(io.pending.length,1);assert.match(io.pending[0].url,/2_0/);await io.settle();
+ prepareBakedWorld(G,view);assert.equal(io.pending.length,1);assert.match(io.pending[0].url,/3_0/);await io.settle();
+ assert.equal(G.bakedWorld.sheets.size,2);const ahead=G.bakedWorld.sheets.get('3_0').image;
+ prepareBakedWorld(G,[{x:12,y:0,d:0}]);assert.equal(io.pending.length,0);assert.equal(G.bakedWorld.sheets.get('3_0').image,ahead);
+ releaseBakedWorld(G);assert.equal(io.closed.length,2);
+});

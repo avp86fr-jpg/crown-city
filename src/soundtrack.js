@@ -8,38 +8,50 @@ export const TRACKS=[
  {file:'return-to-crown.ogg',title:'RETURN TO CROWN / THE CROWN SESSIONS',station:'STORY OVERTURE'},
 ];
 export function createSoundtrack(ctx,bus){
- const channels=[];let started=false,selected=3,previous=-1,lastScene='title',openingEpoch=-1;
+ const channels=[];let started=false,selected=3,previous=-1,lastScene='title',openingEpoch=-1,loadingSince=0,musicEnabled=true;
+ const overlays=new Set(['pause','map','settings','crew','garage','dossier','transit']);
  function channel(index){
   if(channels[index])return channels[index];
   const track=TRACKS[index],el=new Audio();el.preload='none';el.loop=true;
   const supported=typeof el.canPlayType!=='function'||el.canPlayType('audio/ogg; codecs="vorbis"');
   el.src=new URL('../assets/music/'+track.file.replace(/\.ogg$/,supported?'.ogg':'.mp3'),import.meta.url).href;
   const gain=ctx.createGain();gain.gain.value=0;const source=ctx.createMediaElementSource(el);source.connect(gain);gain.connect(bus);
-  const c={el,gain,ready:false,error:false,level:-1,stopAt:Infinity,pending:false};
+  const c={el,gain,ready:false,error:false,level:-1,stopAt:Infinity,pending:false,retryAt:0,attempt:0};
   el.addEventListener('playing',()=>{c.ready=true;c.pending=false;c.error=false;});
+  el.addEventListener('waiting',()=>{c.ready=false;});
   el.addEventListener('error',()=>{c.ready=false;c.pending=false;if(!c.fallback&&/\.ogg$/.test(el.src)){c.fallback=true;el.src=el.src.replace(/\.ogg$/,'.mp3');if(started&&!document.hidden&&channels[selected]===c)play(c);}else c.error=true;});channels[index]=c;return c;
  }
- function play(c){if(c.pending||!c.el.paused||c.error)return;c.pending=true;c.el.play().catch(()=>{c.pending=false;c.ready=false;});}
- function start(){started=true;if(!document.hidden)play(channel(selected));}
+ function play(c){if(c.pending||!c.el.paused||c.error||ctx.currentTime<c.retryAt)return;c.pending=true;const attempt=++c.attempt;c.el.play().catch(()=>{if(c.attempt!==attempt)return;c.pending=false;c.ready=false;c.retryAt=ctx.currentTime+1.5;});}
+ function start(){started=true;if(!document.hidden&&musicEnabled){const c=channel(selected);c.retryAt=0;play(c);}}
  function fade(c,value,seconds=.45){if(c.level===value)return;c.level=value;c.gain.gain.cancelScheduledValues(ctx.currentTime);c.gain.gain.setTargetAtTime(value,ctx.currentTime,seconds/3);}
  function update(G,station){
   if(!started)return false;lastScene=G.scene;
-  if(G.settings?.mus===0){silence();return true;}
+  musicEnabled=G.settings?.mus!==0;if(!musicEnabled){silence();return true;}
   const intro=G.scene==='vn'&&G.vn?.id?.startsWith('intro_');
-  const wanted=intro?5:G.scene==='train'?4:G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player?.type==='veh'?station%3:3;
-  if(wanted!==selected){previous=selected;selected=wanted;for(let i=0;i<channels.length;i++)if(channels[i]&&i!==selected&&i!==previous){fade(channels[i],0,.06);channels[i].el.pause();}}
+  // Menus duck the current performance without retuning the radio or restarting
+  // a chase/opening cue each time the player checks their map.
+  const wanted=overlays.has(G.scene)?selected:intro?5:G.scene==='train'?4:G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player?.type==='veh'?station%3:3;
+  if(wanted!==selected){previous=channels[selected]?.ready?selected:channels[previous]?.ready?previous:selected;selected=wanted;loadingSince=ctx.currentTime;for(let i=0;i<channels.length;i++)if(channels[i]&&i!==selected&&i!==previous){fade(channels[i],0,.06);stop(channels[i]);}}
   if(document.hidden)return false;
+  for(let i=0;i<channels.length;i++)if(i!==selected&&channels[i]&&ctx.currentTime>=channels[i].stopAt&&(!channels[i].el.paused||channels[i].pending))stop(channels[i]);
   const current=channel(selected);
   if(intro&&openingEpoch!==(G.storyEpoch||0)){openingEpoch=G.storyEpoch||0;current.el.currentTime=0;}
   play(current);
   const ready=current.ready&&!current.el.paused&&!current.error;
-  const level=['pause','map','settings','crew','garage','dossier','transit'].includes(G.scene)?.13:G.scene==='train'?.4:G.scene==='vn'?(intro&&G.vn.t<7.5&&G.vn.id==='intro_news'?.64:.35):G.scene==='brief'?.3:G.contactTalk||G.action?.messageT>0?.3:G.player?.type==='foot'?.45:.66;
+  const level=overlays.has(G.scene)?.13:G.scene==='train'?.4:G.scene==='vn'?(intro&&G.vn.t<7.5&&G.vn.id==='intro_news'?.64:.35):G.scene==='brief'?.3:G.contactTalk||G.action?.messageT>0?.3:G.player?.type==='foot'?.45:.66;
   if(ready){fade(current,level);current.stopAt=Infinity;
-   channels.forEach((c,i)=>{if(i===selected)return;fade(c,0);if(c.stopAt===Infinity)c.stopAt=ctx.currentTime+.65;if(ctx.currentTime>=c.stopAt&&!c.el.paused){c.el.pause();c.ready=false;}});
+   channels.forEach((c,i)=>{if(i===selected||c.el.paused&&!c.pending)return;fade(c,0);if(c.stopAt===Infinity)c.stopAt=ctx.currentTime+.65;});
+  }else{
+   const outgoing=channels[previous];
+   // A recording already playing bridges the decoder/network delay. Returning
+   // false here used to start the synthetic score over that full-volume song.
+   if(!current.error&&outgoing?.ready&&!outgoing.el.paused&&ctx.currentTime-loadingSince<8){fade(outgoing,level);outgoing.stopAt=Infinity;return true;}
+   channels.forEach((c,i)=>{if(i===selected||c.el.paused&&!c.pending)return;fade(c,0);if(c.stopAt===Infinity)c.stopAt=ctx.currentTime+.65;});
   }
   return ready;
  }
- function silence(){channels.forEach(c=>{fade(c,0,.08);c.el.pause();c.ready=false;c.pending=false;});}
- document.addEventListener('visibilitychange',()=>{if(document.hidden)silence();else if(started&&lastScene)play(channel(selected));});
+ function stop(c){c.el.pause();c.ready=false;c.pending=false;c.attempt++;}
+ function silence(){channels.forEach(c=>{fade(c,0,.08);stop(c);});}
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)silence();else if(started&&lastScene&&musicEnabled)play(channel(selected));});
  return {start,update,silence,get title(){return TRACKS[selected].title;},get playing(){return !!channels[selected]?.ready;},get activeStreams(){return channels.filter(c=>!c.el.paused).length;}};
 }

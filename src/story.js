@@ -152,8 +152,13 @@ export const VN = {
     next: "play",
   },
   m5_mid: {
-    bg: "marina", left: "chaos", right: "neural", speaker: "neural",
+    bg: "palace", left: "chaos", right: "neural", speaker: "neural",
     text: "Cameras are bricks. You have a window. Don't spend it posing.",
+    next: "play",
+  },
+  m5_mid_loud: {
+    bg: "palace", left: "chaos", right: "neural", speaker: "neural",
+    text: "Archive copied. The alarm is live and Metro has every exit. Chaos... your name is in here. You weren't fired. You were listed as dead. Get to Hunter's launch. We can argue with ghosts offshore.",
     next: "play",
   },
   m5_win: {
@@ -248,7 +253,7 @@ export function missionFlow(id, flags) {
           { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in a boat." },
           { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Run the harbour to the drop island." },
         ],
-        midVN: { after: "vault", page: "m5_mid" },
+        midVN: { after: "vault", page: flags.heist === 'loud' ? 'm5_mid_loud' : 'm5_mid' },
         winVN: "m5_win",
         onWin: { unlock: ["nyx"] },
       };

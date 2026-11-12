@@ -124,7 +124,7 @@ function observe(G, D, dt) {
   const step = sameVehicle ? Math.hypot(p.x - b.x, p.y - b.y) : 0;
   const speed = Math.hypot(p.vx || 0, p.vy || 0);
   // Count measured continuous motion only; entering cars, respawns and teleport jumps earn no distance.
-  if (dt > 0 && p.type === 'veh' && !p.def?.boat && speed > 20 && step > 0 && step <= speed * dt * 1.6 + 4) {
+  if (dt > 0 && p.type === 'veh' && !p.def?.boat && !p.def?.aircraft && speed > 20 && step > 0 && step <= speed * dt * 1.6 + 4) {
     A.distance += step; A.drivingTime += dt;
   }
   b.vehicle = p; b.vehicleHealth = vehicleHealth; b.x = p.x; b.y = p.y;
