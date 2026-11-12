@@ -53,6 +53,7 @@ test('four-minute full game simulation keeps traffic moving with actual parked c
  try{for(let i=0;i<240*60;i++){T.tick(G,1/60);if(i%60===0){const cars=G.vehicles.filter(v=>v.traffic);for(const v of cars){const stopped=Math.hypot(v.vx,v.vy)<5;stalls.set(v,stopped?(stalls.get(v)||0)+1:0);turnStalls.set(v,stopped&&v.tr.turn?(turnStalls.get(v)||0)+1:0);maxStall=Math.max(maxStall,stalls.get(v));maxTurnStall=Math.max(maxTurnStall,turnStalls.get(v));}if(i>180*60){moving+=cars.filter(v=>Math.hypot(v.vx,v.vy)>5).length;longStalled+=cars.filter(v=>stalls.get(v)>45).length;sampled+=cars.length;}assert.ok(cars.every(v=>Number.isFinite(v.x+v.y+v.rot)));const owners=G.traffic.diagnostics().flatMap(z=>z.owners.map(v=>v.kind+":"+v.x+":"+v.y));assert.equal(new Set(owners).size,owners.length,"a car must not retain a ghost reservation in an earlier junction");}}}finally{Math.random=rand;}
  t.diagnostic(`full: ${(100*moving/sampled).toFixed(1)}% moving; max stopped ${maxStall}s; max stopped in turn ${maxTurnStall}s; ${(100*longStalled/sampled).toFixed(1)}% of final samples stopped >45s`);assert.ok(maxTurnStall<45,'persistent turn jam in full game');
  assert.equal(G.scene,'play');assert.ok(sampled>500);assert.ok(moving/sampled>.5,`full simulation traffic stalled: ${moving}/${sampled}`);
+ assert.ok(maxStall<60,'a conflicting turn was starved for a full minute');
 });
 
 test('pedestrians finish crossing without random pauses and leave a road after fleeing',()=>{

@@ -503,7 +503,7 @@ function bindKeys(G) {
     if (G.scene === 'play') { G.pausedFrom = 'play'; G.scene = 'pause'; }
   };
   window.addEventListener("blur", release);
-  window.addEventListener("pointercancel", () => resetInput(I));
+  window.addEventListener("pointercancel", () => { G.releaseControls(); G.jack = null; });
   document.addEventListener("visibilitychange", () => { if (document.hidden) {release();G.audio.ctx?.suspend?.().catch(()=>{});} else if(G.audio.ctx?.state==='suspended')G.audio.ctx.resume().catch(()=>{}); });
   const pulse = () => {
     I.sprint = down.has("ShiftLeft") || down.has("ShiftRight") || I.tSprint || I.tBoost;
@@ -704,10 +704,11 @@ function snapshot(G) {
     action: actionSave(G.action),
     director: directorSave(G.director),
     freeRoam: G.freeRoam === true,
-    flags: G.flags,
+    flags: { ...G.flags },
     missionIndex: G.missionIndex,
     objectiveIndex: G.objectiveIndex,
-    unlocked: G.unlocked,
+    unlocked: [...G.unlocked],
+    pickups: G.pickups.filter(p => p.got).map(p => p.id),
     chips: G.chips,
     wanted: G.wanted,
     time: G.time,
@@ -753,6 +754,7 @@ function restoreState(G, d) {
   G.time = finite(d.time, 19.4, 0, 24) % 24;
   G.weather = ['clear', 'rain', 'fog', 'sand'].includes(d.weather) ? d.weather : 'clear';G.weatherIndex=Math.floor(finite(d.weatherIndex,0,0,5));G.weatherT=finite(d.weatherT,90,1,180);
   G.health = finite(d.health, 100, 1, 100);
+  seedPickups(G, d.pickups);
   G.missionState = d.missionState && typeof d.missionState === 'object' ? { ...d.missionState } : {};
   G.missionState.scramblerT = finite(G.missionState.scramblerT, 0, 0, 90);
   G.missionState.holdT = 0;
@@ -792,16 +794,25 @@ function restoreState(G, d) {
   if(G.action.contract?.id==='courier' || G.action.contract?.id==='ghost' && !G.action.contract.stage) {
     const point=G.action.contract.id==='courier'&&!G.action.contract.stage?G.meta.spawns.garage:G.meta.interactions[G.action.contract.id==='courier'?'neural':'pd'];G.waypoint={x:point[0],y:point[1]};
   }
-  if (G._flow && G._flow.objectives[G.objectiveIndex].kind === 'race' && d.race) {
-    startRace(G, G._flow.objectives[G.objectiveIndex], d.race.version===2);
-    if(d.race.version===2){
-    const r = G.race;
-    r.i = Math.floor(finite(d.race.i, 0, 0, r.pts.length - 1));
-    r.rivalI = Math.floor(finite(d.race.rivalI, 0, 0, r.pts.length));
-    r.t = finite(d.race.t, 0, 0, 3600); r.countdown = finite(d.race.countdown, 3, 0, 3); r.started = r.countdown === 0;
-    const point = d.race.rival || {};
-    r.rival.x = finite(point.x, r.rival.x, 40, WORLD_W - 40); r.rival.y = finite(point.y, r.rival.y, 40, WORLD_H - 40);
-    r.rival.rot = finite(point.rot, r.rival.rot);
+  if (G._flow?.objectives[G.objectiveIndex].kind === 'race' && d.race) {
+    const obj = G._flow.objectives[G.objectiveIndex], point = d.race.rival;
+    const roadVehicle = G.player.type === 'veh' && !G.player.def.boat && !G.player.def.aircraft;
+    const onTrack = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && nearestTrack(p.x, p.y).d < CIRCUIT.half + 8;
+    const resume = d.race.version === 2 && roadVehicle && onTrack(G.player) && onTrack(point)
+      && Number.isInteger(d.race.i) && d.race.i >= 0 && d.race.i < 32 * (obj.laps || 1)
+      && Number.isInteger(d.race.rivalI) && d.race.rivalI >= 0 && d.race.rivalI <= 32 * (obj.laps || 1);
+    if (!roadVehicle) {
+      // An interrupted or incompatible save returns to Fire's meeting instead
+      // of dereferencing a race that could not be created.
+      G.objectiveIndex = Math.max(0, G.objectiveIndex - 1);
+    } else {
+      startRace(G, obj, resume);
+      if (resume && G.race) {
+        const r = G.race;
+        r.i = d.race.i; r.rivalI = d.race.rivalI;
+        r.t = finite(d.race.t, 0, 0, 3600); r.countdown = finite(d.race.countdown, 3, 0, 3); r.started = r.countdown === 0;
+        r.rival.x = point.x; r.rival.y = point.y; r.rival.rot = finite(point.rot, r.rival.rot);
+      }
     }
   }
   G.checkpoint = d.checkpoint && typeof d.checkpoint === 'object' ? d.checkpoint : null;
@@ -836,7 +847,8 @@ function popChips(G, x, y, amt) {
   if (G.audio) G.audio.pickup();
 }
 
-function seedPickups(G) {
+function seedPickups(G, collected) {
+  const got = new Set(Array.isArray(collected) ? collected.filter(id => typeof id === 'string') : []);
   G.pickups = [
     { x: 1480, y: 2100, v: 25 },
     { x: 2300, y: 1980, v: 25 },
@@ -844,7 +856,7 @@ function seedPickups(G) {
     { x: 2560, y: 2740, v: 15 },
     { x: 1920, y: 720, v: 20 },
     { x: 1180, y: 1560, v: 15 },
-  ];
+  ].map(p => ({ ...p, ...findSafe(G, p.x, p.y, 14, true, true), id: `${p.x}:${p.y}`, got: got.has(`${p.x}:${p.y}`) }));
 }
 
 function tickJack(G, dt) {
@@ -936,6 +948,7 @@ function startNew(G) {
   G.weather = "clear";G.weatherIndex=0;
   G.health = 100;
   G.ended = false;
+  seedPickups(G);
   G.tipStep = null; G.tipsDone = false; G.walked = 0; G.drove = 0;
   spawnWorld(G);G.nearVehicles=null;G.movingVehicles=null;
   buildStreetScene(G);

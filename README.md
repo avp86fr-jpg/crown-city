@@ -113,3 +113,5 @@ Chaos now walks with proportional stick control; hold RUN or Shift to sprint. Hu
 Three slot machines on the southeast side of the MetaWin terrace accept 10, 25 or 50 game chips. Approach on foot and press E or tap PLAY. The paytable is visible before spinning; results persist through leaving and reloading. The chips have no real-money value. See [the core-game review and AI changes](docs/ai-reliability-pass.md).
 
 See [the precision, campaign and streaming pass](docs/precision-campaign-pass.md) for circuit race migration, obstruction recovery, canal repairs and measured limits.
+
+The [full release review](docs/full-review.md) covers save and checkpoint recovery, reachable chip pickups, circuit wreck avoidance, fairer junction queues and mobile street-cache memory. GitHub now runs the built game’s Chromium gameplay suite as well as the build and Node regressions. Performance results include the remaining loading spikes and the limits of mobile emulation.

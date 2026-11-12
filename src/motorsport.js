@@ -1,5 +1,6 @@
 import {racePace} from './circuit_rules.js';
 import {CIRCUIT,TRACK_LENGTH,trackPoint,nearestTrack,inCircuit,inPitLane} from './circuit_world.js';
+import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 export function pitDriveInput(v,input){
  if(v.def.boat||v.def.aircraft||!inPitLane(v.x,v.y))return input;
@@ -12,10 +13,49 @@ const storyMeeting=G=>!G.freeRoam&&G._flow?.objectives[G.objectiveIndex]?.id==='
 export const nearCircuit=G=>!G.race&&!storyMeeting(G)&&(!G.action?.contract||G.action.contract.id==='circuit')&&!G.wanted&&!G.circuitSession?.running&&Math.hypot(G.player.x-CIRCUIT.pit.x,G.player.y-CIRCUIT.pit.y)<110&&Math.hypot(G.player.vx||0,G.player.vy||0)<12;
 export function circuitPilot(G,v,dt){
  const n=nearestTrack(v.x,v.y),speed=Math.hypot(v.vx,v.vy),look=clamp(70+speed*.44,70,170),target=trackPoint(n.s+look);
- let offset=(v.racerIndex%2?1:-1)*28,limit=195+(v.racerIndex%3)*10;
+ const index=Number.isFinite(v.racerIndex)?v.racerIndex:0,preferred=(index%2?1:-1)*28,own=bodySize(v);
+ let offset=v.racerLane??preferred,limit=195+(index%3)*10;
  const bend=Math.abs(angle(trackPoint(n.s+look+90).rot-n.rot));limit=Math.min(limit,80+130/(1+bend*4));
- let blocked=false;
- for(const o of G.vehicles){if(o===v||o.dead||o.def.aircraft||Math.abs(o.x-v.x)>270||Math.abs(o.y-v.y)>270)continue;const dx=o.x-v.x,dy=o.y-v.y,front=dx*Math.sin(v.rot)-dy*Math.cos(v.rot),side=dx*Math.cos(v.rot)+dy*Math.sin(v.rot);if(front>0&&front<75+speed*.6&&Math.abs(side-offset)<45){blocked=true;offset=side>=0?-27:27;limit=Math.min(limit,Math.max(0,(front-65)*1.25));}}
+ const local=v.racerObstacles||(v.racerObstacles=[]);local.length=0;
+ for(const o of G.vehicles)if(o!==v&&!o.def.boat&&!(o.def.aircraft&&o.altitude>10)&&Math.abs(o.x-v.x)<520&&Math.abs(o.y-v.y)<520)local.push(o);
+ const lateral=(v.x-n.x)*Math.cos(n.rot)+(v.y-n.y)*Math.sin(n.rot);
+ let blocked=false,gap=Infinity;
+ for(const o of local){const dx=o.x-v.x,dy=o.y-v.y,front=dx*Math.sin(v.rot)-dy*Math.cos(v.rot),side=dx*Math.cos(v.rot)+dy*Math.sin(v.rot),b=bodySize(o),relative=angle(o.rot-v.rot),width=Math.abs(Math.cos(relative))*b.w+Math.abs(Math.sin(relative))*b.l,length=Math.abs(Math.cos(relative))*b.l+Math.abs(Math.sin(relative))*b.w;
+  if(front>0&&front<360+speed*.4&&Math.abs(side)<own.w+width+12){blocked=true;gap=Math.min(gap,Math.max(0,front-own.l-length-10));}
+ }
+ v.racerPlanT=(v.racerPlanT||0)-dt;
+ if(v.racerPlanT<=0){
+  v.racerPlanT=.15;
+  // Plan around physical hulls, including wrecks. Hold the chosen side until
+  // the rear clears; alternating sides each frame used to trap queued racers.
+  const probe={kind:v.kind,def:v.def,x:0,y:0,rot:0};
+  const clearLane=lane=>{
+   for(const ds of [0,60,120,200,300]){
+    const at=trackPoint(n.s+ds);probe.x=at.x+Math.cos(at.rot)*lane;probe.y=at.y+Math.sin(at.rot)*lane;probe.rot=at.rot;
+    if(worldBodyHit(G,probe,probe.x,probe.y)||local.some(o=>bodyContact(probe,o)))return false;
+   }return true;
+  };
+  if(blocked||!clearLane(offset)){
+   const choices=[-70,70,preferred].sort((a,b)=>Math.abs(a-offset)-Math.abs(b-offset));
+   const lane=choices.find(clearLane);if(lane!==undefined)offset=lane;
+  }else if(Math.abs(lateral-preferred)<12&&clearLane(preferred))offset=preferred;
+  v.racerLane=offset;
+ }
+ if(blocked)limit=Math.min(limit,Math.sqrt(2*100*gap),gap*1.4);
+ // Make steering room only when the entire rear corridor is unoccupied.
+ // A waiting pedestrian or another queued car always takes priority.
+ if(speed<5&&gap<45&&Math.abs(offset-lateral)>20&&!v.racerBacking){
+  let clear=true;const probe={kind:v.kind,def:v.def,rot:v.rot};
+  for(let ds=12;ds<=105;ds+=12){probe.x=v.x-Math.sin(v.rot)*ds;probe.y=v.y+Math.cos(v.rot)*ds;
+   if(worldBodyHit(G,probe,probe.x,probe.y)||local.some(o=>bodyContact(probe,o))||(G.peds||[]).some(p=>!p.dead&&circleBody(probe,p.x,p.y,10))||G.player.type==='foot'&&circleBody(probe,G.player.x,G.player.y,10)){clear=false;break;}
+  }if(clear)v.racerBacking=85;
+ }
+ if(v.racerBacking>0){
+  const probe={kind:v.kind,def:v.def,rot:v.rot,x:v.x-Math.sin(v.rot)*12,y:v.y+Math.cos(v.rot)*12};
+  const safe=!worldBodyHit(G,probe,probe.x,probe.y)&&!local.some(o=>bodyContact(probe,o))&&!(G.peds||[]).some(p=>!p.dead&&circleBody(probe,p.x,p.y,10))&&!(G.player.type==='foot'&&circleBody(probe,G.player.x,G.player.y,10));
+  v.racerBacking=Math.max(0,v.racerBacking-speed*dt);if(!safe)v.racerBacking=0;
+  if(safe&&v.racerBacking>0)return {x:0,y:speed<20?-.4:0,brake:false};
+ }
  const p=G.player;if(p.type==='foot'){const dx=p.x-v.x,dy=p.y-v.y,front=dx*Math.sin(v.rot)-dy*Math.cos(v.rot);if(front>0&&front<90+speed*.7&&Math.abs(dx*Math.cos(v.rot)+dy*Math.sin(v.rot))<55){limit=0;blocked=true;}}
  const tx=target.x+Math.cos(target.rot)*offset,ty=target.y+Math.sin(target.rot)*offset,error=angle(Math.atan2(tx-v.x,-(ty-v.y))-v.rot);
  limit*=v.raceRival?(v.racePace||.84):racePace(G).speed;
