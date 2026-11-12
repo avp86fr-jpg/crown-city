@@ -23,3 +23,12 @@ jobs:
       - run: git diff --exit-code -- index.html dist
       - run: npm run check
       - run: npm test
+      - name: Install Chromium for the gameplay review
+        run: npx playwright install --with-deps chromium
+      - name: Verify the built game in Chromium
+        run: |
+          node tools/serve.cjs > /tmp/crown-city-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid"' EXIT
+          curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/ > /dev/null
+          npm run test:browser

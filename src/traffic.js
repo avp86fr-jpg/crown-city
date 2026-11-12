@@ -166,7 +166,8 @@ export function createTraffic(G) {
   function exitClear(v,t){
     const b=bodySize(v),probe=t.exitProbe||(t.exitProbe={...edgePoint(t.ne,t.nfwd,t.ns+b.l+22,t.nlane),kind:v.kind,def:v.def}),radius=bodyRadius(v);
     // Do not enter a junction unless the whole car can fit beyond it.
-    if(G.surfaceAt&&worldBodyHit(G,probe,probe.x,probe.y))return false;
+    if(t.exitSurface!==G.surfaceAt){t.exitSurface=G.surfaceAt;t.exitBlocked=!!(G.surfaceAt&&worldBodyHit(G,probe,probe.x,probe.y));}
+    if(t.exitBlocked)return false;
     return !nearby(probe.x,probe.y,b.l+100,o=>o!==v&&(o.def?bodiesNear(probe,o,radius)&&bodyContact(probe,o):!o.dead&&circleBody(probe,o.x,o.y,9)));
   }
   function staticRouteClear(v,t){
@@ -231,9 +232,28 @@ export function createTraffic(G) {
     outer:for(const p of A)for(const q of B)if(bodiesNear(p,q)&&bodyContact(p,q)){clear=false;break outer;}
     cache.set(b,clear);return clear;
   }
+  function olderApproachWaiting(v,plan,zone,ahead){
+    for(const other of order){
+      if(other===v)break;
+      const t=other.tr,end=t.fwd?t.e.B:t.e.A;
+      if(t.turn||t.reserved!=null||t.waitSince==null||G.ticks-t.waitSince<960||(end.zone??end.id)!==zone||!lightGreen(G,end,t.e)||!t.route)continue;
+      const room=Math.max(0,t.e.len-trimAt(end,t.e)-bodySize(other).l*2-22-t.s);
+      if(room>=100||ahead(other,Math.sin(other.rot),-Math.cos(other.rot),300)<=room+8||!exitClear(other,t.route))continue;
+      // After one signal cycle, through traffic must leave space for the older
+      // conflicting turn. A blocked exit earns no priority.
+      if(!routesCompatible(plan,v,t.route,other))return true;
+    }
+    return false;
+  }
   function poseClear(v,p){
-    const probe={...p,kind:v.kind,def:v.def},radius=bodyRadius(v);
-    if(G.surfaceAt&&worldBodyHit(G,probe,p.x,p.y))return false;
+    const probe=v.trafficProbe||(v.trafficProbe={kind:v.kind,def:v.def}),radius=bodyRadius(v);
+    // A car waiting at the exact same pose need not resample the static map.
+    // Dynamic vehicles and pedestrians are still checked on every movement.
+    if(probe.x!==p.x||probe.y!==p.y||probe.rot!==p.rot||probe.surface!==G.surfaceAt){
+      probe.x=p.x;probe.y=p.y;probe.rot=p.rot;probe.surface=G.surfaceAt;
+      probe.blocked=!!(G.surfaceAt&&worldBodyHit(G,probe,p.x,p.y));
+    }
+    if(probe.blocked)return false;
     return !nearby(p.x,p.y,radius+110,o=>o!==v&&(o.def?bodiesNear(probe,o,radius)&&bodyContact(probe,o):!o.dead&&circleBody(probe,o.x,o.y,8)));
   }
   function lanePose(tr,s){
@@ -391,7 +411,10 @@ export function createTraffic(G) {
           if(controlled&&!owners?.has(v)&&room<100)tr.waitSince??=G.ticks;
           if(!tr.route&&toStop<300)tr.route=chooseRoute(v,end);
           const green=lightGreen(G,end,e);
-          if(controlled&&!owners?.has(v)&&(tr.reserved==null||tr.reserved===zone)&&green&&room<100&&gap>room+8){
+          if(controlled&&!owners?.has(v)&&(tr.reserved==null||tr.reserved===zone)&&green&&room<100&&gap>room+8&&G.ticks>=(tr.junctionCheck||0)){
+            // Queue decisions run at 10 Hz, while motion and contact checks
+            // retain their fixed 60 Hz step, with a maximum 100 ms retry delay.
+            tr.junctionCheck=G.ticks+6;
             let plan=tr.route;
             if(!plan||!exitClear(v,plan))plan=chooseRoute(v,end,true);
             // Reserve the swept bodies, not the whole intersection. A slight
@@ -399,7 +422,7 @@ export function createTraffic(G) {
             // Non-conflicting through lanes and right turns can now clear together.
             const compatible=plan&&(!owners||(end.zoneSize||1)<=1&&[...owners].every(o=>{
               return routesCompatible(plan,v,o.tr.turn||o.tr.route,o);
-            }));
+            }))&&!olderApproachWaiting(v,plan,zone,ahead);
             if(compatible){tr.route=plan;if(!owners){owners=new Set();junctions.set(zone,owners);}owners.add(v);tr.reserved=zone;tr.releaseAt=null;}
           }
           // Reserve before crossing the stop line; competing entrants cannot

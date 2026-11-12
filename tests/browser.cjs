@@ -87,6 +87,20 @@ async function dialogue(page, choices) {
       await page.evaluate(async () => { window.T = (await import(new URL('src/game.js', location.href).href)).testing; T.render(__CC.G); });
       await button(page, 'CONTINUE'); assert.equal(await page.evaluate(() => __CC.G.scene), 'play');
     });
+    await check('Continue recovers an interrupted race save through the actual title button', async () => {
+      const {page: recovery,context}=await setup(browser,{viewport:{width:844,height:390},hasTouch:true,isMobile:true});
+      try {
+        await recovery.evaluate(()=>{
+          const G=__CC.G;T.startNew(G);G.missionIndex=1;G.objectiveIndex=1;G.needsBegin=false;G.scene='play';
+          const saved=T.snapshot(G);saved.race={version:2,i:4,rivalI:3,t:20,countdown:0,rival:{x:2300,y:7900,rot:Math.PI/2}};
+          localStorage.setItem('mw_crown_city_v1',JSON.stringify(saved));
+        });
+        await recovery.reload();await recovery.waitForFunction(()=>!!window.__CC,null,{polling:100});
+        await recovery.evaluate(async()=>{window.T=(await import(new URL('src/game.js',location.href).href)).testing;T.render(__CC.G);});
+        await button(recovery,'CONTINUE',true);
+        assert.deepEqual(await recovery.evaluate(()=>({scene:__CC.G.scene,mission:__CC.G.missionIndex,objective:__CC.G.objectiveIndex,race:__CC.G.race})),{scene:'play',mission:1,objective:0,race:null});
+      } finally {await context.close();await page.bringToFront();await page.evaluate(()=>{__CC.G.scene='play';T.render(__CC.G);});}
+    });
     await check('weapon changes, reloads, dodge and crew contracts respond to keyboard input', async () => {
       await page.keyboard.press('KeyQ'); await step(page);assert.equal(await page.evaluate(()=>__CC.G.action.weapon),1);
       await page.keyboard.down('KeyK');await step(page,7);await page.keyboard.up('KeyK');assert.ok(await page.evaluate(()=>__CC.G.action.ammo[1]<28));
@@ -162,6 +176,10 @@ async function dialogue(page, choices) {
       const state=await phone.evaluate(()=>({angle:__CC.G.player.aimRot,joy:__CC.G.input.touchJoy.active,aim:__CC.G.input.touchAim.aiming}));
       assert.ok(Math.abs(state.angle-Math.PI/2)<.15);assert.ok(state.joy&&state.aim);
       await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await step(phone);assert.equal(await phone.evaluate(()=>__CC.G.input.touchAim.active||__CC.G.input.tFire),false);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:65,y:650,id:41},{x,y,id:42}]});
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:65,y:600,id:41},{x:x+45,y,id:42}]});await step(phone);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await step(phone);
+      assert.equal(await phone.evaluate(()=>__CC.G.input.touchJoy.active||__CC.G.input.touchAim.active||__CC.G.input.tFire||__CC.G.input.x!==0||__CC.G.input.y!==0),false);
     });
     await check('mobile layout, opacity and aim settings persist; dossier and new contracts open',async()=>{
       await phone.locator('#tPause').tap();await step(phone);await button(phone,'SETTINGS',true);await button(phone,'CONTROLS',true);

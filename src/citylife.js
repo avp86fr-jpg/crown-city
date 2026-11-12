@@ -85,8 +85,12 @@ function fixtureArt(G,kind,seed){
  G.street.cache.set(key,canvas);return canvas;
 }
 function* roadArtSteps(G,ix,iy){
- const key=ix+':'+iy;let c=G.street.roadCache.get(key);if(c)return c;
- c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d',{willReadFrequently:true});
+ // Mobile scenery is composited at half scale. Rasterize its street details
+ // at that same size instead of holding twelve redundant 1024 KiB canvases.
+ const size=G.settings.quality==='low'?256:512,key=ix+':'+iy+':'+size,limit=G.settings.quality==='low'?12:G.settings.quality==='med'?24:48;
+ for(const [oldKey,canvas] of G.street.roadCache)if(canvas.width!==size||G.street.roadCache.size>limit){G.street.roadCache.delete(oldKey);canvas.width=canvas.height=1;}
+ let c=G.street.roadCache.get(key);if(c)return c;
+ c=document.createElement('canvas');c.width=c.height=size;const x=c.getContext('2d',{willReadFrequently:true});x.scale(size/512,size/512);
  for(let j=0;j<24;j++){yield;
   const seed=ix*138+iy*73+j*9,px=hash(seed)*500,py=hash(seed+4)*500,wx=ix*512+px,wy=iy*512+py;
   if(!['road','walk','lot'].includes(G.surfaceAt(wx,wy)))continue;
@@ -98,14 +102,13 @@ function* roadArtSteps(G,ix,iy){
   }else if(j%4===2){oval(x,px,py,9,3,'rgba(12,16,20,.12)');}
   else{ x.save();x.translate(px,py);x.rotate(hash(seed+9)*6);panel(x,-2,-2,4,3,'rgba(199,189,163,.4)');x.restore();}
  }
- const limit=G.settings.quality==='low'?12:G.settings.quality==='med'?24:48;
  if(G.street.roadCache.size>=limit){const oldest=G.street.roadCache.keys().next().value;const old=G.street.roadCache.get(oldest);G.street.roadCache.delete(oldest);old.width=old.height=1;}
  G.street.roadCache.set(key,c);return c;
 }
 export function* streetSceneSteps(G,r,c=G.ctx){
  if(!G.street)buildStreetScene(G);
  if(!G.street.atlas)loadStreetArt(G);
- for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++){const art=yield* roadArtSteps(G,ix,iy);c.drawImage(art,ix*512,iy*512);}
+ for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++){const art=yield* roadArtSteps(G,ix,iy);c.drawImage(art,ix*512,iy*512,512,512);}
  for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
