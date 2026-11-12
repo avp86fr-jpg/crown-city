@@ -1,5 +1,5 @@
 /* Small, local steering decisions. Physics still performs every movement. */
-import {bodySize,worldBodyHit,circleBody,bodyContact} from './collision.js';
+import {bodySize,worldBodyHit,segmentBody,bodyContact} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const water=(G,x,y)=>['water','canal'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x,y));
@@ -43,15 +43,36 @@ export function boatPilot(G,v,dt){
   }b.goal=best;b.timer=1.2;
  }
  if(!b.goal)return b.controls={x:0,y:0,brake:true};
- let diff=angle(Math.atan2(b.goal.x-v.x,-(b.goal.y-v.y))-v.rot),cap=70;
  const own=bodySize(v);
+ // Commit early to a shallow starboard passing line. A last-second heading
+ // nudge cannot move a hull sideways once both captains have already stopped.
+ if(b.pass){const o=b.pass.other,ahead=(o.x-v.x)*hx+(o.y-v.y)*hy;
+  if(o.dead||!G.vehicles.includes(o)||ahead<-(own.l+bodySize(o).l+30)||Math.hypot(o.x-v.x,o.y-v.y)>700)b.pass=null;
+ }
+ if(!b.pass)for(const o of G.vehicles){
+  if(o===v||o.dead||!o.def?.boat||Math.cos(o.rot-v.rot)>-.5)continue;
+  const dx=o.x-v.x,dy=o.y-v.y,ahead=dx*hx+dy*hy,side=dx*Math.cos(v.rot)+dy*Math.sin(v.rot);
+  if(ahead<150||ahead>550||Math.abs(side)>80)continue;
+  const goal={x:v.x+hx*350+Math.cos(v.rot)*55,y:v.y+hy*350+Math.sin(v.rot)*55};
+  const canal=G.world?.expansion?.canal;
+  if(canal&&v.x>canal.x&&v.x<canal.x+canal.w&&v.y>canal.y&&v.y<canal.y+canal.h&&Math.abs(hy)>.8){
+   // Align with the canal itself after a turn, rather than carrying a slight
+   // approach angle into the opposite lane on the next encounter.
+   goal.x=canal.x+canal.w/2+(hy<0?1:-1)*Math.min(55,canal.w*.27);goal.y=v.y+Math.sign(hy)*350;
+  }
+  if(waterPathClear(G,v,goal.x,goal.y)){b.pass={other:o,goal};break;}
+ }
+ if(b.pass){b.goal=b.pass.goal;b.timer=1.2;}
+ let diff=angle(Math.atan2(b.goal.x-v.x,-(b.goal.y-v.y))-v.rot),cap=70;
  for(const other of G.vehicles){
   if(other===v||!other.def?.boat)continue;
   const dx=other.x-v.x,dy=other.y-v.y,ahead=dx*hx+dy*hy,lateral=dx*hy-dy*hx;
-  if(ahead>0&&ahead<250&&Math.abs(lateral)<own.w+bodySize(other).w+24){
-   const gap=ahead-own.l-bodySize(other).l-20;cap=Math.min(cap,Math.max(0,gap*.75));
+  const size=bodySize(other),turn=other.rot-v.rot,co=Math.abs(Math.cos(turn)),si=Math.abs(Math.sin(turn));
+  const width=size.w*co+size.l*si,length=size.l*co+size.w*si,margin=b.pass?.other===other?10:24;
+  if(ahead>0&&ahead<250&&Math.abs(lateral)<own.w+width+margin){
+   const gap=ahead-own.l-length-20;cap=Math.min(cap,Math.max(0,gap*.75));
    // Both vessels turn to starboard when safe; no head-on left/right oscillation.
-   if(gap<130&&waterPathClear(G,v,v.x+Math.sin(v.rot+.5)*150,v.y-Math.cos(v.rot+.5)*150))diff+=.35;
+   if(!b.pass&&gap<130&&waterPathClear(G,v,v.x+Math.sin(v.rot+.24)*150,v.y-Math.cos(v.rot+.24)*150))diff+=.35;
   }
  }
  const look=75+speed*.65;
@@ -92,11 +113,12 @@ export function safeCrossing(G,p){
  // The former curb-only probe let people step into a car arriving mid-crossing.
  let blocked=false;
  const inspect=v=>{
-  if(blocked||v.dead||v.def?.boat||v.altitude>10)return;
-  const vx=v.vx||0,vy=v.vy||0;if(vx*vx+vy*vy<144)return;
-  const dx=p.x-v.x,dy=p.y-v.y,rx=hx*walkSpeed-vx,ry=hy*walkSpeed-vy,den=rx*rx+ry*ry;
-  const t=clamp(-(dx*rx+dy*ry)/Math.max(1,den),0,crossingTime);
-  if(circleBody(v,p.x+rx*t,p.y+ry*t,14))blocked=true;
+  if(blocked||v.def?.boat||v.altitude>10)return;
+  // A stationary queue or wreck still occupies the crossing. Predicting only
+  // moving traffic sent walkers into its hull, stranding them mid-carriageway.
+  const vx=v.dead?0:v.vx||0,vy=v.dead?0:v.vy||0;
+  const rx=hx*walkSpeed-vx,ry=hy*walkSpeed-vy;
+  if(segmentBody(v,p.x,p.y,p.x+rx*crossingTime,p.y+ry*crossingTime,14)!==null)blocked=true;
  };
  if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(p.x+hx*walkSpeed*crossingTime/2,p.y+hy*walkSpeed*crossingTime/2,Math.min(1500,700+walkSpeed*crossingTime/2),inspect);
  else for(const v of G.vehicles)inspect(v);

@@ -32,13 +32,15 @@ export function tickStreetJob(G,c,dt,notify){
   }
  }
  if(c.id==='rescue'){
+  const passengerCar=p.type==='veh'&&!p.def.boat&&!p.def.bike&&!p.def.aircraft&&!p.dead&&(p.health??100)>0;
+  const safeStop=passengerCar&&G.wanted===0&&!G.input.fire;
   if(!c.stage){
-   const safe=distance<85&&p.type==='veh'&&!p.def.boat&&!p.def.bike&&speed<8&&G.wanted===0;
+   const safe=distance<85&&safeStop&&speed<8;
    c.progress=safe?(c.progress||0)+dt:0;
    if(c.progress>=3){c.stage=1;c.progress=0;c.rideHealth=p.health||100;restoreStreetRoute(G);notify(G,'HUNTER','Witness aboard. Palace collectors are looking for them. Bring them to the garage, without the collectors.');G.wanted=Math.max(G.wanted,2);G.seenT=0;}
   }else{
    // Getting out holds the job; the witness stays with the player's next safe car.
-   const arrived=distance<85&&p.type==='veh'&&!p.def.boat&&!p.def.bike&&speed<10&&G.wanted===0;
+   const arrived=distance<85&&safeStop&&speed<10;
    c.progress=arrived?(c.progress||0)+dt:0;
    return c.progress>=2;
   }

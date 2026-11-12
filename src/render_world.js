@@ -86,11 +86,24 @@ export function makeGround(W, tex, codeAt) {
     ['forest','desert','mountain','casino','asphalt','paver','trail','water'].forEach((name,i)=>{
       const tile=document.createElement('canvas');tile.width=tile.height=256;
       tile.getContext('2d',{willReadFrequently:true}).drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
+      // The original forest painting read as another canopy under the actual
+      // trees. Quiet ground materials give trunks, foliage and road edges a
+      // clear silhouette. Keep the existing 256px backing store and tile phase.
+      if(name==='forest'||name==='mountain'){
+        const c=tile.getContext('2d',{willReadFrequently:true}),forest=name==='forest';
+        c.fillStyle=forest?'rgba(57,73,53,.82)':'rgba(122,125,112,.76)';c.fillRect(0,0,256,256);
+        let seed=forest?397:841;const rnd=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+        for(let j=0;j<80;j++){
+          const px=rnd()*256,py=rnd()*256,rr=forest?1+rnd()*3:2+rnd()*5;
+          c.fillStyle=forest?(j%3?'rgba(179,157,102,.23)':'rgba(24,47,39,.22)'):(j%2?'rgba(222,214,184,.16)':'rgba(69,83,78,.14)');
+          c.beginPath();c.ellipse(px,py,rr,rr*.42,rnd()*3,0,TAU);c.fill();
+        }
+      }
       // Quiet limestone tones keep the casino's green felt and characters readable.
       if(name==='casino'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
       if(name==='asphalt'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(48,53,56,.64)';c.fillRect(0,0,256,256);}
       pats[name]=scratch.createPattern(tile,'repeat');
-      const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'?.55:.8;
+      const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'||name==='mountain'?1.25:.8;
       pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
       if(name==='forest'){
         const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d',{willReadFrequently:true});ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,99,60,.78)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
@@ -147,6 +160,13 @@ export function makeGround(W, tex, codeAt) {
             const t = runTex;
             x.fillStyle = pats[t] || pats[codeTex[run]] || pats.concrete;
             x.fillRect(start * CELL, cy * CELL, (cx - start) * CELL, CELL);
+            // The county's woodland thins into granite over a broad band;
+            // the material boundary must not look like the edge of a map tile.
+            // Blend only natural terrain runs, leaving roads and courts exact.
+            if(start*CELL>=10400&&cy*CELL>8160&&cy*CELL<8640&&(t==='forest'||t==='mountain')){
+              const mix=(cy*CELL-8160)/480,other=pats[t==='forest'?'mountain':'forest'];
+              if(other){x.globalAlpha=t==='forest'?mix:1-mix;x.fillStyle=other;x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);x.globalAlpha=1;}
+            }
             any = true;
           }
           run = v; start = cx; runTex=currentTex;

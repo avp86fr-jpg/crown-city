@@ -2,7 +2,7 @@ import {CASINO_EVIDENCE} from './casino_details.js';
 import {racePace} from './circuit_rules.js';
 /* Optional location-led stories. No rewards until the final, validated handoff. */
 import {tickDropJob,DROP_TARGETS} from './airdrop.js';
-import {CIRCUIT} from './circuit_world.js';
+import {CIRCUIT,TRACK_LENGTH,trackPoint} from './circuit_world.js';
 import {nearCircuit,startCircuit} from './motorsport.js';
 import {FRONTIER} from './expansion_world.js';
 export const EXPANSION_JOBS=[
@@ -29,7 +29,7 @@ export const EXPANSION_STEPS={
 };
 export function expansionJobTarget(G,c){
  if(c.id==='airdrop'){const p=c.stage===0?{x:9840,y:7780}:c.stage===4?{x:9600,y:7500}:DROP_TARGETS[c.stage-1];return p;}
- if(c.id==='circuit')return c.stage===1&&G.circuitSession?.running?G.waypoint:CIRCUIT.pit;
+ if(c.id==='circuit')return c.stage===1&&G.circuitSession?.running?trackPoint(G.circuitSession.gate*TRACK_LENGTH/8):CIRCUIT.pit;
  const routes={canal:[[6810,1250],[6968,1900],[6968,3450],[6968,5500],[6818,6150]],casino:[...CASINO_EVIDENCE.map(p=>[p.x,p.y]),[7115,3450]],airlift:[[9840,7780],[11400,4920],[11200,9640],[7000,7780]],ridge:[[5680,9730],[7800,9800],[10880,9200],[11340,4920]]};
  Object.assign(routes,{nightline:[[2600,6184],[10215,8104],[10150,1460]],coldsignal:[[11045,9560],[11340,4920],[9840,7780]],clockwork:[[6250,3564],[6320,6224],[6130,3555]]});
  const point=routes[c.id]?.[Math.min(c.stage||0,routes[c.id].length-1)];return point?{x:point[0],y:point[1]}:null;

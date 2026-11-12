@@ -1,4 +1,4 @@
-import {createEffects,createContactPlayer,surfaceMotion,sceneAcoustics,soundPosition,railMotion} from './sound_effects.js';
+import {createEffects,createContactPlayer,surfaceMotion,engineMotion,sceneAcoustics,soundPosition,railMotion} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
 import {regionalTrainAt,ridePhase} from './transit.js';
 /** Crown City sound design: original arranged radio plus synthesized spatial effects.
@@ -18,7 +18,7 @@ export function createAudio() {
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;
-  let soundtrack=null, effects=null,contactSound=null,listener=null;const rollingMix={},acoustics={},position={};
+  let soundtrack=null, effects=null,contactSound=null,listener=null;const rollingMix={},engineMix={},acoustics={},position={};
   const STYLES = {
     score: { bpm: 96, root: 45, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 6], swing: 0 },
     synth: { bpm: 104, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 2, 6], swing: 0 },
@@ -345,11 +345,8 @@ export function createAudio() {
     } else if (inCar && A._eng !== false && !P.dead) {
       set(E.blade.gain,1,.15);set(E.bladeDepth.gain,0,.15);
       const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind] || ENG.sedan;
-      const spd = Math.hypot(P.vx, P.vy), top = P.def.max || 300;
-      const gearN = 4, k = Math.min(1, spd / top), gear = Math.min(gearN - 1, (k * gearN) | 0), inG = (k * gearN) - gear;
-      const load=G.input.brake?0:G.input.y>.1||G.input.touchJoy?.active?1:.55;
       // Launches have a continuous propeller load, not four road-car gears.
-      const rpm=P.def.boat?.22+.68*k+.10*load:.25+.75*(gear===0?k*gearN:.35+.65*inG)*(.7+.3*load);
+      const rpm=engineMotion(P,G.input,engineMix).rpm;
       const f = c[0] + (c[1] - c[0]) * rpm;
       set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
       set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
@@ -396,7 +393,7 @@ export function createAudio() {
     if(play&&audible&&water&&(gullT-=dt)<0&&!night){gullT=5+Math.random()*8;fx('gull',.055*water,Math.random()*1.6-.8);}
     if(play&&audible&&strip&&(dingT-=dt)<0){dingT=3+Math.random()*5;fx('casinoPush',.035,Math.random()*1.6-.8);}
     // footsteps
-    if (play&&audible&&P.type==='foot'&&(P.speed||0)>20) {
+    if (play&&audible&&P.type==='foot'&&!(G.action?.dodgeT>0)&&(P.speed||0)>20) {
       stepDist += (P.speed || 0) * dt;
       if (stepDist > ((P.speed || 0) > 150 ? 34 : 26)) { stepDist = 0; A.step(G.surfaceAt ? G.surfaceAt(P.x, P.y) : "walk"); }
     }else stepDist=0;

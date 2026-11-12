@@ -1,6 +1,7 @@
 /* Habitat-based local wildlife. Only nearby animals think or animate. */
 import {loadImage} from './assets.js';
 import {STATIONS,stationExit} from './transit.js';
+import {circleBody} from './collision.js';
 const TAU=Math.PI*2;
 export const SPECIES=Object.freeze([
  {id:'deer',size:44,speed:25,run:118,bird:false,color:'#b39365'},
@@ -30,11 +31,12 @@ export function tickWildlife(G,dt){
  if(W.elapsed>.35){W.elapsed=0;const nearby=[];for(let y=Math.floor((P.y-1000)/512);y<=Math.floor((P.y+1000)/512);y++)for(let x=Math.floor((P.x-1000)/512);x<=Math.floor((P.x+1000)/512);x++)for(const a of W.bins.get(x+':'+y)||[])if(Math.abs(a.x-P.x)<850&&Math.abs(a.y-P.y)<750)nearby.push(a);nearby.sort((a,b)=>(a.x-P.x)**2+(a.y-P.y)**2-((b.x-P.x)**2+(b.y-P.y)**2));W.active=nearby.slice(0,G.settings.quality==='low'?18:36);}
  const shot=(G.shotsFired||0)!==W.shot;W.shot=G.shotsFired||0;const moving=P.type==='veh'&&Math.hypot(P.vx||0,P.vy||0)>25;
  for(const a of W.active){const s=SPECIES[a.kind],dist=Math.hypot(a.x-P.x,a.y-P.y),home=Math.hypot(a.x-a.hx,a.y-a.hy);a.t-=dt;a.flee=Math.max(0,a.flee-dt);
-  let traffic=null,closest=Infinity;
-  const threat=v=>{if(v===P||v.dead||v.def?.boat||v.altitude>10)return;const vx=v.vx||0,vy=v.vy||0,speed2=vx*vx+vy*vy;if(speed2<900)return;
+  let traffic=null,closest=Infinity;const cars=a._cars||(a._cars=[]);cars.length=0;
+  const threat=v=>{if(v.def?.boat||v.altitude>10)return;cars.push(v);if(v===P||v.dead)return;const vx=v.vx||0,vy=v.vy||0,speed2=vx*vx+vy*vy;if(speed2<900)return;
     const dx=a.x-v.x,dy=a.y-v.y,t=(dx*vx+dy*vy)/speed2;
     if(t<0||t>1.25)return;const miss=Math.hypot(dx-vx*t,dy-vy*t);if(miss<52&&t<closest){traffic=v;closest=t;}};
-  if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(a.x,a.y,230,threat);else for(const v of G.nearVehicles||[])threat(v);
+  if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(a.x,a.y,230,threat);else for(const v of G.nearVehicles||G.vehicles||[])if(Math.abs(v.x-a.x)<230&&Math.abs(v.y-a.y)<230)threat(v);
+  const clear=(x,y)=>clearBody(G,x,y)&&!cars.some(v=>circleBody(v,x,y,7));
   if(traffic||dist<(shot?370:moving?115:s.bird?48:55)&&!(P.def?.aircraft&&P.altitude>70)){
    if(a.flee<=0&&dist<180)G.audio.wildlife?.(s.id,Math.min(.23,20/Math.max(60,dist)),(a.x-P.x)/220);
    a.flee=2.5;a.target=Math.atan2(a.y-(traffic||P).y,a.x-(traffic||P).x);a.walk=1;
@@ -42,8 +44,8 @@ export function tickWildlife(G,dt){
   if(home>240){a.target=Math.atan2(a.hy-a.y,a.hx-a.x);if(!s.bird)a.flee=0;a.walk=1;}
   let turn=Math.atan2(Math.sin(a.target-a.angle),Math.cos(a.target-a.angle));a.angle+=turn*Math.min(1,dt*5);
   const speed=(a.flee?s.run:s.speed)*a.walk,nx=a.x+Math.cos(a.angle)*speed*dt,ny=a.y+Math.sin(a.angle)*speed*dt;
-  if(s.bird&&(a.flee||a.lift>2)||clearBody(G,nx+Math.cos(a.angle)*10,ny+Math.sin(a.angle)*10)){a.x=nx;a.y=ny;a.phase+=speed*dt*.12;}else{a.target+=Math.PI*.72;a.t=.45;a.walk=0;}
-  const land=clearBody(G,a.x,a.y);a.lift+=(s.bird&&(a.flee||!land)?20-a.lift:-a.lift)*Math.min(1,dt*3);
+  if(s.bird&&(a.flee||a.lift>2)||clear(nx,ny)&&clear(nx+Math.cos(a.angle)*10,ny+Math.sin(a.angle)*10)){a.x=nx;a.y=ny;a.phase+=speed*dt*.12;}else{a.target+=Math.PI*.72;a.t=.45;a.walk=0;}
+  const land=clear(a.x,a.y);a.lift+=(s.bird&&(a.flee||!land)?20-a.lift:-a.lift)*Math.min(1,dt*3);
   // Landing over a wall/water is deferred; return to the habitat instead of embedding in it.
   if(s.bird&&!a.flee&&!land){a.target=Math.atan2(a.hy-a.y,a.hx-a.x);a.walk=1;}
  }
