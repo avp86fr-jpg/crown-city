@@ -11,7 +11,7 @@ Chaos and Hunter's interpretations use their existing design references. **Gold 
 - 60.000 seconds; 1280 × 720; 24 fps; 1,440 frames.
 - 21 sequences timed to 36 bars at 144 BPM.
 - H.264 / stereo AAC, web faststart, under 12.4 MB.
-- English descriptive captions and an optional standalone watch page at `about/anime/`.
+- English descriptive captions accompany the [downloadable MP4](../about/assets/crown-city-neon-debt-anime-60s-720p.mp4).
 - Original **Neon Debt** electronic-rock score: double-tracked power-chord guitars, picked bass, Rhodes, synth lead, strings, pads, drums and authored sub-bass.
 - Trailer Foley includes engines, sirens, footsteps, gunfire, water, helicopter rotors and an explosion. Music ducks at the blast; the master targets −14 LUFS with extra peak headroom before AAC encoding.
 
@@ -29,4 +29,4 @@ python tools/assemble-anime-opening.py
 
 Use `node tools/render-anime-opening.cjs --preview` for a three-frame-per-shot storyboard. The compositor and shot list are in `tools/anime-opening/scene.js`. WebP art atlases are in `about/assets/anime/`; alpha sprites retain transparent backgrounds. Existing portrait files are read directly. Intermediates, source score WAVs and reports remain in ignored `.qa/anime-opening/`.
 
-Requirements: Playwright/Chromium, FFmpeg, NumPy/SciPy, libfluidsynth and `/usr/share/sounds/sf2/TimGM6mb.sf2`. The renderer is separate from the game loop. The watch page uses metadata-only video preload and does not add any loading cost to the playable game.
+Requirements: Playwright/Chromium, FFmpeg, NumPy/SciPy, libfluidsynth and `/usr/share/sounds/sf2/TimGM6mb.sf2`. The renderer is separate from the game loop and does not add any loading cost to the playable game.
