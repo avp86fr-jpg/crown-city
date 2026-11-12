@@ -15,27 +15,37 @@ import {drawCasinoWorld} from './casino.js';
 import {drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
 const CORE=4096,TILE=1024,OUTER=512;
-function retire(e){e.retired=true;e.bitmap?.close();if(e.canvas)e.canvas.width=1;}
+function retire(e){e.retired=true;e.job?.return();e.bitmap?.close();if(e.canvas)e.canvas.width=1;if(e.working)e.working.width=1;}
 function seal(e){
   // Immutable bitmap copies avoid repeated canvas-to-canvas uploads on Android.
   if(typeof createImageBitmap==='function')createImageBitmap(e.canvas).then(bitmap=>{if(e.retired)bitmap.close();else{e.bitmap=bitmap;e.canvas.width=1;}}).catch(()=>{});
   return e;
 }
 function trim(cache,limit){if(cache.size<=limit)return;const cold=[...cache].sort((a,b)=>a[1].t-b[1].t);for(let i=0;i<cold.length-limit;i++){retire(cold[i][1]);cache.delete(cold[i][0]);}}
+// Keep expensive composition resumable. A single complex tile must not consume
+// an entire input/animation frame, even when the tile-count budget is one.
+function* composeOuter(G,tx,ty){
+ const canvas=yield* G.ground.composeTile(tx,ty,.5),c=canvas.getContext('2d');
+ const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
+ const circuit=r.x0>=CIRCUIT.x&&r.y0>=CIRCUIT.y&&r.x1<=CIRCUIT.x+CIRCUIT.w&&r.y1<=CIRCUIT.y+CIRCUIT.h;
+ if(!circuit){
+  yield; G.bld.staticDraw(c,r);
+  yield; const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,r);}finally{G.ctx=prior;}
+ }
+ return canvas;
+}
 function outerTile(G,tx,ty){
  const cache=G.mobileOuter||(G.mobileOuter=new Map()),key=tx+':'+ty,revision=G.ground.revision*100+(G.street?.revision||0);
- let entry=cache.get(key);if(entry&&entry.revision===revision){entry.t=G.ticks;return entry.bitmap||entry.canvas;}
- if(G._outerBuilt>=2||G._outerBuilt>0&&performance.now()-G._outerStart>5)return null;G._outerBuilt++;if(entry)retire(entry);
- const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const c=canvas.getContext('2d',{alpha:false});
- c.fillStyle='#193e43';c.fillRect(0,0,256,256);c.scale(.5,.5);c.translate(-tx*OUTER,-ty*OUTER);
- const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
- const circuit=r.x0>=CIRCUIT.x&&r.y0>=CIRCUIT.y&&r.x1<=CIRCUIT.x+CIRCUIT.w&&r.y1<=CIRCUIT.y+CIRCUIT.h&&G.ground.drawCircuit;
- if(circuit)G.ground.drawCircuit(c,r,.5);
- else{
-  G.ground.draw(c,r,0);G.bld.staticDraw(c,r);
-  const prior=G.ctx;G.ctx=c;try{drawStreetScene(G,r);}finally{G.ctx=prior;}
- }
- entry=seal({canvas,revision,t:G.ticks});cache.set(key,entry);trim(cache,G._outerLimit||40);return entry.canvas;
+ let entry=cache.get(key);
+ if(entry&&entry.revision!==revision){retire(entry);cache.delete(key);entry=null;}
+ if(entry){entry.t=G.ticks;if(!entry.job)return entry.bitmap||entry.canvas;}
+ if(performance.now()>=G._outerDeadline)return null;
+ if(!entry){entry={job:composeOuter(G,tx,ty),revision,t:G.ticks};cache.set(key,entry);}
+ do{
+  const step=entry.job.next();if(step.value?.canvas)entry.working=step.value.canvas;
+  if(step.done){entry.canvas=step.value;entry.working=null;entry.job=null;seal(entry);G._outerBuilt++;return entry.canvas;}
+ }while(performance.now()<G._outerDeadline);
+ return null;
 }
 function tile(G,tx,ty,night) {
   const cache=G.mobileTiles||(G.mobileTiles=new Map()),key=`${tx}:${ty}:${night}`;
@@ -67,7 +77,7 @@ export function visibleOuterTiles(G,r){
  const co=Math.cos(G.cam.rot),si=Math.sin(G.cam.rot),halfW=G.canvas.width/(2*r.S),halfH=G.canvas.height/(2*r.S),margin=OUTER*.708,revision=G.ground.revision*100+(G.street?.revision||0);let pending=false;
  for(const p of plan.slots){const dx=p.cx-G.cam.x,dy=p.cy-G.cam.y;
   if(Math.abs(dx*co+dy*si)>halfW+margin||Math.abs(-dx*si+dy*co)>halfH+margin)continue;
-  p.d=dx*dx+dy*dy;queue.push(p);const entry=G.mobileOuter?.get(p.key);if(!entry||entry.revision!==revision)pending=true;
+  p.d=dx*dx+dy*dy;queue.push(p);const entry=G.mobileOuter?.get(p.key);if(!entry||entry.job||entry.revision!==revision)pending=true;
  }
  if(pending)queue.sort((a,b)=>a.d-b.d);
  return queue;
@@ -81,12 +91,13 @@ export function drawMobileWorld(G,H) {
     const image=tile(G,x,y,night>.98);if(image)c.drawImage(image,x*TILE,y*TILE,TILE+.5,TILE+.5);
     if(night>.02&&night<=.98){const lit=tile(G,x,y,true);if(lit){c.globalAlpha=night;c.drawImage(lit,x*TILE,y*TILE,TILE+.5,TILE+.5);c.globalAlpha=1;}}
   }
-  G._outerBuilt=0;G._outerStart=performance.now();let pending=0;
+  G._outerBuilt=0;G._outerStart=performance.now();G._outerDeadline=G._outerStart+2.5;let pending=0;
   const queue=visibleOuterTiles(G,r);
   // A rotated aircraft view can exceed the old 40-tile cache and evict itself forever.
   // Size to the visible working set, with a hard 24 MiB bitmap ceiling and center-first work.
   G._outerLimit=Math.min(96,Math.max(40,queue.length+8));
-  for(const {x,y} of queue){const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const surface=G.surfaceAt((x+.5)*OUTER,(y+.5)*OUTER);c.fillStyle=surface==='water'||surface==='canal'?'#193e43':surface==='grass'?'#59634b':surface==='sand'?'#9d8964':'#555d58';c.fillRect(x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}}
+  for(const {x,y} of queue){const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const m=G.minimap;c.drawImage(m.c,x*OUTER/m.S,y*OUTER/m.S,OUTER/m.S,OUTER/m.S,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}}
+  const composeMs=performance.now()-G._outerStart;
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
@@ -125,5 +136,5 @@ export function drawMobileWorld(G,H) {
   c.setTransform(1,0,0,1,0,0);
   if(G.rainAmt>.15&&!G.settings.reducedMotion){c.strokeStyle='rgba(190,216,230,.22)';c.lineWidth=1;c.beginPath();for(let i=0;i<28;i++){const x=(i*97+G.ticks*1.5)%G.canvas.width,y=(i*137+G.ticks*6)%G.canvas.height;c.moveTo(x,y);c.lineTo(x+3,y+9);}c.stroke();}
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
-  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,outerLimit:G._outerLimit,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
+  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

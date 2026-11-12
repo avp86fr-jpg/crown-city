@@ -148,7 +148,7 @@ export function lightGreen(G, n, e) {
 const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };
 
 export function createTraffic(G) {
-  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[],closedCaps=new Set(),staticRoutes=new Map();
+  const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[],closedCaps=new Set(),staticRoutes=new Map(),departures=new Map();
   let routeSurface=G.surfaceAt;
   function route(v,end,ne){
     const tr=v.tr,e=tr.e,nfwd=ne.A===end,nlane=Math.min(tr.lane,ne.lanes-1),ns=trimAt(end,ne);
@@ -171,12 +171,27 @@ export function createTraffic(G) {
   }
   function staticRouteClear(v,t){
     if(!G.surfaceAt)return true;
-    if(routeSurface!==G.surfaceAt){routeSurface=G.surfaceAt;staticRoutes.clear();}
+    if(routeSurface!==G.surfaceAt){routeSurface=G.surfaceAt;staticRoutes.clear();departures.clear();}
     const key=v.tr.e.id+':'+t.node.id+':'+t.ne.id+':'+v.tr.lane+':'+v.kind;
     if(staticRoutes.has(key))return staticRoutes.get(key);
     const probe={kind:v.kind,def:v.def,rot:0};
     for(let i=0;i<=24;i++){const p=turnPoint(t,i/24);probe.rot=p.rot;if(worldBodyHit(G,probe,p.x,p.y)){staticRoutes.set(key,false);return false;}}
     staticRoutes.set(key,true);return true;
+  }
+  // Never dispatch a long vehicle into a lane from which no full-body turn
+  // fits. Checking only the current junction stranded buses at the next one.
+  function canDepart(v,e,fwd,lane){
+    if(routeSurface!==G.surfaceAt){routeSurface=G.surfaceAt;staticRoutes.clear();departures.clear();}
+    const end=fwd?e.B:e.A,key=e.id+':'+end.id+':'+lane+':'+v.kind;
+    if(departures.has(key))return departures.get(key);
+    const car={kind:v.kind,def:v.def,tr:{e,fwd,lane}},options=end.edges.filter(o=>o!==e&&!closedCaps.has(o)&&(o.w-o.med)/(2*o.lanes)>=bodySize(v).w*2+2);
+    if(!options.length){
+      // A bus that cannot fit any onward lane should not be sent here merely
+      // because a U-turn fits; that turn can wait forever against opposing flow.
+      if(v.kind==='bus'&&end.edges.length>1){departures.set(key,false);return false;}
+      options.push(e);
+    }
+    const clear=options.some(ne=>staticRouteClear(car,route(car,end,ne)));departures.set(key,clear);return clear;
   }
   function chooseRoute(v,end,clearOnly=false){
     const e=v.tr.e,hx=v.tr.fwd?e.dx:-e.dx,hy=v.tr.fwd?e.dy:-e.dy,key=e.id+':'+end.id+':'+v.tr.lane;
@@ -186,7 +201,7 @@ export function createTraffic(G) {
     if(!candidates||candidates.key!==key||candidates.surface!==G.surfaceAt){
       const options=end.edges.filter(o=>o!==e&&!closedCaps.has(o)&&(o.w-o.med)/(2*o.lanes)>=bodySize(v).w*2+2);
       if(!options.length)options.push(e);
-      candidates=v.tr.candidates={key,surface:G.surfaceAt,plans:options.map(ne=>route(v,end,ne)).filter(t=>staticRouteClear(v,t))};
+      candidates=v.tr.candidates={key,surface:G.surfaceAt,plans:options.map(ne=>route(v,end,ne)).filter(t=>staticRouteClear(v,t)&&canDepart(v,t.ne,t.nfwd,t.nlane))};
     }
     const plans=clearOnly?candidates.plans.filter(t=>exitClear(v,t)):candidates.plans;
     if(!plans.length)return null;
@@ -255,6 +270,7 @@ export function createTraffic(G) {
   const HK=(x,y)=>Math.floor(x/160)+Math.floor(y/160)*10000;
   const T = {
     target: 34,
+    diagnostics(){return [...junctions].map(([zone,owners])=>({zone,owners:[...owners].map(v=>({kind:v.kind,x:v.x,y:v.y,s:v.tr?.s,releaseAt:v.tr?.releaseAt,turn:!!v.tr?.turn,route:!!v.tr?.route,edge:[v.tr?.e.A.id,v.tr?.e.B.id]}))}));},
     spawnCar(near, minD, maxD, kind) {
       for (let tries = 0; tries < 24; tries++) {
         const e = graph.edges[(Math.random() * graph.edges.length) | 0];
@@ -277,6 +293,7 @@ export function createTraffic(G) {
         const v = G.makeVeh(k, p.x, p.y, p.rot, { parked: false, traffic: true, tr: { e, fwd, s, lane, spd: 0, turn: null }, ambient: true });
         if(G.surfaceAt&&worldBodyHit(G,v,v.x,v.y))continue;
         if(G.vehicles.some(other=>!other.def?.boat&&!(other.altitude>10)&&bodiesNear(v,other)&&bodyContact(v,other)))continue;
+        if(!canDepart(v,e,fwd,lane))continue;
         v.cruise = (KSPEED[e.k] || 100) * (0.8 + Math.random() * 0.3) * (k === "bus" ? 0.7 : 1);
         G.vehicles.push(v);
         return v;
@@ -299,8 +316,8 @@ export function createTraffic(G) {
       // spatial hash for following
       for(const bucket of hash.values()){bucket.length=0;buckets.push(bucket);}hash.clear();
       for(const [id,owners] of junctions){
-        for(const v of owners)if(v.dead||!v.traffic||!v.tr||!G.vehicles.includes(v)||v.tr.releaseAt!=null&&v.tr.s>=v.tr.releaseAt){
-          if(v.tr){v.tr.reserved=null;v.tr.releaseAt=null;}owners.delete(v);
+        for(const v of owners)if(v.dead||!v.traffic||!v.tr||!G.vehicles.includes(v)||v.tr.reserved!==id||v.tr.releaseAt!=null&&v.tr.s>=v.tr.releaseAt){
+          if(v.tr?.reserved===id){v.tr.reserved=null;v.tr.releaseAt=null;}owners.delete(v);
         }
         if(!owners.size)junctions.delete(id);
       }
@@ -353,7 +370,7 @@ export function createTraffic(G) {
           if(controlled&&!owners?.has(v)&&room<100)tr.waitSince??=G.ticks;
           if(!tr.route&&toStop<300)tr.route=chooseRoute(v,end);
           const green=lightGreen(G,end,e);
-          if(controlled&&!owners?.has(v)&&green&&room<100&&gap>room+8){
+          if(controlled&&!owners?.has(v)&&(tr.reserved==null||tr.reserved===zone)&&green&&room<100&&gap>room+8){
             let plan=tr.route;
             if(!plan||!exitClear(v,plan))plan=chooseRoute(v,end,true);
             // Reserve the swept bodies, not the whole intersection. A slight
@@ -362,7 +379,7 @@ export function createTraffic(G) {
             const compatible=plan&&(!owners||(end.zoneSize||1)<=1&&[...owners].every(o=>{
               return routesCompatible(plan,v,o.tr.turn||o.tr.route,o);
             }));
-            if(compatible){tr.route=plan;if(!owners){owners=new Set();junctions.set(zone,owners);}owners.add(v);tr.reserved=zone;}
+            if(compatible){tr.route=plan;if(!owners){owners=new Set();junctions.set(zone,owners);}owners.add(v);tr.reserved=zone;tr.releaseAt=null;}
           }
           // Reserve before crossing the stop line; competing entrants cannot
           // overwrite a car already committed to clearing the junction.
@@ -382,7 +399,7 @@ export function createTraffic(G) {
           if(tr.s>=stopAt){
             tr.turn=tr.route||chooseRoute(v,end);tr.route=null;
             if(!tr.turn){tr.spd=v.vx=v.vy=0;continue;}
-            tr.waitSince=null;
+            tr.turn.u=0;tr.waitSince=null;
             v.turnSign=Math.sign(tr.turn.p0.dx*tr.turn.p2.dy-tr.turn.p0.dy*tr.turn.p2.dx)||0;
           } else {
             if(tr.merge&&tr.s>=tr.merge.start+140)tr.merge=null;

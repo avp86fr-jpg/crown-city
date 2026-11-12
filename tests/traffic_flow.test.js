@@ -50,9 +50,9 @@ test('four-minute full game simulation keeps traffic moving with actual parked c
  let seed=9921;const rand=Math.random;Math.random=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/4294967296);
  const {G,T}=await harness();T.startFreeRide(G);const safe=T.findSafe(G,2280,2400,10,true);G.player=T.makeFoot(G,safe.x,safe.y,0);G.cam.x=1964;G.cam.y=2400;G.settings.timeSpeed=0;G.weatherT=1e9;
  let moving=0,sampled=0,maxStall=0,maxTurnStall=0,longStalled=0;const stalls=new Map(),turnStalls=new Map();
- try{for(let i=0;i<240*60;i++){T.tick(G,1/60);if(i%60===0){const cars=G.vehicles.filter(v=>v.traffic);for(const v of cars){const stopped=Math.hypot(v.vx,v.vy)<5;stalls.set(v,stopped?(stalls.get(v)||0)+1:0);turnStalls.set(v,stopped&&v.tr.turn?(turnStalls.get(v)||0)+1:0);maxStall=Math.max(maxStall,stalls.get(v));maxTurnStall=Math.max(maxTurnStall,turnStalls.get(v));}if(i>180*60){moving+=cars.filter(v=>Math.hypot(v.vx,v.vy)>5).length;longStalled+=cars.filter(v=>stalls.get(v)>45).length;sampled+=cars.length;}assert.ok(cars.every(v=>Number.isFinite(v.x+v.y+v.rot)));}}}finally{Math.random=rand;}
+ try{for(let i=0;i<240*60;i++){T.tick(G,1/60);if(i%60===0){const cars=G.vehicles.filter(v=>v.traffic);for(const v of cars){const stopped=Math.hypot(v.vx,v.vy)<5;stalls.set(v,stopped?(stalls.get(v)||0)+1:0);turnStalls.set(v,stopped&&v.tr.turn?(turnStalls.get(v)||0)+1:0);maxStall=Math.max(maxStall,stalls.get(v));maxTurnStall=Math.max(maxTurnStall,turnStalls.get(v));}if(i>180*60){moving+=cars.filter(v=>Math.hypot(v.vx,v.vy)>5).length;longStalled+=cars.filter(v=>stalls.get(v)>45).length;sampled+=cars.length;}assert.ok(cars.every(v=>Number.isFinite(v.x+v.y+v.rot)));const owners=G.traffic.diagnostics().flatMap(z=>z.owners.map(v=>v.kind+":"+v.x+":"+v.y));assert.equal(new Set(owners).size,owners.length,"a car must not retain a ghost reservation in an earlier junction");}}}finally{Math.random=rand;}
  t.diagnostic(`full: ${(100*moving/sampled).toFixed(1)}% moving; max stopped ${maxStall}s; max stopped in turn ${maxTurnStall}s; ${(100*longStalled/sampled).toFixed(1)}% of final samples stopped >45s`);assert.ok(maxTurnStall<45,'persistent turn jam in full game');
- assert.equal(G.scene,'play');assert.ok(sampled>500);assert.ok(moving/sampled>.25,`full simulation traffic stalled: ${moving}/${sampled}`);
+ assert.equal(G.scene,'play');assert.ok(sampled>500);assert.ok(moving/sampled>.5,`full simulation traffic stalled: ${moving}/${sampled}`);
 });
 
 test('pedestrians finish crossing without random pauses and leave a road after fleeing',()=>{
@@ -71,4 +71,12 @@ test('a walker blocked by a building finishes turning instead of alternating hea
  const rand=Math.random;Math.random=()=>.5;
  try{for(let i=0;i<240;i++)system.walkAmbient(p,1/60);}finally{Math.random=rand;}
  assert.ok(Math.hypot(p.x+7,p.y)>45,'walker should turn and clear the corner');assert.ok(p.x<=-6,'walker must stay outside the wall');assert.ok(Number.isFinite(p.rot));
+});
+
+test('buses are not dispatched into a wide approach whose onward lanes cannot fit their hull',()=>{
+ const {G,traffic}=city([road(false,2000,100,2000,280),road(false,2000,2000,3900,200)]);
+ G.ticks=0;G.makeVeh=(kind,x,y,rot,extra)=>({kind,x,y,rot,def:{},...extra});
+ const random=Math.random;Math.random=()=>0;
+ try{assert.equal(traffic.spawnCar({x:1000,y:2000},0,4000,'bus'),null);}finally{Math.random=random;}
+ assert.equal(G.vehicles.length,0);
 });
