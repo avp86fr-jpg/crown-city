@@ -110,14 +110,27 @@ export function makeGround(W, tex, codeAt) {
     if((code===CODE.walk||code===CODE.build)&&C&&x>=C.x&&x<C.x+C.w&&y>=C.y&&y<C.y+C.h)return 'casino';
     return code===CODE.walk&&cellDistrict(W,x,y)==='warm'?'paver_warm':codeTex[code];
   }
-  function render(ix, iy) {
+  let weather=null;
+  function weatherPattern(){
+    if(weather)return weather;
+    const tile=document.createElement('canvas');tile.width=tile.height=512;const c=tile.getContext('2d');
+    for(let i=0;i<12;i++){
+      const px=(i*197+53)%512,py=(i*293+71)%512,r=60+(i*31)%100;
+      for(const dx of [-512,0,512])for(const dy of [-512,0,512]){
+        const g=c.createRadialGradient(px+dx,py+dy,0,px+dx,py+dy,r);g.addColorStop(0,i%3?'rgba(25,20,15,.045)':'rgba(255,236,200,.035)');g.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=g;c.fillRect(px+dx-r,py+dy-r,r*2,r*2);
+      }
+    }
+    return weather=scratch.createPattern(tile,'repeat');
+  }
+  function* renderSteps(ix, iy, scale=1) {
     const c = document.createElement("canvas");
-    c.width = c.height = CH;
-    const x = c.getContext("2d");
+    c.width = c.height = CH*scale;
+    const x = c.getContext("2d"); x.scale(scale,scale);
     const ox = ix * CH, oy = iy * CH;
     x.translate(-ox, -oy);
+    yield {canvas:c};
     const view={x0:ox,y0:oy,x1:ox+CH,y1:oy+CH};
-    if(ox>=CIRCUIT.x&&oy>=CIRCUIT.y&&ox+CH<=CIRCUIT.x+CIRCUIT.w&&oy+CH<=CIRCUIT.y+CIRCUIT.h){drawCircuitGround(x,view,pats,circuitScale);return c;}
+    if(ox>=CIRCUIT.x&&oy>=CIRCUIT.y&&ox+CH<=CIRCUIT.x+CIRCUIT.w&&oy+CH<=CIRCUIT.y+CIRCUIT.h){drawCircuitGround(x,view,pats,scale);return c;}
     const cx0 = ox / CELL, cy0 = oy / CELL, n = CH / CELL;
     let any = false;
     for (let cy = cy0; cy < cy0 + n; cy++) {
@@ -139,10 +152,12 @@ export function makeGround(W, tex, codeAt) {
         }
       }
     }
+    yield;
     // Water-only chunks still need painted water and shoreline detail.
     if (!any && ox<CORE && oy<CORE) return null;
     // curbs + shore foam + grass edges
     for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
+      if(cx===cx0)yield;
       const v = cellAt(cx, cy);
       if (v === 255) continue;
       const px = cx * CELL, py = cy * CELL;
@@ -170,16 +185,17 @@ export function makeGround(W, tex, codeAt) {
         if (e !== CODE.grass && e !== 255) { x.fillStyle = "rgba(20,40,10,0.25)"; x.fillRect(px, py, CELL, 3); }
       }
     }
+    yield;
     // road markings
     const rx0 = ox - 400, ry0 = oy - 400, rx1 = ox + CH + 400, ry1 = oy + CH + 400;
     for (const s of W.roads) {
       const r = s.v ? [s.c - s.w / 2, s.a, s.w, s.b - s.a] : [s.a, s.c - s.w / 2, s.b - s.a, s.w];
       if (r[0] > rx1 || r[1] > ry1 || r[0] + r[2] < rx0 || r[1] + r[3] < ry0) continue;
-      drawMarkings(x, W, s);
+      drawMarkings(x, W, s); yield;
     }
     for (const n of W.inter) {
       if (n.x < rx0 || n.x > rx1 || n.y < ry0 || n.y > ry1) continue;
-      drawIntersection(x, W, n, pats);
+      drawIntersection(x, W, n, pats); yield;
     }
     for (const l of W.lots) {
       if (l.x > rx1 || l.y > ry1 || l.x + l.w < rx0 || l.y + l.h < ry0) continue;
@@ -187,9 +203,10 @@ export function makeGround(W, tex, codeAt) {
     }
     for (const f of W.features) {
       if (f.x > rx1 + 400 || f.y > ry1 + 400 || f.x + (f.w || 0) < rx0 - 400 || f.y + (f.h || 0) < ry0 - 400) continue;
-      drawFeature(x, f, pats);
+      drawFeature(x, f, pats); yield;
     }
     drawExpansionGround(x,W,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats);
+    yield;
     drawWorldDetails(x,W,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,codeAt);
     for (const p of W.piers) {
       if (p.x > rx1 || p.y > ry1 || p.x + p.w < rx0 || p.y + p.h < ry0) continue;
@@ -203,16 +220,14 @@ export function makeGround(W, tex, codeAt) {
       x.fillStyle = pats.water||"#3fc4e0"; x.fillRect(p.x, p.y, p.w, p.h);
       x.fillStyle = "rgba(255,255,255,0.35)"; x.fillRect(p.x + 3, p.y + 3, p.w - 6, 3);
     }
+    yield;
     // ---- hand-paint pass (baked once per chunk): weathering, stains, patches, cracks, tufts
     {
       let sd = (ix * 73856093) ^ (iy * 19349663); sd = Math.abs(sd) % 233280 || 7;
       const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
-      for (let i = 0; i < 16; i++) {
-        const gx = ox + rn() * CH, gy = oy + rn() * CH, gr = 40 + rn() * 150;
-        const k = rn(); const col = k < 0.55 ? "rgba(25,20,15,0.10)" : k < 0.8 ? "rgba(255,236,200,0.06)" : "rgba(90,110,140,0.07)";
-        const gd = x.createRadialGradient(gx, gy, 0, gx, gy, gr); gd.addColorStop(0, col); gd.addColorStop(1, "rgba(0,0,0,0)");
-        x.fillStyle = gd; x.fillRect(gx - gr, gy - gr, gr * 2, gr * 2);
-      }
+      // A world-aligned repeat replaces clipped per-chunk radial washes. The
+      // same material continues over tile seams and rasterizes only once.
+      x.fillStyle=weatherPattern();x.fillRect(ox,oy,CH,CH);
       for (let i = 0; i < 46; i++) {
         const px = ox + rn() * CH, py = oy + rn() * CH;
         const v = cellAt((px / CELL) | 0, (py / CELL) | 0);
@@ -249,6 +264,7 @@ export function makeGround(W, tex, codeAt) {
       const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
       const shrubs = [];
       for (let cy = cy0; cy < cy0 + n; cy++) for (let cx = cx0; cx < cx0 + n; cx++) {
+        if(cx===cx0)yield;
         const v = cellAt(cx, cy), px = cx * CELL, py = cy * CELL;
         if (v === CODE.grass && !terrainRegion(px,py)) {
           // The grass material supplies fine detail. Keep runway margins mown and clear.
@@ -288,17 +304,20 @@ export function makeGround(W, tex, codeAt) {
         x.fillStyle = "rgba(190,230,120,0.30)"; x.beginPath(); x.arc(sx - sr * 0.3, sy - sr * 0.3, sr * 0.38, 0, TAU); x.fill();
       }
     }
+    yield;
     // under-building footprint (dark slab, mostly hidden by walls)
     for (const b of W.buildings) {
       if (b.x > rx1 || b.y > ry1 || b.x + b.w < rx0 || b.y + b.h < ry0) continue;
       x.fillStyle = "rgba(20,18,22,0.85)"; x.fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
     }
-    drawCircuitGround(x,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,circuitScale);
+    drawCircuitGround(x,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,scale);
     return c;
   }
   return {
     maxChunks:64,
     get revision(){return revision;},
+    get asphalt(){return pats.asphalt;},
+    composeTile(ix,iy,scale=.5){return renderSteps(ix,iy,scale);},
     drawCircuit(ctx,r,scale=.5){drawCircuitGround(ctx,r,pats,scale);},
     draw(ctx, r, frame) {
       // Offscreen mobile composition deliberately passes frame=0. A separate usage
@@ -319,11 +338,12 @@ export function makeGround(W, tex, codeAt) {
             if(ctx.fillRect)for(let y=0;y<CH;y+=64)for(let x=0;x<CH;x+=64){const code=cellAt((ix*CH+x+32)/CELL|0,(iy*CH+y+32)/CELL|0);if(code===255)continue;ctx.fillStyle=colors[code]||'#64735b';ctx.fillRect(ix*CH+x,iy*CH+y,64,64);}
             continue;
           }
-          e = { c: render(ix, iy), f: stamp }; built++;
+          const job=renderSteps(ix,iy,circuitScale);let step;do{step=job.next();}while(!step.done);
+          e = { c: step.value, f: stamp }; built++;
           cache.set(k, e);
         }
         e.f = stamp;
-        if (e.c) ctx.drawImage(e.c, ix * CH, iy * CH);
+        if (e.c) ctx.drawImage(e.c, ix * CH, iy * CH, CH, CH);
       }
       if (cache.size > this.maxChunks) {
         const cold=[...cache].filter(([,e])=>e.f!==stamp).sort((a,b)=>a[1].f-b[1].f);

@@ -1,5 +1,6 @@
+import {drawAtlasLabels} from './map_labels.js';
 import {stepPedestrian} from './pedestrian_motion.js';
-import {drawMapPlaces,placeButtons} from './map_places.js';
+import {drawMapPlaces,placeButtons,MAP_PLACES} from './map_places.js';
 import {drawStreetGateways} from './world_streets.js';
 import {drawDropMission,dropReady} from './airdrop.js';
 import {drawCircuitActivity,tickCircuit,startCircuit,nearCircuit,circuitHint} from './motorsport.js';
@@ -10,7 +11,7 @@ import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
 import {slideFoot} from './foot_motion.js';
 import {characterFrame,characterLayout} from './sprite_frames.js';
 import {firstSolid,shotSpread,projectileDamage} from './combat.js';
-import {initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
+import {STATIONS,initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
 import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
 import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, resolveVehicleImpulse, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
@@ -660,7 +661,7 @@ function watchCanvas(G,canvas){
   canvas.addEventListener('contextlost',e=>{e.preventDefault();G.releaseControls?.();G.frozenWorld=null;G.renderRecovery=(G.renderRecovery||0)+1;});
   canvas.addEventListener('contextrestored',()=>{
     G.frozenWorld=null;G._waterPat=null;G.aircraftArtCache?.clear();G.regionalPlatformCache?.clear();G.journeyArt?.clear();
-    for(const entry of G.mobileOuter?.values()||[]){entry.retired=true;entry.bitmap?.close();if(entry.canvas)entry.canvas.width=1;}
+    for(const entry of G.mobileOuter?.values()||[]){entry.retired=true;entry.job?.return();entry.bitmap?.close();if(entry.canvas)entry.canvas.width=1;if(entry.working)entry.working.width=1;}
     G.mobileOuter?.clear();G.ground.cache.clear();G.light=createLighting();fit(G);
   });
 }
@@ -3704,11 +3705,14 @@ function drawMap(G) {
   const to = (x, y) => [mx + x / M.S * k, my + y / M.S * k];
   drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
-  for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();ctx.font=uiFont(7*u,800);ctx.textAlign='left';ctx.fillText(contact.name,p[0]+5*u,p[1]+10*u);}
+  for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();}
   for(const s of G.services||[]){const p=to(s.x,s.y);ctx.fillStyle='#83d7d0';ctx.fillRect(p[0]-3*u,p[1]-3*u,6*u,6*u);}
   ctx.textAlign = "center"; ctx.font = uiFont(Math.max(9, 11 * u * Math.min(1, k * 6)), 900);
   const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["SUNSET HILLS", 5000, 8500], ["CROWN AIRFIELD", 8300, 7300]]];
-  for (const [n, x, y] of labels.concat((G.world.expansion?.landmarks||[]).filter(p=>p.name!=="CROWN AIRFIELD").map(p=>[p.name,p.x,p.y]))) { const p = to(x, y); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.strokeText(n, p[0], p[1]); ctx.fillStyle = "rgba(255,240,200,0.92)"; ctx.fillText(n, p[0], p[1]); }
+  const badges=MAP_PLACES.map(m=>{const [x,y]=to(m.x,m.y),u=Math.max(G.ui,.9*G.dpr);return {x:x-18*u,y:y-12*u,w:36*u,h:24*u};});
+  for(const station of STATIONS){const [x,y]=to(station.x,station.y);badges.push({x:x-8*u,y:y-8*u,w:16*u,h:16*u});}
+  G.atlasLabels=drawAtlasLabels(G,to,labels.concat((G.world.expansion?.landmarks||[]).filter(p=>!['CROWN AIRFIELD','METAWIN CASINO'].includes(p.name)).map(p=>[p.name,p.x,p.y]),(G.contacts||[]).map(p=>[p.name,p.x,p.y])),badges);
+
   if (G.gpsPts) { ctx.strokeStyle = G.waypoint ? "#29d7ff" : "#ffd65a"; ctx.lineWidth = 2.5 * u; ctx.beginPath(); const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); } ctx.stroke(); }
   const at = currentObjectivePos(G);
   if (at) { const p = to(at.x, at.y); ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(p[0], p[1], 7 * u, 0, TAU); ctx.fill(); }
