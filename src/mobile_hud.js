@@ -1,4 +1,5 @@
 import {circuitHint} from './motorsport.js';
+import {dropReady} from './airdrop.js';
 import { WEAPONS, CONTRACTS } from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px system-ui, sans-serif`;
 const wrapped=new Map();
@@ -19,11 +20,13 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');
  const mx=portrait?L+mm+10*d:Math.max(L+mm+18*d,W*.28),mw=portrait?R-mx:Math.min(W*.42,340*d),my=portrait?T+52*d:T;
  const hint=circuitHint(G)||G.expansionHint||G.hint||'Explore Crown City. The crew always has work.';
+ c.font=font(8*d,700);const flight=G.player.def?.aircraft?wrap(c,`${G.player.flightState||'PARKED'} / ALT ${Math.round(G.player.altitude||0)}${dropReady(G)?' / DROP: 45–220 ALT':''}`,mw-20*d,2):[];
  c.font=font(11*d,650);const rows=wrap(c,hint.replace(/\(E\)/g,'').replace(/press E/gi,'tap TAKE'),mw-20*d,5);
- panel(mx,my,mw,(26+rows.length*15)*d,'#ddba7c');text(missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
+ panel(mx,my,mw,(26+rows.length*15+flight.length*12)*d,'#ddba7c');text(missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
  rows.forEach((line,i)=>text(line,mx+10*d,my+(31+i*15)*d,11));
+ flight.forEach((line,i)=>text(line,mx+10*d,my+(31+rows.length*15+i*12)*d,8,G.player.stall?'#ffb093':'#9ed5cf'));
  const objectiveAt=G.waypoint||objective(G);
- let yy=my+(34+rows.length*15)*d;
+ let yy=my+(34+rows.length*15+flight.length*12)*d;
  if(objectiveAt){const distance=Math.round(Math.hypot(objectiveAt.x-G.player.x,objectiveAt.y-G.player.y)/10);text(distance+(G.waypoint?' m TO BLUE ROUTE':' m TO OBJECTIVE'),mx+8*d,yy,9,'#b2c9bc');yy+=17*d;}
  if(G.wanted){text(G.evading?'SEARCHING / STAY OUT OF SIGHT':'SPOTTED / BREAK LINE OF SIGHT',mx+8*d,yy,8,G.evading?'#a2dfd6':'#f2a38c');yy+=16*d;}
  if(G.missionState.holdT){text('HOLD STILL / '+Math.round(G.missionState.holdT*10)/10+'s',mx+8*d,yy,9,'#9bddd4');yy+=17*d;}

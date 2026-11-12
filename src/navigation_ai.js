@@ -1,5 +1,5 @@
 /* Small, local steering decisions. Physics still performs every movement. */
-import {bodySize,worldBodyHit,circleBody} from './collision.js';
+import {bodySize,worldBodyHit,circleBody,bodyContact} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const water=(G,x,y)=>['water','canal'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x,y));
@@ -12,15 +12,24 @@ export function waterPathClear(G,v,x,y){
  return true;
 }
 
+function boatCorridorClear(G,v,distance){
+ const hx=Math.sin(v.rot),hy=-Math.cos(v.rot),probe={kind:v.kind,def:v.def,rot:v.rot};
+ for(let d=0;d<=Math.abs(distance);d+=20){
+  probe.x=v.x+hx*d*Math.sign(distance);probe.y=v.y+hy*d*Math.sign(distance);
+  if(worldBodyHit(G,probe,probe.x,probe.y)||G.vehicles.some(o=>o!==v&&o.def?.boat&&Math.abs(o.x-probe.x)<180&&Math.abs(o.y-probe.y)<180&&bodyContact(probe,o)))return false;
+ }
+ return true;
+}
+
 export function boatPilot(G,v,dt){
  const b=v.pilot||(v.pilot={timer:0,goal:null,wait:0,stuck:0,elapsed:0});b.elapsed+=dt;
  if(b.controls&&b.elapsed<.16)return b.controls;dt=b.elapsed;b.elapsed=0;b.timer-=dt;
  const speed=Math.hypot(v.vx||0,v.vy||0),home=v.home||v;
  const hx=Math.sin(v.rot),hy=-Math.cos(v.rot);b.reverseCooldown=Math.max(0,(b.reverseCooldown||0)-dt);
- if(b.reverse>0){b.reverse-=dt;b.goal=null;return b.controls={x:0,y:-.38,brake:false};}
+ if(b.reverse>0){b.reverse-=dt;b.goal=null;if(!boatCorridorClear(G,v,-90)){b.reverse=0;return b.controls={x:0,y:0,brake:true};}return b.controls={x:0,y:-.38,brake:false};}
  // A moored launch can face its pier. Back out through checked water before
  // asking the rudder to turn; turning forward against the bank cannot recover.
- if(speed<18&&!b.reverseCooldown&&!waterPathClear(G,v,v.x+hx*90,v.y+hy*90)&&waterPathClear(G,v,v.x-hx*220,v.y-hy*220)){
+ if(speed<18&&!b.reverseCooldown&&!waterPathClear(G,v,v.x+hx*90,v.y+hy*90)&&boatCorridorClear(G,v,-220)){
   b.reverse=2.8;b.reverseCooldown=5;b.goal=null;return b.controls={x:0,y:-.38,brake:false};
  }
  if(!b.goal||Math.hypot(v.x-b.goal.x,v.y-b.goal.y)<65||b.timer<=0){
@@ -37,7 +46,7 @@ export function boatPilot(G,v,dt){
  let diff=angle(Math.atan2(b.goal.x-v.x,-(b.goal.y-v.y))-v.rot),cap=70;
  const own=bodySize(v);
  for(const other of G.vehicles){
-  if(other===v||!other.def?.boat||other.dead)continue;
+  if(other===v||!other.def?.boat)continue;
   const dx=other.x-v.x,dy=other.y-v.y,ahead=dx*hx+dy*hy,lateral=dx*hy-dy*hx;
   if(ahead>0&&ahead<250&&Math.abs(lateral)<own.w+bodySize(other).w+24){
    const gap=ahead-own.l-bodySize(other).l-20;cap=Math.min(cap,Math.max(0,gap*.75));

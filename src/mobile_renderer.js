@@ -4,9 +4,10 @@ import {drawDropMission} from './airdrop.js';
 import {drawCircuitActivity} from './motorsport.js';
 import {drawCityHubs} from './world_hubs.js';
 import {CIRCUIT} from './circuit_world.js';
+import {prepareBakedWorld,drawBakedWorldTile} from './baked_world.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
-import {loadImage} from './assets.js';
+import {loadScenery} from './assets.js';
 import {streetSceneSteps,loadStreetArt} from './citylife.js';
 import {drawExpansionPeople} from './expansion.js';
 import {drawExpansionOverhead} from './expansion_world.js';
@@ -25,7 +26,7 @@ function seal(e){
 function trim(cache,limit){if(cache.size<=limit)return;const cold=[...cache].sort((a,b)=>a[1].t-b[1].t);for(let i=0;i<cold.length-limit;i++){retire(cold[i][1]);cache.delete(cold[i][0]);}}
 // Keep expensive composition resumable. A single complex tile must not consume
 // an entire input/animation frame, even when the tile-count budget is one.
-function* composeOuter(G,tx,ty){
+export function* composeOuter(G,tx,ty){
  const canvas=yield* G.ground.composeTile(tx,ty,.5),c=canvas.getContext('2d');
  const r={x0:tx*OUTER,y0:ty*OUTER,x1:(tx+1)*OUTER-.01,y1:(ty+1)*OUTER-.01};
  const circuit=r.x0>=CIRCUIT.x&&r.y0>=CIRCUIT.y&&r.x1<=CIRCUIT.x+CIRCUIT.w&&r.y1<=CIRCUIT.y+CIRCUIT.h;
@@ -53,10 +54,9 @@ function tile(G,tx,ty,night) {
   let e=cache.get(key);
   if(!e){
     e={image:null,t:G.ticks,pending:false,retryAt:0};cache.set(key,e);
-    const limit=G._coreLimit||16;if(cache.size>limit){const cold=[...cache].sort((a,b)=>a[1].t-b[1].t);for(let i=0;i<cold.length-limit;i++)cache.delete(cold[i][0]);}
   }
-  if(!e.image&&!e.pending&&G.ticks>=e.retryAt){e.pending=true;loadImage(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp`).then(im=>{e.image=im;}).catch(()=>{e.retryAt=G.ticks+600;}).finally(()=>e.pending=false);}
-  e.t=G.ticks;
+  if(!e.image&&!e.pending&&G.ticks>=e.retryAt){e.pending=true;loadScenery(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp`,768).then(im=>{if(e.retired)im.close?.();else e.image=im;}).catch(()=>{e.retryAt=G.ticks+600;}).finally(()=>e.pending=false);}
+  e.t=G.ticks;e.frame=G._coreFrame;
   // The boot albedo keeps the first frame painted while its finished tile decodes.
   return e.image||G.assets.layers.albedo?.img.get(tx+'_'+ty)||null;
 }
@@ -86,18 +86,26 @@ export function visibleOuterTiles(G,r){
 export function drawMobileWorld(G,H) {
   if(G.street&&!G.street.atlas)loadStreetArt(G);
   const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;
-  const coreCols=Math.max(0,Math.min(3,Math.floor(r.x1/TILE))-Math.max(0,Math.floor(r.x0/TILE))+1),coreRows=Math.max(0,Math.min(3,Math.floor(r.y1/TILE))-Math.max(0,Math.floor(r.y0/TILE))+1);G._coreLimit=Math.min(32,Math.max(16,coreCols*coreRows*(night>.02&&night<.98?2:1)+2));
+  G._coreFrame=(G._coreFrame||0)+1;
+  const coreCols=Math.max(0,Math.min(3,Math.floor(r.x1/TILE))-Math.max(0,Math.floor(r.x0/TILE))+1),coreRows=Math.max(0,Math.min(3,Math.floor(r.y1/TILE))-Math.max(0,Math.floor(r.y0/TILE))+1);G._coreLimit=Math.min(32,Math.max(6,coreCols*coreRows*(night>.02&&night<=.98?2:1)+2));
   H.worldXform(G,c,r.S);c.imageSmoothingQuality='low';c.fillStyle='#123943';c.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
   for(let y=Math.max(0,Math.floor(r.y0/TILE));y<=Math.min(3,Math.floor(r.y1/TILE));y++)for(let x=Math.max(0,Math.floor(r.x0/TILE));x<=Math.min(3,Math.floor(r.x1/TILE));x++){
     const image=tile(G,x,y,night>.98);if(image)c.drawImage(image,x*TILE,y*TILE,TILE+.5,TILE+.5);
     if(night>.02&&night<=.98){const lit=tile(G,x,y,true);if(lit){c.globalAlpha=night;c.drawImage(lit,x*TILE,y*TILE,TILE+.5,TILE+.5);c.globalAlpha=1;}}
   }
+  // Retire only after marking the complete visible set. This also releases a
+  // previous flight view without evicting a warm tile from the current frame.
+  if(G.mobileTiles?.size>G._coreLimit){const cold=[...G.mobileTiles].filter(([,e])=>e.frame!==G._coreFrame).sort((a,b)=>a[1].t-b[1].t);for(const [key,e] of cold){if(G.mobileTiles.size<=G._coreLimit)break;e.retired=true;e.image?.close?.();G.mobileTiles.delete(key);}}
   G._outerBuilt=0;G._outerStart=performance.now();G._outerDeadline=G._outerStart+2.5;let pending=0;
   const queue=visibleOuterTiles(G,r);
+  prepareBakedWorld(G,queue);
   // A rotated aircraft view can exceed the old 40-tile cache and evict itself forever.
   // Size to the visible working set, with a hard 24 MiB bitmap ceiling and center-first work.
   G._outerLimit=Math.min(96,Math.max(40,queue.length+8));
-  for(const {x,y} of queue){const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const m=G.minimap;c.drawImage(m.c,x*OUTER/m.S,y*OUTER/m.S,OUTER/m.S,OUTER/m.S,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}}
+  for(const {x,y,key} of queue){
+   if(drawBakedWorldTile(G,c,x,y)){const old=G.mobileOuter?.get(key);if(old){retire(old);G.mobileOuter.delete(key);}continue;}
+   const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const m=G.minimap;c.drawImage(m.c,x*OUTER/m.S,y*OUTER/m.S,OUTER/m.S,OUTER/m.S,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}
+  }
   const composeMs=performance.now()-G._outerStart;
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
@@ -137,5 +145,5 @@ export function drawMobileWorld(G,H) {
   c.setTransform(1,0,0,1,0,0);
   if(G.rainAmt>.15&&!G.settings.reducedMotion){c.strokeStyle='rgba(190,216,230,.22)';c.lineWidth=1;c.beginPath();for(let i=0;i<28;i++){const x=(i*97+G.ticks*1.5)%G.canvas.width,y=(i*137+G.ticks*6)%G.canvas.height;c.moveTo(x,y);c.lineTo(x+3,y+9);}c.stroke();}
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
-  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
+  G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,bakedSheets:G.bakedWorld?.sheets.size||0,bakedReady:G.bakedWorld?.ready||0,bakedBytes:G.bakedWorld?.bytes||0,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

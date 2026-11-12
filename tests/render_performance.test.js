@@ -85,3 +85,10 @@ test('zooming into a warm mobile view trims the old wider tile cache without nee
  const noop=()=>{},H=new Proxy({viewRect:()=>({x0:4890,y0:4890,x1:5110,y1:5110,S:1})},{get:(o,k)=>o[k]||noop});
  drawMobileWorld(G,H);assert.equal(G._outerBuilt,0);assert.equal(G.mobileOuter.size,40);assert.equal(closed,56);assert.ok(G.mobileOuter.has('9:9'));
 });
+
+test('returning from a wide day/night view closes cold core bitmaps and retains the current tile',()=>{
+ let closed=0;G.cam={x:1500,y:1500,rot:0,scale:1};G.canvas.width=G.canvas.height=400;G.time=12;G.settings.reducedMotion=true;G.ticks=200;
+ G.mobileTiles=new Map();for(let y=0;y<4;y++)for(let x=0;x<4;x++)for(const night of [false,true])G.mobileTiles.set(`${x}:${y}:${night}`,{t:200,image:{width:768,height:768,close(){closed++;}}});
+ const warm=G.mobileTiles.get('1:1:false'),noop=()=>{},H=new Proxy({viewRect:()=>({x0:1350,y0:1350,x1:1650,y1:1650,S:1})},{get:(o,k)=>o[k]||noop});
+ drawMobileWorld(G,H);assert.equal(G.mobileTiles.get('1:1:false'),warm);assert.equal(G.mobileTiles.size,6);assert.equal(closed,26);
+});

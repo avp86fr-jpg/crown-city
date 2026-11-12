@@ -319,6 +319,7 @@ export function makeGround(W, tex, codeAt) {
     get revision(){return revision;},
     get asphalt(){return pats.asphalt;},
     get materialsReady(){return !!pats.forest&&!!W.sceneryAtlas;},
+    get circuitReady(){return pats.circuitImage?.width===(this.circuitKey==='mobile'?2048:4096);},
     composeTile(ix,iy,scale=.5){return renderSteps(ix,iy,scale);},
     prepareCircuit(low){
       const key=low?'mobile':'desktop';if(this.circuitKey===key)return;this.circuitKey=key;const request=this.circuitRequest=(this.circuitRequest||0)+1;

@@ -130,7 +130,7 @@ export function edgePoint(e, fwd, s, lane) {
 function laneTransition(n){
   return n.edges.length===2&&(n.edges[0].w!==n.edges[1].w||n.edges[0].lanes!==n.edges[1].lanes||n.edges[0].med!==n.edges[1].med);
 }
-function trimAt(n, e) {
+export function trimAt(n, e) {
   if (n.edges.length <= 1) return 110;
   const horizontal = Math.abs(e.dx) > Math.abs(e.dy);
   return Math.max(horizontal?n.hw:n.hh,laneTransition(n)?128:0)+8;

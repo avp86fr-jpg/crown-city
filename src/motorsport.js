@@ -11,11 +11,22 @@ export function pitDriveInput(v,input){
 }
 const storyMeeting=G=>!G.freeRoam&&G._flow?.objectives[G.objectiveIndex]?.id==='to_track';
 export const nearCircuit=G=>!G.race&&!storyMeeting(G)&&(!G.action?.contract||G.action.contract.id==='circuit')&&!G.wanted&&!G.circuitSession?.running&&Math.hypot(G.player.x-CIRCUIT.pit.x,G.player.y-CIRCUIT.pit.y)<110&&Math.hypot(G.player.vx||0,G.player.vy||0)<12;
+// Plan braking from the upcoming curvature and the distance left to slow down.
+// The old single far-ahead angle capped even long straights at city-road speeds.
+export function circuitSpeed(v,s){
+ let limit=Math.min(v.def.max*.96,350+(v.racerIndex||0)%3*10);
+ for(const distance of [0,70,150,260,400]){
+  const a=trackPoint(s+distance-35),b=trackPoint(s+distance+35);
+  const curve=Math.abs(angle(b.rot-a.rot))/70;
+  const corner=Math.min(limit,Math.sqrt(165/Math.max(.0001,curve)));
+  limit=Math.min(limit,Math.sqrt(corner*corner+2*170*Math.max(0,distance-45)));
+ }
+ return limit;
+}
 export function circuitPilot(G,v,dt){
- const n=nearestTrack(v.x,v.y),speed=Math.hypot(v.vx,v.vy),look=clamp(70+speed*.44,70,170),target=trackPoint(n.s+look);
+ const n=nearestTrack(v.x,v.y),speed=Math.hypot(v.vx,v.vy),look=clamp(65+speed*.42,70,195),target=trackPoint(n.s+look);
  const index=Number.isFinite(v.racerIndex)?v.racerIndex:0,preferred=(index%2?1:-1)*28,own=bodySize(v);
- let offset=v.racerLane??preferred,limit=195+(index%3)*10;
- const bend=Math.abs(angle(trackPoint(n.s+look+90).rot-n.rot));limit=Math.min(limit,80+130/(1+bend*4));
+ let offset=v.racerLane??preferred,limit=circuitSpeed(v,n.s);
  const local=v.racerObstacles||(v.racerObstacles=[]);local.length=0;
  for(const o of G.vehicles)if(o!==v&&!o.def.boat&&!(o.def.aircraft&&o.altitude>10)&&Math.abs(o.x-v.x)<520&&Math.abs(o.y-v.y)<520)local.push(o);
  const lateral=(v.x-n.x)*Math.cos(n.rot)+(v.y-n.y)*Math.sin(n.rot);
@@ -79,14 +90,18 @@ export function tickCircuit(G,dt,hooks){
  s.time+=dt;
  const n=nearestTrack(P.x,P.y),delta=angle((n.s-s.lastS)/TRACK_LENGTH*Math.PI*2)*TRACK_LENGTH/(Math.PI*2);
  if(n.d>CIRCUIT.half+8)s.off+=dt;else s.off=Math.max(0,s.off-dt*.5);
- if(s.off>(s.grace??.9)||Math.abs(delta)>Math.max(45,Math.hypot(P.vx,P.vy)*dt+30))s.valid=false;
- s.lastS=n.s;
+ // The nearest centre-line projection can jump ~60 units through the inside
+ // of a hairpin while the physical car moves only two. Validate actual travel
+ // as well as course progress, so a clean inside line is not called a shortcut.
+ const moved=Math.hypot(P.x-(s.lastX??P.prevX??P.x),P.y-(s.lastY??P.prevY??P.y));
+ if(s.off>(s.grace??.9)||moved>Math.max(45,Math.hypot(P.vx,P.vy)*dt+30)||Math.abs(delta)>Math.max(120,Math.hypot(P.vx,P.vy)*dt*3+30))s.valid=false;
+ s.lastS=n.s;s.lastX=P.x;s.lastY=P.y;
  // Sequential projected progress prevents reverse laps, teleporting and skipped sectors.
- s.distance+=clamp(delta,-40,40);
+ s.distance+=clamp(delta,-120,120);
  if(s.distance>=s.gate*TRACK_LENGTH/8&&s.gate<8){s.gate++;G.waypoint=trackPoint(s.gate*TRACK_LENGTH/8);G.gps=null;G.audio?.race?.('sector');}
  if(s.distance>=TRACK_LENGTH-10&&s.gate===8){
   const valid=s.valid&&s.time>15;
-  if(valid){G.action.circuitLaps=(G.action.circuitLaps||0)+1;G.action.circuitBest=Math.min(G.action.circuitBest||Infinity,s.time);G.action.circuitRecords[s.pace]=G.action.circuitBest;}
+  if(valid){G.action.circuitLaps=(G.action.circuitLaps||0)+1;G.action.circuitBest=Math.min(G.action.circuitBest||Infinity,s.time);G.action.circuitRecords[s.pace]=Math.min(G.action.circuitRecords[s.pace]||Infinity,s.time);}
   finishTrial(G,valid?'CLEAN LAP / '+s.time.toFixed(2)+'s':'LAP INVALID / KEEP ALL WHEELS ON TRACK',valid);hooks.save(G,true);
  }
  if(s.time>240)finishTrial(G,'SESSION ENDED / RETURN TO PITS',false);
@@ -101,7 +116,7 @@ export function startCircuit(G,hooks){
  Object.assign(car,{damage:null,wrecked:false,burnT:0,loose:false,tr:null,traffic:false,x:p.x,y:p.y,rot:p.rot,vx:0,vy:0,yaw:0,health:100,dead:false,burning:false,parked:false,ai:false,circuitRacer:false,driver:'player'});
  G.cam.x=car.x;G.cam.y=car.y;
  const pace=racePace(G);
- G.circuitSession={pace:pace.id,target:pace.target,grace:pace.grace,running:true,car,countdown:3,time:0,distance:0,lastS:0,gate:1,valid:true,off:0};
+ G.circuitSession={pace:pace.id,target:pace.target,grace:pace.grace,running:true,car,countdown:3,time:0,distance:0,lastS:0,lastX:p.x,lastY:p.y,gate:1,valid:true,off:0};
  G.audio?.race?.('count');G.waypoint=trackPoint(TRACK_LENGTH/8);G.gps=null;G.releaseControls?.();
  return true;
 }
