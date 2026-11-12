@@ -1,3 +1,4 @@
+import {loadScenery} from './assets.js';
 // One sampled racing line drives asphalt, collision, sector gates and opponents.
 export const CIRCUIT_VERSION=2;
 export const CIRCUIT={x:656,y:7040,w:5632,h:2368,half:108,pit:{x:5200,y:7568},entry:{x:6432,y:7568}};
@@ -72,16 +73,16 @@ export function applyCircuit(W,CODE){
  for(const r of [{x:656,y:7040,w:5632,h:16},{x:656,y:9392,w:5632,h:16},{x:656,y:7040,w:16,h:2368},{x:6272,y:7040,w:16,h:432},{x:6272,y:7664,w:16,h:1744}])W.fill(r.x,r.y,r.w,r.h,CODE.build);
 }
 function path(c,points=TRACK,closed=true){c.beginPath();c.moveTo(points[0].x,points[0].y);for(const p of points)c.lineTo(p.x,p.y);if(closed)c.closePath();}
-function paintCircuit(c,view,pats={}){
+function* paintCircuit(c,view,pats={}){
  const {x,y,w,h,half}=CIRCUIT;c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
- c.fillStyle=pats.grass||'#526247';c.fillRect(x,y,w,h);c.fillStyle='rgba(177,187,131,.06)';for(let yy=y;yy<y+h;yy+=64)c.fillRect(x,yy,w,32);
- c.lineJoin='round';c.lineCap='round';path(c);c.strokeStyle=pats.sand||'#b4a483';c.lineWidth=304;c.stroke();c.strokeStyle='#393f40';c.lineWidth=236;c.stroke();c.strokeStyle='#ddd8c5';c.lineWidth=228;c.stroke();c.setLineDash([24,24]);c.strokeStyle='#b6463a';c.stroke();c.setLineDash([]);c.strokeStyle=pats.asphalt||'#30373b';c.lineWidth=216;c.stroke();c.strokeStyle='rgba(15,20,24,.22)';c.lineWidth=11;c.stroke();
+ c.fillStyle=pats.grass||'#526247';c.fillRect(x,y,w,h);yield;c.fillStyle='rgba(177,187,131,.06)';for(let yy=y;yy<y+h;yy+=64)c.fillRect(x,yy,w,32);
+ c.lineJoin='round';c.lineCap='round';path(c);c.strokeStyle=pats.sand||'#b4a483';c.lineWidth=304;c.stroke();yield;c.strokeStyle='#393f40';c.lineWidth=236;c.stroke();yield;c.strokeStyle='#ddd8c5';c.lineWidth=228;c.stroke();yield;c.setLineDash([24,24]);c.strokeStyle='#b6463a';c.stroke();yield;c.setLineDash([]);c.strokeStyle=pats.asphalt||'#30373b';c.lineWidth=216;c.stroke();yield;c.strokeStyle='rgba(15,20,24,.22)';c.lineWidth=11;c.stroke();yield;
  c.fillStyle='#515b5b';c.fillRect(PADDOCK.x,PADDOCK.y,PADDOCK.w,PADDOCK.h);c.fillRect(5056,7472,1440,192);c.fillRect(4800,7168,224,448);
- path(c,PIT_LANE.map(([x,y])=>({x,y})),false);c.strokeStyle='#d4ceb0';c.lineWidth=150;c.stroke();c.strokeStyle='#434d50';c.lineWidth=144;c.stroke();c.setLineDash([20,16]);c.strokeStyle='#c9b373';c.lineWidth=2;c.stroke();c.setLineDash([]);
+ path(c,PIT_LANE.map(([x,y])=>({x,y})),false);c.strokeStyle='#d4ceb0';c.lineWidth=150;c.stroke();yield;c.strokeStyle='#434d50';c.lineWidth=144;c.stroke();yield;c.setLineDash([20,16]);c.strokeStyle='#c9b373';c.lineWidth=2;c.stroke();yield;c.setLineDash([]);
  for(let xx=1664;xx<4688;xx+=304){c.strokeStyle='#cfccae';c.lineWidth=2;c.strokeRect(xx,7504,224,104);c.fillStyle='#c8bc8b';c.font='bold 13px sans-serif';c.textAlign='center';c.fillText('PIT '+(1+(xx-1664)/304),xx+112,7580);}
- for(const b of CIRCUIT_BUILDINGS){
+ for(const b of CIRCUIT_BUILDINGS){yield;
   c.fillStyle='#18272c';c.fillRect(b.x+7,b.y+9,b.w,b.h);c.fillStyle=b.type==='stand'?'#73878a':b.type==='truck'?'#c4c7bc':'#49646c';c.fillRect(b.x,b.y,b.w,b.h);c.strokeStyle='#9ba9a8';c.lineWidth=2;
-  for(let yy=b.y+10;yy<b.y+b.h-20;yy+=12){c.beginPath();c.moveTo(b.x+6,yy);c.lineTo(b.x+b.w-6,yy);c.stroke();}
+  for(let yy=b.y+10;yy<b.y+b.h-20;yy+=12){c.beginPath();c.moveTo(b.x+6,yy);c.lineTo(b.x+b.w-6,yy);c.stroke();yield;}
   c.fillStyle='#1e3137';c.fillRect(b.x+4,b.y+b.h-30,b.w-8,26);c.fillStyle='#e6dcbd';c.textAlign='center';c.font='bold 13px sans-serif';c.fillText(b.name,b.x+b.w/2,b.y+b.h-12);
   if(b.type==='pit'){
    c.fillStyle=['#397d88','#b7955b','#9a5254'][Math.floor(b.x/304)%3];c.fillRect(b.x+4,b.y+3,b.w-8,7);c.fillRect(b.x+8,b.y+b.h-4,b.w-16,9);
@@ -96,7 +97,7 @@ function paintCircuit(c,view,pats={}){
  }
  c.fillStyle='#b6bdb2';c.fillRect(1840,7728,2960,16);c.fillStyle='#34444a';c.fillRect(1840,7736,2960,4);
  for(let yy=7792;yy<8008;yy+=12)for(let xx=1592;xx<1616;xx+=12){c.fillStyle=((yy-7792)/12+(xx-1592)/12)%2?'#252b30':'#e3dfcd';c.fillRect(xx,yy,12,12);}
- for(let i=1;i<=7;i++){const p=trackPoint(length*i/8);c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.strokeStyle='#a7c8bc';c.lineWidth=2;c.setLineDash([8,8]);c.beginPath();c.moveTo(-half,0);c.lineTo(half,0);c.stroke();c.setLineDash([]);c.fillStyle='#dedac0';c.font='bold 15px sans-serif';c.fillText('S'+i,half+30,0);c.restore();}
+ for(let i=1;i<=7;i++){const p=trackPoint(length*i/8);c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.strokeStyle='#a7c8bc';c.lineWidth=2;c.setLineDash([8,8]);c.beginPath();c.moveTo(-half,0);c.lineTo(half,0);c.stroke();yield;c.setLineDash([]);c.fillStyle='#dedac0';c.font='bold 15px sans-serif';c.fillText('S'+i,half+30,0);c.restore();}
  c.fillStyle='#e2d6ad';c.font='bold 23px sans-serif';c.textAlign='center';c.fillText('BUGATTI / CROWN MOTORSPORT PARK',3400,7092);c.font='bold 14px sans-serif';c.fillText('PADDOCK / TRANSPORT & SCRUTINEERING',2820,7296);c.fillText('40 / PIT SPEED',4980,7650);c.fillText('PUBLIC ENTRY',6010,7580);c.fillText('PIT IN',1300,7830);c.fillText('PIT EXIT / YIELD',5430,7670);
  for(const xx of [1350,4700,5850]){c.fillStyle='#bda46d';c.fillRect(xx,7180,110,64);c.fillStyle='#285563';c.fillRect(xx+5,7185,100,52);}
  c.strokeStyle='#afb9b5';c.lineWidth=8;c.strokeRect(x+8,y+8,w-16,h-16);c.fillStyle='#515b5b';c.fillRect(6268,7472,24,192);c.restore();
@@ -104,16 +105,30 @@ function paintCircuit(c,view,pats={}){
 // Cap the large venue's static bitmap at 8 MiB on Performance, 32 MiB on PC.
 // Geometry and collisions stay full resolution; only distant static paint scales.
 const artwork=new WeakMap();
-export function drawCircuitGround(c,view,pats={},scale=1){
+export function loadCircuitArt(low){
+ return loadScenery(`assets/world/circuit-v${CIRCUIT_VERSION}-${low?'mobile':'desktop'}.webp`,low?2048:4096);
+}
+export function* circuitGroundSteps(c,view,pats={},scale=1){
  const x=Math.max(view.x0,CIRCUIT.x),y=Math.max(view.y0,CIRCUIT.y),w=Math.min(view.x1,CIRCUIT.x+CIRCUIT.w)-x,h=Math.min(view.y1,CIRCUIT.y+CIRCUIT.h)-y;
  if(w<=0||h<=0)return;
+ if(pats.circuitImage){const old=artwork.get(pats);if(old){old.retired=true;old.job?.return();old.bitmap?.close();old.canvas.width=1;artwork.delete(pats);}
+  const im=pats.circuitImage,sx=im.width/CIRCUIT.w,sy=im.height/CIRCUIT.h;
+  c.drawImage(im,(x-CIRCUIT.x)*sx,(y-CIRCUIT.y)*sy,w*sx,h*sy,x,y,w,h);return;
+ }
  scale=Math.min(scale,(scale<1?2048:4096)/CIRCUIT.w);let cached=artwork.get(pats);
  if(!cached||cached.scale!==scale||cached.asphalt!==pats.asphalt||cached.grass!==pats.grass){
   if(cached){cached.retired=true;cached.bitmap?.close();cached.canvas.width=1;}
   const canvas=document.createElement('canvas');canvas.width=Math.ceil(CIRCUIT.w*scale);canvas.height=Math.ceil(CIRCUIT.h*scale);
-  const a=canvas.getContext('2d');a.scale(scale,scale);a.translate(-CIRCUIT.x,-CIRCUIT.y);paintCircuit(a,view,pats);
-  cached={canvas,scale,asphalt:pats.asphalt,grass:pats.grass};artwork.set(pats,cached);
-  if(typeof createImageBitmap==='function'){const entry=cached;createImageBitmap(canvas).then(bitmap=>{if(entry.retired)bitmap.close();else{entry.bitmap=bitmap;entry.canvas.width=1;}}).catch(()=>{});}
+  const a=canvas.getContext('2d',{willReadFrequently:true});a.scale(scale,scale);a.translate(-CIRCUIT.x,-CIRCUIT.y);const job=paintCircuit(a,view,pats);
+  cached={canvas,scale,job,asphalt:pats.asphalt,grass:pats.grass};artwork.set(pats,cached);
+ }
+ if(cached.job){
+  while(cached.job&&!cached.job.next().done)yield;
+  if(cached.job){cached.job=null;
+   if(typeof createImageBitmap==='function'){const entry=cached;createImageBitmap(entry.canvas).then(bitmap=>{if(entry.retired)bitmap.close();else{entry.bitmap=bitmap;entry.canvas.width=1;}}).catch(()=>{});}
+  }
  }
  c.drawImage(cached.bitmap||cached.canvas,(x-CIRCUIT.x)*scale,(y-CIRCUIT.y)*scale,w*scale,h*scale,x,y,w,h);
 }
+
+export function drawCircuitGround(c,view,pats={},scale=1){for(const step of circuitGroundSteps(c,view,pats,scale)){} }

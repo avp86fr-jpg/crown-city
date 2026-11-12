@@ -1,3 +1,5 @@
+import {trackPoint,nearestTrack,CIRCUIT} from '../src/circuit_world.js';
+import {circuitPilot} from '../src/motorsport.js';
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +12,7 @@ let h, G, T;
 before(async () => { h = await harness({ stored: { mw_crown_city_settings: '{broken' } }); ({ G, T } = h); });
 function mission(index, flags = {}) {
   G.action=actionState();
-  G.flags = flagsFrom(flags); G.race = null; G.vnQueue = []; G.ended = false; G.needsBegin = false;
+  G.flags = flagsFrom(flags); G.freeRoam=false;G.race = null; G.vnQueue = []; G.ended = false; G.needsBegin = false;
   G.player = T.makeFoot(G, ...G.meta.spawns.player, 0); G.health = 100; G.chips = 400;
   G.wanted = 0; G.interactP = false; G.input.enterP = false;
   T.beginMission(G, index); T.ensureMissionCar(G); G.gps = null; G.gpsPts = null; G.scene = 'play';
@@ -135,7 +137,7 @@ test('archive transfer can be interrupted by firing and pays only after the full
 test('race gates close the lap at the start, freeze the countdown and can be lost', () => {
   mission(1); G.objectiveIndex = 1;
   const car = T.makeVeh('dart', ...G.meta.spawns.raceStart, Math.PI / 2); G.player = car; G.vehicles.push(car);
-  T.startRace(G); assert.deepEqual(G.race.pts.at(-1), G.meta.race.checkpoints[0]);
+  T.startRace(G); assert.deepEqual(G.race.pts.at(-1), [trackPoint(0).x,trackPoint(0).y]);
   const x = car.x; G.input.x = 0; G.input.y = 1; T.tickPlayer(G, 1); assert.equal(car.x, x);
   G.race.countdown = 0; G.race.started = true; G.race.rivalI = G.race.pts.length;
   const chips = G.chips; T.tickRace(G, {}, 1 / 60);
@@ -145,30 +147,28 @@ test('race gates close the lap at the start, freeze the countdown and can be los
 
 test('race progress and the rival position survive save/resume', () => {
   mission(1); G.objectiveIndex = 1;
-  G.player = T.makeVeh('dart', ...G.meta.spawns.raceStart, Math.PI / 2); G.vehicles.push(G.player);
+  G.player = T.makeVeh('dart', ...G.meta.spawns.raceStart, Math.PI / 2); G.vehicles=[G.player];
   T.startRace(G); G.race.i = 4; G.race.rivalI = 3; G.race.t = 12.5; G.race.countdown = 0;
   const saved = T.snapshot(G); T.restoreState(G, saved);
   assert.equal(G.race.i, 4); assert.equal(G.race.rivalI, 3); assert.equal(G.race.t, 12.5);
   assert.equal(G.race.countdown, 0);
 });
 
-test('a starter Riot can win both laps using real physics and collision data', () => {
+test('a starter Riot can win the full Grand Prix lap using real physics and collision data', () => {
   mission(1); G.objectiveIndex = 1;
   const car = T.makeVeh('riot', ...G.meta.spawns.raceStart, Math.PI / 2);
   G.player = car; G.vehicles = [car]; T.startRace(G, G._flow.objectives[1]);
-  assert.equal(G.race.pts.length, 38);
+  assert.equal(G.race.pts.length,32);assert.ok(G.race.pts.every(p=>nearestTrack(...p).d<1));car.racerIndex=0;
   G.race.countdown = 0; G.race.started = true;
   let frames = 0;
-  while (G.race && frames++ < 7200) {
+  while (G.race && frames++ < 60*240) {
     G.ticks++;
-    const cp = G.race.pts[G.race.i];
-    let delta = Math.atan2(cp[0] - car.x, -(cp[1] - car.y)) - car.rot;
-    while (delta > Math.PI) delta -= Math.PI * 2;
-    while (delta < -Math.PI) delta += Math.PI * 2;
-    T.tickDrive(G, car, { x: Math.max(-1, Math.min(1, delta * 2.4)), y: Math.abs(delta) > 0.8 ? 0.4 : 1, hand: Math.abs(delta) > 1.1 }, 1 / 60, true);
+    T.tickDrive(G,car,circuitPilot(G,car,1/60),1/60,true);
+    G.cam.x=car.x;G.cam.y=car.y;
     T.tickVehicles(G, 1 / 60); T.tickRace(G, {}, 1 / 60);
   }
-  assert.ok(frames < 7200); assert.equal(G.missionIndex, 2); assert.equal(G.vn.id, 'm2_win');
+  assert.ok(car.health>60,'clean circuit drive should preserve the starter car');
+  assert.ok(frames < 60*240); assert.equal(G.missionIndex, 2); assert.equal(G.vn.id, 'm2_win');
   console.log('Stock Riot physics race won in', frames, 'ticks');
 });
 
@@ -317,4 +317,6 @@ for (const choices of [
   assert.equal(VN.m1_win_safe.next, original);
   assert.ok(G.unlocked.includes('nyx'));
   T.loadSave(G); assert.equal(G.scene, 'end');
+  T.render(G);G.buttons.find(b=>b.label==='KEEP DRIVING').act();assert.equal(G.scene,'play');assert.equal(G.freeRoam,true);
+  T.loadSave(G);assert.equal(G.scene,'play');assert.equal(G.missionIndex,6);assert.equal(G._flow,null);assert.equal(G.freeRoam,true);
 });

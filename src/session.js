@@ -1,3 +1,4 @@
+import {TRACK_LENGTH,trackPoint} from './circuit_world.js';
 /* Validated session data and shared coordinate helpers. No browser state here. */
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const finite = (v, fallback, lo = -Infinity, hi = Infinity) =>
@@ -40,7 +41,7 @@ export function screenToWorld(G, x, y) {
   return { x: G.cam.x + dx * c - dy * s, y: G.cam.y + dx * s + dy * c };
 }
 export function raceCourse(meta, laps = 1) {
-  const pts = meta.race.checkpoints;
+  const pts = Array.from({length:32},(_,i)=>{const p=trackPoint(i*TRACK_LENGTH/32);return[p.x,p.y];});
   // Leave the start line, visit every gate, then return to the start to finish.
   const lap = pts.slice(1).concat([pts[0]]);
   return Array.from({ length: Math.max(1, Math.min(3, laps | 0)) }, () => lap.map(p => p.slice())).flat();

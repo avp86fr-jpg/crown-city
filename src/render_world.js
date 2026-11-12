@@ -1,11 +1,11 @@
 /* Streaming tile layers, chunked procedural ground, extruded buildings, trees. */
-import {drawCircuitGround,CIRCUIT} from './circuit_world.js';
+import {drawCircuitGround,circuitGroundSteps,loadCircuitArt,CIRCUIT} from './circuit_world.js';
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
 import {drawWorldDetails} from './world_details.js';
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
-import { loadImage as loadImg } from "./assets.js";
+import { loadImage as loadImg,loadScenery } from "./assets.js";
 const roofParallax=(offset,k)=>Math.max(-24,Math.min(24,offset*k));
 // Roof art, rooftop details and neon share the same capped perspective.
 // Callers can reuse `out` while painting a complete building batch.
@@ -80,25 +80,25 @@ const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
   const pats = {};let revision=0,useId=0,viewPlan=null,circuitScale=1;
-  loadImg('assets/premium/frontier-scenery.webp').then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
+  loadScenery('assets/premium/frontier-scenery.webp',512).then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
   // Eight material paintings, decoded once; detail is baked into streamed chunks.
-  loadImg('assets/premium/world-materials.webp').then(atlas=>{
+  loadScenery('assets/premium/world-materials.webp',1024).then(atlas=>{
     ['forest','desert','mountain','casino','asphalt','paver','trail','water'].forEach((name,i)=>{
       const tile=document.createElement('canvas');tile.width=tile.height=256;
-      tile.getContext('2d').drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
+      tile.getContext('2d',{willReadFrequently:true}).drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
       // Quiet limestone tones keep the casino's green felt and characters readable.
-      if(name==='casino'){const c=tile.getContext('2d');c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
-      if(name==='asphalt'){const c=tile.getContext('2d');c.fillStyle='rgba(48,53,56,.64)';c.fillRect(0,0,256,256);}
+      if(name==='casino'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
+      if(name==='asphalt'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(48,53,56,.64)';c.fillRect(0,0,256,256);}
       pats[name]=scratch.createPattern(tile,'repeat');
       const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'?.55:.8;
       pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
       if(name==='forest'){
-        const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d');ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,99,60,.78)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
+        const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d',{willReadFrequently:true});ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,99,60,.78)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
       }
     });
     for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;
   }).catch(()=>{});
-  const scratch = document.createElement("canvas").getContext("2d");
+  const scratch = document.createElement("canvas").getContext("2d",{willReadFrequently:true});
   for (const k of Object.keys(tex)) pats[k] = scratch.createPattern(tex[k], "repeat");
   const codeTex = { [CODE.road]: "asphalt", [CODE.walk]: "paver", [CODE.grass]: "grass", [CODE.sand]: "sand", [CODE.track]: "asphalt_hw", [CODE.pier]: "pier", [CODE.lot]: "lot", [CODE.dirt]: "dirt", [CODE.build]: "concrete" };
   const g = W.grid;
@@ -111,12 +111,13 @@ export function makeGround(W, tex, codeAt) {
     return code===CODE.walk&&cellDistrict(W,x,y)==='warm'?'paver_warm':codeTex[code];
   }
   let weather=null;
-  function weatherPattern(){
+  function* weatherPatternSteps(){
     if(weather)return weather;
-    const tile=document.createElement('canvas');tile.width=tile.height=512;const c=tile.getContext('2d');
-    for(let i=0;i<12;i++){
+    const tile=document.createElement('canvas');tile.width=tile.height=512;const c=tile.getContext('2d',{willReadFrequently:true});
+    for(let i=0;i<12;i++){yield;
       const px=(i*197+53)%512,py=(i*293+71)%512,r=60+(i*31)%100;
       for(const dx of [-512,0,512])for(const dy of [-512,0,512]){
+        if(px+dx+r<0||py+dy+r<0||px+dx-r>512||py+dy-r>512)continue;
         const g=c.createRadialGradient(px+dx,py+dy,0,px+dx,py+dy,r);g.addColorStop(0,i%3?'rgba(25,20,15,.045)':'rgba(255,236,200,.035)');g.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=g;c.fillRect(px+dx-r,py+dy-r,r*2,r*2);
       }
     }
@@ -125,12 +126,12 @@ export function makeGround(W, tex, codeAt) {
   function* renderSteps(ix, iy, scale=1) {
     const c = document.createElement("canvas");
     c.width = c.height = CH*scale;
-    const x = c.getContext("2d"); x.scale(scale,scale);
+    const x = c.getContext("2d",{willReadFrequently:true}); x.scale(scale,scale);
     const ox = ix * CH, oy = iy * CH;
     x.translate(-ox, -oy);
     yield {canvas:c};
     const view={x0:ox,y0:oy,x1:ox+CH,y1:oy+CH};
-    if(ox>=CIRCUIT.x&&oy>=CIRCUIT.y&&ox+CH<=CIRCUIT.x+CIRCUIT.w&&oy+CH<=CIRCUIT.y+CIRCUIT.h){drawCircuitGround(x,view,pats,scale);return c;}
+    if(ox>=CIRCUIT.x&&oy>=CIRCUIT.y&&ox+CH<=CIRCUIT.x+CIRCUIT.w&&oy+CH<=CIRCUIT.y+CIRCUIT.h){yield* circuitGroundSteps(x,view,pats,scale);return c;}
     const cx0 = ox / CELL, cy0 = oy / CELL, n = CH / CELL;
     let any = false;
     for (let cy = cy0; cy < cy0 + n; cy++) {
@@ -227,7 +228,7 @@ export function makeGround(W, tex, codeAt) {
       const rn = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
       // A world-aligned repeat replaces clipped per-chunk radial washes. The
       // same material continues over tile seams and rasterizes only once.
-      x.fillStyle=weatherPattern();x.fillRect(ox,oy,CH,CH);
+      x.fillStyle=yield* weatherPatternSteps();x.fillRect(ox,oy,CH,CH);
       for (let i = 0; i < 46; i++) {
         const px = ox + rn() * CH, py = oy + rn() * CH;
         const v = cellAt((px / CELL) | 0, (py / CELL) | 0);
@@ -310,15 +311,20 @@ export function makeGround(W, tex, codeAt) {
       if (b.x > rx1 || b.y > ry1 || b.x + b.w < rx0 || b.y + b.h < ry0) continue;
       x.fillStyle = "rgba(20,18,22,0.85)"; x.fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
     }
-    drawCircuitGround(x,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,scale);
+    yield* circuitGroundSteps(x,{x0:ox,y0:oy,x1:ox+CH,y1:oy+CH},pats,scale);
     return c;
   }
   return {
     maxChunks:64,
     get revision(){return revision;},
     get asphalt(){return pats.asphalt;},
+    get materialsReady(){return !!pats.forest&&!!W.sceneryAtlas;},
     composeTile(ix,iy,scale=.5){return renderSteps(ix,iy,scale);},
-    drawCircuit(ctx,r,scale=.5){drawCircuitGround(ctx,r,pats,scale);},
+    prepareCircuit(low){
+      const key=low?'mobile':'desktop';if(this.circuitKey===key)return;this.circuitKey=key;const request=this.circuitRequest=(this.circuitRequest||0)+1;
+      loadCircuitArt(low).then(im=>{if(this.circuitRequest!==request){im.close?.();return;}pats.circuitImage?.close?.();pats.circuitImage=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{if(this.circuitRequest===request)this.circuitKey=null;});
+    },
+    drawCircuit(ctx,r,scale=.5,procedural=false){drawCircuitGround(ctx,r,procedural?{...pats,circuitImage:null}:pats,scale);},
     draw(ctx, r, frame) {
       // Offscreen mobile composition deliberately passes frame=0. A separate usage
       // clock is required or every such chunk stays "current" and can never evict.
@@ -519,7 +525,7 @@ function drawFeature(x, f, pats) {
 function facade(kind, lit) {
   const c = document.createElement("canvas");
   c.width = 128; c.height = 56;
-  const x = c.getContext("2d");
+  const x = c.getContext("2d",{willReadFrequently:true});
   const fl = 14; // one floor = 14 height units
   for (let f = 0; f < 4; f++) {
     for (let i = 0; i < 8; i++) {
@@ -546,7 +552,7 @@ export function makeBuildings(W, tex, coreRoofs) {
   function canopy(t,low){
     const palette=Math.min(2,t.t||0),angle=((Math.round(t.x*8/TAU)%8)+8)%8,key=palette+':'+angle+':'+!!low;
     if(treeArt.has(key))return treeArt.get(key);
-    const cv=document.createElement('canvas');cv.width=cv.height=96;const c=cv.getContext('2d'),r=40,cx=45,cy=43;
+    const cv=document.createElement('canvas');cv.width=cv.height=96;const c=cv.getContext('2d',{willReadFrequently:true}),r=40,cx=45,cy=43;
     const colors=palette===0?['#263f31','#466349','#78865a']:palette===1?['#263e35','#405e4b','#718568']:['#39472e','#5b6c44','#8c9365'];
     // An irregular, softly lobed canopy and contact shadow share this small
     // cached sprite. No new gradients or shadow paths are paid per visible tree.
@@ -560,7 +566,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     treeArt.set(key,cv);return cv;
   }
   const pat = {};
-  const s = document.createElement("canvas").getContext("2d");
+  const s = document.createElement("canvas").getContext("2d",{willReadFrequently:true});
   for (const k of ["glass", "gravel", "gravel2", "tar", "concrete", "metal", "metal2", "terra", "terra2"]) {
     const t = tex["roof_" + k] || tex[k];
     if (t) pat[k] = s.createPattern(t, "repeat");
@@ -638,7 +644,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     const sc = Math.min(1, 256 / Math.max(b.w, b.h));
     const W = Math.max(8, Math.round(b.w * sc)), H = Math.max(8, Math.round(b.h * sc));
     const c = document.createElement("canvas"); c.width = W; c.height = H;
-    const x = c.getContext("2d");
+    const x = c.getContext("2d",{willReadFrequently:true});
     x.scale(sc, sc);
     const p = pat[b.roof] || pat.gravel;
     const ts = (b.roof === "terra" || b.roof === "terra2") ? 0.42 : b.roof === "glass" ? 1 : 0.65;
@@ -688,15 +694,16 @@ export function makeBuildings(W, tex, coreRoofs) {
   return {
     all, inView: (r,pad=24) => inView(r,pad),queryStats,
     // Camera-independent roofs and foliage are baked into mobile scenery tiles.
-    staticDraw(ctx,r){
-      for(const b of inView(r,18)){
-        if(b.core)continue;
+    *staticSteps(ctx,r){
+      for(const b of inView(r,18).slice()){
+        if(b.core)continue;yield;
         ctx.fillStyle='rgba(10,16,18,.3)';ctx.fillRect(b.x+9,b.y+12,b.w+5,b.h+5);
         if(b.kind==='container'){ctx.fillStyle=b.color||'#7e7770';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='rgba(0,0,0,.2)';for(let x=b.x+4;x<b.x+b.w;x+=7)ctx.fillRect(x,b.y,2,b.h);}
         else ctx.drawImage(roofSprite(b),b.x,b.y,b.w,b.h);
       }
-      this.trees(ctx,{x:0,y:0,scale:1},r,{low:false,static:true,time:0});
+      yield* this.treeSteps(ctx,{x:0,y:0,scale:1},r,{low:false,static:true,time:0});
     },
+    staticDraw(ctx,r){for(const step of this.staticSteps(ctx,r)){}},
     draw(ctx, cam, r, frame, sun, opts) {
       const D = 980 / Math.max(0.45, cam.scale);
       const list=drawOrder;list.length=0;for(const b of inView(r))list.push(b);
@@ -779,9 +786,10 @@ export function makeBuildings(W, tex, coreRoofs) {
         ctx.beginPath(); ctx.ellipse(t.x - sun.x * 26 * sun.len, t.y - sun.y * 26 * sun.len, t.r, t.r * 0.9, 0, 0, TAU); ctx.fill();
       }
     },
-    trees(ctx, cam, r, opts) {
+    trees(ctx,cam,r,opts){for(const step of this.treeSteps(ctx,cam,r,opts)){}},
+    *treeSteps(ctx, cam, r, opts) {
       const D = 980 / Math.max(0.45, cam.scale);
-      for (const t of inViewTrees(r)) {
+      for (const t of (opts.static?inViewTrees(r).slice():inViewTrees(r))) {if(opts.static)yield;
         const k = 28 / D;
         const wind = opts.time ? Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012) * 1.6 : 0;
         const x = opts.static?t.x:t.x + (t.x - cam.x) * k + wind, y = opts.static?t.y:t.y + (t.y - cam.y) * k + wind * .35;

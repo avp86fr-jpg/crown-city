@@ -8,7 +8,8 @@ export function pitDriveInput(v,input){
  else if(speed>37/.36)limited.y=Math.min(.15,input.y);
  return limited;
 }
-export const nearCircuit=G=>(!G.action?.contract||G.action.contract.id==='circuit')&&!G.wanted&&!G.circuitSession?.running&&Math.hypot(G.player.x-CIRCUIT.pit.x,G.player.y-CIRCUIT.pit.y)<110&&Math.hypot(G.player.vx||0,G.player.vy||0)<12;
+const storyMeeting=G=>!G.freeRoam&&G._flow?.objectives[G.objectiveIndex]?.id==='to_track';
+export const nearCircuit=G=>!G.race&&!storyMeeting(G)&&(!G.action?.contract||G.action.contract.id==='circuit')&&!G.wanted&&!G.circuitSession?.running&&Math.hypot(G.player.x-CIRCUIT.pit.x,G.player.y-CIRCUIT.pit.y)<110&&Math.hypot(G.player.vx||0,G.player.vy||0)<12;
 export function circuitPilot(G,v,dt){
  const n=nearestTrack(v.x,v.y),speed=Math.hypot(v.vx,v.vy),look=clamp(70+speed*.44,70,170),target=trackPoint(n.s+look);
  let offset=(v.racerIndex%2?1:-1)*28,limit=195+(v.racerIndex%3)*10;
@@ -17,7 +18,7 @@ export function circuitPilot(G,v,dt){
  for(const o of G.vehicles){if(o===v||o.dead||o.def.aircraft||Math.abs(o.x-v.x)>270||Math.abs(o.y-v.y)>270)continue;const dx=o.x-v.x,dy=o.y-v.y,front=dx*Math.sin(v.rot)-dy*Math.cos(v.rot),side=dx*Math.cos(v.rot)+dy*Math.sin(v.rot);if(front>0&&front<75+speed*.6&&Math.abs(side-offset)<45){blocked=true;offset=side>=0?-27:27;limit=Math.min(limit,Math.max(0,(front-65)*1.25));}}
  const p=G.player;if(p.type==='foot'){const dx=p.x-v.x,dy=p.y-v.y,front=dx*Math.sin(v.rot)-dy*Math.cos(v.rot);if(front>0&&front<90+speed*.7&&Math.abs(dx*Math.cos(v.rot)+dy*Math.sin(v.rot))<55){limit=0;blocked=true;}}
  const tx=target.x+Math.cos(target.rot)*offset,ty=target.y+Math.sin(target.rot)*offset,error=angle(Math.atan2(tx-v.x,-(ty-v.y))-v.rot);
- limit*=racePace(G).speed;
+ limit*=v.raceRival?(v.racePace||.84):racePace(G).speed;
  if(n.d>CIRCUIT.half-8)limit=Math.min(limit,75);if(Math.abs(error)>1)limit=Math.min(limit,55);
  v.racerWait=speed<5&&blocked?(v.racerWait||0)+dt:0;
  // A blocked driver waits; neither the parked car nor the racer is teleported.
@@ -65,6 +66,7 @@ export function startCircuit(G,hooks){
  return true;
 }
 export function circuitHint(G){
+ if(G.race||storyMeeting(G))return '';
  const s=G.circuitSession;
  if(s?.running)return s.countdown>0?'RACE CONTROL / LIGHTS OUT IN '+Math.ceil(s.countdown):`${s.valid?'TIME TRIAL':'INVALID LAP'} / ${s.time.toFixed(1)} / ${s.target}s / SECTOR ${Math.min(8,s.gate)}/8`;
  if(nearCircuit(G))return 'PIT DESK / '+(G.touch?'tap TRIAL':'E: time trial')+' / '+racePace(G).label+' '+racePace(G).target+'s / '+(G.action.circuitBest?'BEST '+G.action.circuitBest.toFixed(2)+'s':'loaner available');

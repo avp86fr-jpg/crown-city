@@ -1,16 +1,19 @@
+import {drawUrbanCourts} from './urban_courts.js';
+import {CIRCUIT,trackPoint,nearestTrack} from './circuit_world.js';
 import {drawAtlasLabels} from './map_labels.js';
 import {stepPedestrian} from './pedestrian_motion.js';
 import {drawMapPlaces,placeButtons,MAP_PLACES} from './map_places.js';
 import {drawStreetGateways} from './world_streets.js';
 import {drawDropMission,dropReady} from './airdrop.js';
-import {drawCircuitActivity,tickCircuit,startCircuit,nearCircuit,circuitHint,pitDriveInput} from './motorsport.js';
+import {drawCircuitActivity,circuitPilot,tickCircuit,startCircuit,nearCircuit,circuitHint,pitDriveInput} from './motorsport.js';
 import {CITY_HUBS,drawCityHubs} from './world_hubs.js';
 import {drawDialogue,openingScene} from './dialogue.js';
 import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,drawCasino,drawCasinoWorld} from './casino.js';
 import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
 import {slideFoot} from './foot_motion.js';
 import {characterFrame,characterLayout} from './sprite_frames.js';
-import {firstSolid,shotSpread,projectileDamage} from './combat.js';
+import {WEAPON_ART,drawHeldWeapon} from './weapons.js';
+import {playerAim,firstSolid,shotSpread,projectileDamage} from './combat.js';
 import {STATIONS,initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
 import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
@@ -720,7 +723,7 @@ function snapshot(G) {
     casino:casinoSave(G),
     missionState: { ...G.missionState }, ended: G.ended, needsBegin: G.needsBegin,
     scene: G.scene, vnId: G.scene === 'vn' ? G.vn.id : null, vnQueue: [...(G.vnQueue || [])],
-    race: G.race ? { i: G.race.i, rivalI: G.race.rivalI, t: G.race.t, countdown: G.race.countdown,
+    race: G.race ? { version: 2, i: G.race.i, rivalI: G.race.rivalI, t: G.race.t, countdown: G.race.countdown,
       started: G.race.started, rival: { x: G.race.rival.x, y: G.race.rival.y, rot: G.race.rival.rot } } : null,
     van: G.van ? { x: G.van.x, y: G.van.y, health: G.van.health, dead: G.van.dead, loose: G.van.loose } : null,
   };
@@ -790,7 +793,8 @@ function restoreState(G, d) {
     const point=G.action.contract.id==='courier'&&!G.action.contract.stage?G.meta.spawns.garage:G.meta.interactions[G.action.contract.id==='courier'?'neural':'pd'];G.waypoint={x:point[0],y:point[1]};
   }
   if (G._flow && G._flow.objectives[G.objectiveIndex].kind === 'race' && d.race) {
-    startRace(G, G._flow.objectives[G.objectiveIndex], true);
+    startRace(G, G._flow.objectives[G.objectiveIndex], d.race.version===2);
+    if(d.race.version===2){
     const r = G.race;
     r.i = Math.floor(finite(d.race.i, 0, 0, r.pts.length - 1));
     r.rivalI = Math.floor(finite(d.race.rivalI, 0, 0, r.pts.length));
@@ -798,6 +802,7 @@ function restoreState(G, d) {
     const point = d.race.rival || {};
     r.rival.x = finite(point.x, r.rival.x, 40, WORLD_W - 40); r.rival.y = finite(point.y, r.rival.y, 40, WORLD_H - 40);
     r.rival.rot = finite(point.rot, r.rival.rot);
+    }
   }
   G.checkpoint = d.checkpoint && typeof d.checkpoint === 'object' ? d.checkpoint : null;
   if (d.scene === 'vn' && VN[d.vnId]) openVN(G, d.vnId);
@@ -1119,6 +1124,7 @@ function spawnVan(G) {
 
 function objectivePos(G, obj) {
   if (!obj || !obj.at) return null;
+  if (obj.at === 'circuitPit') return {...CIRCUIT.pit};
   if (obj.at === "van" && G.van) return { x: G.van.x, y: G.van.y };
   const s = G.meta.interactions?.[obj.at] || G.meta.spawns[obj.at];
   if (s) return { x: s[0], y: s[1] };
@@ -1341,6 +1347,7 @@ function headingVec(rot) { return { x: Math.sin(rot), y: -Math.cos(rot) }; }
 function rightVec(rot) { return { x: Math.cos(rot), y: Math.sin(rot) }; }
 
 function tickPlayer(G, dt) {
+  if(G.input.fire)G.player.aimRot=playerAim(G,G.player).rot;
   if(G.circuitSession?.running&&G.circuitSession.countdown>0){G.player.vx=G.player.vy=0;return;}
   if(G.player.type==='foot' && G.action?.dodgeT>0) return;
   if (G.player.type === "veh") {
@@ -1782,34 +1789,14 @@ function shoot(G, from, onFoot) {
   const weapon=requestShot(G); if(!weapon) return;
   from.shotTick = G.ticks;
   G.lastShot = now();
-  let rot = from.rot;
-  if (G.touch) rot = aimDirection(G.input, rot, G.cam.rot);
-  if (G.input.mouse.fire && !G.touch) {
-    const aim = screenToWorld(G, G.input.mouse.x, G.input.mouse.y);
-    // The cursor addresses the visible chest-height tracer, projected above ground.
-    rot = Math.atan2(aim.x - from.x, -(aim.y+(onFoot?23:14)-from.y));
-  }
-  from.aimRot=rot;
-  const h = headingVec(rot);
-  const speed = weapon.speed;
-  // light auto-aim on foot: snap to the nearest target in a narrow cone
-  let ax = h.x, ay = h.y;
-  if (onFoot && G.settings.aimAssist !== false) {
-    let best = null, bd = 320;
-    const targets = G.cops.concat(G.peds.filter((p) => p.copPed && !p.dead));
-    if (G._flow?.objectives[G.objectiveIndex]?.kind === 'intercept' && G.van && !G.van.dead) targets.push(G.van);
-    for (const t of targets) {
-      const dx = t.x - from.x, dy = t.y - from.y, d = Math.hypot(dx, dy);
-      if (!t.dead && d > 0 && d < bd && G.nav.clearLine(from.x, from.y, t.x, t.y) && (dx * h.x + dy * h.y) / d > (G.touch ? .8 : .94)) { bd = d; best = { x: dx / d, y: dy / d }; }
-    }
-    if (best) { ax = best.x; ay = best.y; }
-  }
-  const muzzle=onFoot?18:muzzleLength(from,Math.atan2(ax,-ay));
+  const aim=playerAim(G,from,onFoot),rot=aim.rot,h=headingVec(rot),speed=weapon.speed;
+  const ax=h.x,ay=h.y,muzzle=onFoot?WEAPON_ART[weapon.id].muzzle:muzzleLength(from,rot);
   const sx = from.x + ax * muzzle, sy = from.y + ay * muzzle;
   const angle=Math.atan2(ax,-ay),spread=shotSpread(G,weapon,from),block=firstSolid(G,from.x,from.y,sx,sy);
   from.aimRot=angle;G.action.bloom=Math.min(1,(G.action.bloom||0)+(weapon.kick||.1));
   for(let i=0;block===null&&i<weapon.pellets;i++) {
-    const a=angle+(Math.random()-.5)*spread;
+    const spreadUnit=weapon.pellets>1?(i+.25+Math.random()*.5)/weapon.pellets-.5:Math.random()-.5;
+    const a=angle+spreadUnit*spread;
     G.bullets.push({ x:sx,y:sy,vx:Math.sin(a)*speed,vy:-Math.cos(a)*speed,life:weapon.range/speed,range:weapon.range,falloff:weapon.falloff,travel:0,height:onFoot?23:14,friend:true,waterLevel:!!from.def?.boat,damage:weapon.damage,carDamage:weapon.carDamage });
   }
   G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
@@ -2137,15 +2124,14 @@ function tickVehicles(G, dt) {
     if (v.burning || v.health < 45) tickVehDamage(G, v, dt);
   }
   if (G._ambT) G._ambT -= dt;
-  if (G.race && G.race.rival && G.race.started && !G.race.finished) {
+  if (G.race && G.race.rival && !G.race.rival.dead && G.race.started && !G.race.finished) {
     const riv = G.race.rival;
     const pts = G.race.pts;
     const i = Math.min(G.race.rivalI, pts.length - 1);
     const t = pts[i];
-    const ang = Math.atan2(t[0] - riv.x, -(t[1] - riv.y));
-    const diff = angNorm(ang - riv.rot);
-    tickDrive(G, riv, { x: clamp(diff * 2.4, -1, 1), y: Math.abs(diff) > 0.9 ? 0.55 : 0.92, hand: Math.abs(diff) > 1.1 }, dt, false);
-    if (Math.hypot(riv.x - pts[i][0], riv.y - pts[i][1]) < 65) G.race.rivalI++;
+    tickDrive(G,riv,circuitPilot(G,riv,dt),dt,false);
+    if (Math.hypot(riv.x-t[0],riv.y-t[1])<96&&nearestTrack(riv.x,riv.y).d<CIRCUIT.half+8) G.race.rivalI++;
+
   }
 }
 
@@ -2430,22 +2416,25 @@ function tickMission(G, dt) {
 function startRace(G, obj = {}, resuming = false) {
   if (G.player.type !== 'veh' || G.player.def.boat || G.player.def.aircraft) return;
   if (G.race && G.race.rival) G.vehicles = G.vehicles.filter(v => v !== G.race.rival);
-  const start = G.meta.spawns.raceStart;
-  const pts = raceCourse(G.meta, obj.laps || 1);
-  G.race = { i: 0, pts, laps: obj.laps || 1, gatesPerLap: G.meta.race.checkpoints.length, t: 0, rivalI: 0, rival: null, started: false, countdown: 3 };
-  G.race.rival = makeVeh('dart', start[0] + 30, start[1], Math.PI / 2, { parked: false, ai: true, raceRival: true });
-  // A fixed pace that the starter Riot can beat; no rubber-band teleporting.
-  G.race.rival.def = { ...G.race.rival.def, max: VEH_DEFS.riot.max * 0.75, accel: VEH_DEFS.riot.accel * 0.8 };
+  const start=trackPoint(0),pts=raceCourse(G.meta,obj.laps||1);
+  G.race={i:0,pts,laps:obj.laps||1,gatesPerLap:32,t:0,rivalI:0,rival:null,started:false,countdown:3};
+  const grid=side=>({x:start.x+Math.cos(start.rot)*side,y:start.y+Math.sin(start.rot)*side});
+  const rival=grid(-42),player=grid(42);
+  if(!resuming&&G.vehicles.some(v=>v!==G.player&&((v.x-player.x)**2+(v.y-player.y)**2<130**2||(v.x-rival.x)**2+(v.y-rival.y)**2<130**2))){G.race=null;if(G.ticks%90===0)toast(G,'Race control: waiting for the grid to clear.');return;}
+  G.race.rival=makeVeh('dart',rival.x,rival.y,start.rot,{parked:false,ai:true,raceRival:true,racerIndex:1,racePace:.70});
+  // Fixed, visible pace; the starter Riot can win without upgrades or rubber-banding.
   G.vehicles.push(G.race.rival);
-  if (!resuming) { G.player.x = start[0]; G.player.y = start[1]; G.player.rot = Math.PI / 2; }
-  G.player.vx = G.player.vy = 0;
-  toast(G, 'Hold at the lights…');
+  if(!resuming){Object.assign(G.player,grid(42),{rot:start.rot});G.cam.x=G.player.x;G.cam.y=G.player.y;}
+  G.player.vx=G.player.vy=G.player.yaw=0;
+  setHint(G);G.audio.race?.('count');toast(G,'CROWN GRAND PRIX / Hold at the lights…');
 }
 function tickRace(G, obj, dt) {
   const R = G.race;
   if (!R || R.finished) return;
+  if(G.player.dead||G.player.health<=0){completeMission(G,false);return;}
   if (R.countdown > 0) {
-    R.countdown = Math.max(0, R.countdown - dt);
+    const beat=Math.ceil(R.countdown);R.countdown = Math.max(0, R.countdown - dt);
+    if(Math.ceil(R.countdown)!==beat)G.audio.race?.(R.countdown===0?'go':'count');
     if (R.countdown === 0) { toast(G, 'GO! Follow the numbered gates.'); R.started = true; }
     return;
   }
@@ -2454,9 +2443,9 @@ function tickRace(G, obj, dt) {
     R.finished = true; completeMission(G, false); return;
   }
   const cp = R.pts[R.i];
-  if (cp && Math.hypot(G.player.x - cp[0], G.player.y - cp[1]) < 65) {
-    R.i++; G.audio.pickup();
-    if (R.i >= R.pts.length) { R.finished = true; completeMission(G, true); }
+  if (cp && Math.hypot(G.player.x - cp[0], G.player.y - cp[1]) < 96 && nearestTrack(G.player.x,G.player.y).d<CIRCUIT.half+8) {
+    R.i++; G.audio.race?.('sector');
+    if (R.i >= R.pts.length) { R.finished = true; G.audio.race?.('finish');completeMission(G, true); }
     else toast(G, 'Gate ' + R.i + '/' + R.pts.length);
   }
 }
@@ -2544,7 +2533,7 @@ function applyQuality(G) {
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
   // Mobile retains composed tiles; bound duplicate source art to 8 MiB.
-  if (G.ground) G.ground.maxChunks=q==='low'?8:q==='med'?40:64;
+  if (G.ground){G.ground.maxChunks=q==='low'?8:q==='med'?40:64;G.ground.prepareCircuit(q==='low');}
 }
 function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
@@ -2886,7 +2875,7 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawStreetGateways(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
+  drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -3309,7 +3298,7 @@ function drawChar(G,a){
  const spr=crowd||G.assets.sprites['char_'+(a.sprite||'chaos')];if(!spr)return;
  const ctx=G.ctx,hero=a===G.player||a.sprite==='chaos',aiming=a===G.player&&G.input.fire&&!(G.action?.reloadT>0);
  const moving=(a.speed||0)>12&&!a.dead,dir=((Math.round((aiming?a.aimRot??a.rot:a.rot)/(Math.PI/4))%8)+8)%8,row=(dir+6)%8;
- let col=aiming?5:moving?Math.floor((a.dist||0)/9)%4:4;
+ let col=moving?Math.floor((a.dist||0)/9)%4:4;
  if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);}
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
  const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
@@ -3328,10 +3317,7 @@ function drawChar(G,a){
  const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';
  ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
- if(a===G.player&&moving&&aiming&&!G.settings.reducedMotion&&measured){
-  const legRow=(((Math.round(a.rot/(Math.PI/4))%8)+8)%8+6)%8,leg=characterFrame(spr,false,Math.floor((a.dist||0)/9)%4,legRow),l=characterLayout(leg,50);
-  ctx.save();ctx.beginPath();ctx.rect(-28,-15,56,18);ctx.clip();ctx.drawImage(spr,leg.x,leg.y,leg.w,leg.h,l.x,l.y+pose.bob,l.w,l.h);ctx.restore();
- }
+ if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
  if(a!==G.player&&G.settings.quality!=='low')drawAmbientGesture(G,a);
  ctx.restore();
@@ -3340,11 +3326,11 @@ function drawChar(G,a){
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
 function drawAimGuide(G){
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
-  const p=G.player,c=G.ctx,rot=p.aimRot??aimDirection(G.input,p.rot,G.cam.rot),h=headingVec(rot);
-  let length=200;for(let n=24;n<200;n+=12)if(G.solidAt(p.x+h.x*n,p.y+h.y*n)){length=n;break;}
-  const height=p.type==='foot'?23:14,x=p.x+h.x*length,y=p.y+h.y*length-height;
+  const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
+  const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);
+  const height=aim.height,x=p.x+h.x*length,y=p.y+h.y*length-height;
   c.save();c.strokeStyle=G.hitConfirmT>0?'#fff8e5':'rgba(224,203,158,.7)';c.lineWidth=1.2;c.setLineDash([3,7]);c.beginPath();c.moveTo(p.x+h.x*30,p.y+h.y*30-height);c.lineTo(x,y);c.stroke();c.setLineDash([]);
-  c.beginPath();c.arc(x,y,G.hitConfirmT>0?5:6+shotSpread(G,WEAPONS[G.action.weapon],p)*30,0,TAU);c.stroke();
+  c.beginPath();c.arc(x,y,G.hitConfirmT>0?5:Math.max(4,Math.tan(shotSpread(G,weapon,p)/2)*length),0,TAU);c.stroke();
   c.beginPath();c.moveTo(x-12,y);c.lineTo(x-6,y);c.moveTo(x+6,y);c.lineTo(x+12,y);c.moveTo(x,y-12);c.lineTo(x,y-6);c.moveTo(x,y+6);c.lineTo(x,y+12);c.stroke();c.restore();
 }
 function drawStreetWaypoint(G){

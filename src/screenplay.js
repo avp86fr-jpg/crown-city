@@ -9,7 +9,7 @@ export function directStory(VN,MISSIONS){
  intro_garage4:"One more thing. A buyer offered chips for that key. We can keep it quiet, or sell a decoy to fund the crew. Either way, the real key comes home with us. Your call. It will have a price.",
  m1_win_safe:"Key's still sealed. Good. Now we need a way inside. Fire called. She knows the Palace service roads. Says she'll only talk to a driver who can keep up.",
  m1_win_flip:"The decoy sold. We have chips, but your buyer wasn't alone. Metro knows who hit the convoy. Fire can still get us inside. First, she wants to see if you deserve the keys.",
- m2_intro:"I ran Palace deliveries for six years. Then they put my brother's name on that ledger. You want my service route? Two laps. Every gate. Show me you can bring a crew home in one piece.",
+ m2_intro:"I ran Palace deliveries for six years. Then they put my brother's name on that ledger. You want my service route? One full circuit lap. Every gate. Show me you can bring a crew home in one piece.",
  m2_intro2:"Keep the route warm. I'm not here for your car, Fire. I'm here because somebody has to put a dent in that building.",
  m2_win:"All right. I trust your hands. The service route is yours. Neural can blind the cameras, but she needs a Metro scrambler. Ask her about the fee before she asks about your kidneys.",
  m2_lose:"You're driving angry. That's how the Palace wins twice. Breathe. Brake before the turn. Run it again. I am not sending my people into a car you can't control.",
