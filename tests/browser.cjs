@@ -69,7 +69,16 @@ async function dialogue(page, choices) {
       assert.equal(await page.evaluate(() => __CC.G.missionIndex), 0);
     });
     await check('real keyboard movement, firing, map clicks, pause, save and reload', async () => {
-      await page.evaluate(() => { const G = __CC.G, at = T.findSafe(G, 2108, 2400, 10, true); G.player = T.makeFoot(G, at.x, at.y, 0); });
+      await page.evaluate(() => {
+        const G=__CC.G;
+        // This check measures keyboard input. A randomly spawned car crossing
+        // the 38 px walking corridor made the assertion depend on traffic luck.
+        // Hull avoidance and runovers have their own physical regression tests.
+        G.vehicles=G.vehicles.filter(v=>Math.hypot(v.x-2108,v.y-2400)>180);
+        G.peds=G.peds.filter(p=>Math.hypot(p.x-2108,p.y-2400)>180);
+        G.streetVehicleSource=null;G.nearVehicles=null;
+        const at=T.findSafe(G,2108,2400,10,true);G.player=T.makeFoot(G,at.x,at.y,0);
+      });
       const y = await page.evaluate(() => __CC.G.player.y);
       await page.keyboard.down('KeyW'); await step(page, 30); await page.keyboard.up('KeyW'); await step(page);
       assert.ok(await page.evaluate(y => __CC.G.player.y < y - 20, y));

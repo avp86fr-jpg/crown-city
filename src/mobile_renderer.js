@@ -1,3 +1,4 @@
+import {drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {drawStreetGateways} from './world_streets.js';
 import {drawDropMission} from './airdrop.js';
@@ -122,7 +123,7 @@ export function drawMobileWorld(G,H) {
     c.save();c.translate(p.x,p.y);c.rotate(p.rot||0);c.globalAlpha=p.broken?.7:1;c.drawImage(image,-16,-16,32,32);c.restore();
   }
   for(const p of G.pickups)if(!p.got&&p.x>r.x0&&p.x<r.x1&&p.y>r.y0&&p.y<r.y1)c.drawImage(G.assets.chipIcon,p.x-8,p.y-8,16,16);
-  H.drawObjectiveGround(G);
+  drawBlood(G,r,true);H.drawObjectiveGround(G);
   const actors=G._mobileActors||(G._mobileActors=[]);actors.length=0;for(const v of G.vehicles)if(v.x>r.x0-80&&v.x<r.x1+80&&v.y>r.y0-80&&v.y<r.y1+80)actors.push(v);
   for(const p of G.peds)if(p.x>r.x0-30&&p.x<r.x1+30&&p.y>r.y0-60&&p.y<r.y1+30)actors.push(p);
   if(G.player.type==='foot')actors.push(G.player);

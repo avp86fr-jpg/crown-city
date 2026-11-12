@@ -1,5 +1,5 @@
 // Real-time RAF soak. Emulation compares builds; it is not a Redmi benchmark.
-// node tools/sustained-profile.cjs LABEL URL [seconds=360] [cpu=4] [idle|flight]
+// node tools/sustained-profile.cjs LABEL URL [seconds=360] [cpu=4] [idle|flight|street]
 const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:path');
 (async()=>{
  const [label='soak',url='http://127.0.0.1:8032/',seconds='360',cpu='4',route='idle']=process.argv.slice(2);
@@ -19,6 +19,19 @@ const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:
     const points=[[10000,2400],[11000,7000],[7600,8600],[2200,8600],[2108,2600]];let goal=0;
     const pulse=G._pulseInput;G._pulseInput=()=>{pulse();const at=points[goal];if(Math.hypot(at[0]-plane.x,at[1]-plane.y)<380)goal=(goal+1)%points.length;const error=Math.atan2(at[0]-plane.x,-(at[1]-plane.y))-plane.rot;G.input.x=Math.max(-1,Math.min(1,Math.atan2(Math.sin(error),Math.cos(error))*1.6));G.input.y=.7;G.input.keyDrive=true;G.input.touchJoy.active=false;};
    }
+   if(route==='street'){
+    // Alternate dense streets and streaming boundaries. Repeated real bullet
+    // impacts exercise casualty reactions, response vehicles and effect expiry.
+    const points=[[2108,2400],[1900,3450],[5600,2600],[10500,7500],[2108,2400],[3100,1800],[8000,8600],[2108,2400]];
+    let nextMove=G.ticks+45*60,nextShot=G.ticks+180,point=0;
+    const pulse=G._pulseInput;G._pulseInput=()=>{pulse();G.health=100;
+      if(G.ticks>=nextMove){point=(point+1)%points.length;__CC.goto(...points[point]);nextMove=G.ticks+45*60;}
+      if(G.ticks>=nextShot){nextShot=G.ticks+180;
+        const p=G.peds.find(p=>!p.dead&&!p.mission&&!p.copPed&&Math.hypot(p.x-G.player.x,p.y-G.player.y)<550);
+        if(p){G.bullets.push({x:p.x-16,y:p.y,vx:600,vy:0,life:.2,friend:true,damage:200});T.tickBullets(G,1/30);}
+      }
+    };
+   }
 
    window.soak={last:performance.now(),frames:[],prof:[],start:performance.now(),startFrames:G.renderCount,startTicks:G.ticks};
    const sample=t=>{soak.frames.push(t-soak.last);soak.last=t;soak.prof.push({...G.prof});requestAnimationFrame(sample);};requestAnimationFrame(sample);
@@ -35,6 +48,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:
    });
    s.fps=(s.frames-lastFrames)/(s.seconds-lastTime);s.simHz=(s.ticks-lastTicks)/(s.seconds-lastTime);lastFrames=s.frames;lastTicks=s.ticks;lastTime=s.seconds;
    s.metrics=(await cdp.send('Performance.getMetrics')).metrics.filter(m=>/JSHeapUsedSize|Nodes|Documents|TaskDuration/.test(m.name));
+   s.effects=await page.evaluate(()=>{const G=__CC.G;return{drops:G.bloodFX?.drops.length||0,stains:G.bloodFX?.stains.length||0,pool:G.bloodFX?.pool.length||0,budget:G.streetBudget||1,pedTarget:G.pedsys.effectiveTarget,population:G.traffic.population};});
    samples.push(s);fs.writeFileSync(path.join(out,label+'.json'),JSON.stringify({url,route,cpu:Number(cpu),errors,samples},null,2));
    console.log(JSON.stringify({seconds:Math.round(s.seconds),fps:s.fps,simHz:s.simHz,rafP95:s.rafP95,heap:s.heap,entities:s.entities,prof:s.prof}));
    if(elapsed===0||elapsed+30>=Number(seconds))await page.screenshot({path:path.join(out,label+'-'+Math.round(s.seconds)+'.png')});

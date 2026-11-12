@@ -1,3 +1,4 @@
+import {bloodImpact,tickBlood,drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {CIRCUIT,trackPoint,nearestTrack} from './circuit_world.js';
 import {drawAtlasLabels} from './map_labels.js';
@@ -346,6 +347,7 @@ function navOk(G, x, y) {
 }
 
 function spawnWorld(G) {
+  G.bloodFX=null;
   G.circuitRespawns=null;
   const meta = G.meta;
   G.props = meta.props.map((p) => ({ ...p, broken: false, vx: 0, vy: 0, spin: 0 }));
@@ -1859,10 +1861,10 @@ function tickBullets(G, dt) {
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend&&!target.dead){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;if(G.health<=0){wasted(G);return;}}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
       if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
-      G.particles.push({kind:'blood',x:b.x,y:b.y,life:.25});if(target.hp<=0)killPed(G,target,true);
+      if(target.hp<=0){target.vx=b.vx*.035;target.vy=b.vy*.035;killPed(G,target,true);}else bloodImpact(G,target,b.vx,b.vy,projectileDamage(b)/24);
     }
   }
   G.bullets=G.bullets.filter(b=>b.life>0);
@@ -1872,6 +1874,7 @@ function respawn(G) { wasted(G); }
 function killPed(G, p, byGun, attributed=true) {
   if (p.dead) return;
   p.dead = true; p.deadT = 0; p.speed = 0;
+  bloodImpact(G,p,p.vx||0,p.vy||0,byGun?1.1:Math.max(1.3,Math.hypot(p.vx||0,p.vy||0)/70),true);
   G.audio.hit();
   if(attributed){if (p.copPed) crime(G, 2, p.x, p.y, true); else crime(G, 1, p.x, p.y, false);}
   scarePeds(G, p.x, p.y, 320);
@@ -2231,7 +2234,7 @@ function tickPlayerTrafficHits(G,dt){
     if(!pl.impactT)for(const v of moving){
       if(Math.abs(v.x-pl.x)>110||Math.abs(v.y-pl.y)>110)continue;
       if(!circleBody(v,pl.x,pl.y,8)&&segmentBody(v,pl.x+v.x-(v.prevX??v.x),pl.y+v.y-(v.prevY??v.y),pl.x,pl.y,8)===null)continue;
-      const speed=Math.hypot(v.vx,v.vy);G.health-=Math.min(75,speed*(v.def.bike?.16:.26));G.hurtT=.6;pl.impactT=1;
+      const speed=Math.hypot(v.vx,v.vy);G.health-=Math.min(75,speed*(v.def.bike?.16:.26));G.hurtT=.6;pl.impactT=1;bloodImpact(G,pl,v.vx,v.vy,speed/180);
       moveFootMap(G,pl,v.vx/speed*26,v.vy/speed*26);v.vx*=.9;v.vy*=.9;G.audio.hit();addShake(G,7);
       if(G.health<=0){wasted(G);return;}break;
     }
@@ -2257,7 +2260,7 @@ function tickPeds(G, dt, playerImpacts=true) {
       const px=car.prevX??car.x,py=car.prevY??car.y;
       if(!circleBody(car,p.x,p.y,9)&&segmentBody(car,p.x+(car.x-px),p.y+(car.y-py),p.x,p.y,9)===null)continue;
       const speed=Math.hypot(car.vx,car.vy);p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
-      if(p.hp<=0){if(car===pl&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,car===pl);}else{p.dive=.3;if(car===pl)crime(G,1,p.x,p.y,false,2);}
+      if(p.hp<=0){if(car===pl&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,car===pl);}else{bloodImpact(G,p,car.vx,car.vy,speed/140);p.dive=.3;if(car===pl)crime(G,1,p.x,p.y,false,2);}
       if(car===pl){G.audio.hit();G.hitConfirmT=.2;car.vx*=.94;car.vy*=.94;}struck=true;break;
     }
     if(struck)continue;
@@ -2277,13 +2280,11 @@ function tickPeds(G, dt, playerImpacts=true) {
       const tx = p.threatX ?? pl.x, ty = p.threatY ?? pl.y;
       if(!p._fleeNext||G.ticks>=p._fleeNext){p._fleeHeading=escapeHeading(G,p,{x:tx,y:ty});p._fleeNext=G.ticks+10;}
       const want=p._fleeHeading;
-      p.rot = p.rot + angNorm(want - p.rot) * Math.min(1, 6 * dt);
-      const h = headingVec(p.rot);
       const sp = (p.walk || 30) * 3.4;
-      const ox=p.x,oy=p.y;moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
-      const moved=Math.hypot(p.x-ox,p.y-oy);p.speed=moved/Math.max(.001,dt);p.dist+=moved;
-      if(moved<.1)p._fleeNext=0;
-      if (p.flee <= 0) { p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1; }
+      const moved=!p._escapeBlocked&&stepPedestrian(G,p,want,sp,dt,{road:true});
+      p.cityActivity=moved?'fleeing':'cowering';if(!moved)p.speed=p.vx=p.vy=0;
+      p.onRoad=G.surfaceAt(p.x,p.y)==='road';
+      if (p.flee <= 0) {const h=headingVec(p.rot);p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1;p.crossing=false;p.cityActivity=null;p._crossWait=0;}
       continue;
     }
     if (G.cityAI?.steerPed(p, dt)) continue;
@@ -2351,6 +2352,7 @@ function tickProps(G, dt) {
 }
 
 function tickParticles(G, dt) {
+  tickBlood(G,dt);
   tickLightEffects(G,dt);
   for (const p of G.particles) {
     if (!p.maxLife) p.maxLife = p.life;
@@ -2551,6 +2553,14 @@ function adaptRes(G, dt) {
   if (A.t < 2) return;
   const avg = A.sum / A.n,elapsed=A.t; A.t = 0; A.n = 0; A.sum = 0;
   if (G.settings.autoRes === false) return;
+  if(G.touch&&G.settings.quality==='low'){
+    A.streetBadFor=avg>1/42?(A.streetBadFor||0)+elapsed:0;
+    A.streetGoodFor=avg<1/52?(A.streetGoodFor||0)+elapsed:0;
+    // Resolution cannot cure crowded simulation work. Reduce only unseen
+    // ambient replenishment after sustained load; preserve visible actors.
+    if(A.streetBadFor>=4){G.streetBudget=.8;A.streetGoodFor=0;}
+    else if(A.streetGoodFor>=16){G.streetBudget=1;A.streetBadFor=0;}
+  }
   const floor=G.directRaster?.75:.6,r=Math.max(floor,G.resScale||1);
   A.cooldown=Math.max(0,(A.cooldown||0)-elapsed);
   A.goodFor=avg<1/58?(A.goodFor||0)+elapsed:0;
@@ -2564,6 +2574,7 @@ function adaptRes(G, dt) {
 }
 function volStep(v, d) { const n = Math.round((v + d * 0.1) * 10) / 10; return n > 1.001 ? 0 : n < -0.001 ? 1 : n; }
 function applyQuality(G) {
+  G.streetBudget=1;if(G._ar)G._ar.streetBadFor=G._ar.streetGoodFor=0;
   if (G.audio && G.audio.setLite) G.audio.setLite(G.settings.quality === "low");
   const q = G.settings.quality;
   if(q!=='low')releaseBakedWorld(G);
@@ -2913,6 +2924,7 @@ function renderWorldLayer(G) {
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
+  drawBlood(G,r,true);
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
@@ -3126,6 +3138,7 @@ function vehLights(G, c, v, night, map) {
 
 function drawParticles(G, r, top) {
   const ctx = G.ctx, assets = G.assets;
+  if(!top)drawBlood(G,r,false);
   if(!top){ctx.save();ctx.lineWidth=1.8;ctx.lineCap='round';for(const b of G.bullets){if(b.x<r.x0||b.x>r.x1||b.y<r.y0||b.y>r.y1)continue;ctx.strokeStyle=b.friend?'#ffe0a0':'#ff8c7b';ctx.beginPath();ctx.moveTo(b.x-b.vx*.018,b.y-b.vy*.018-(b.height??23));ctx.lineTo(b.x,b.y-(b.height??23));ctx.stroke();}ctx.restore();}
   for (const p of G.particles) {
     if (p.x < r.x0 || p.x > r.x1 || p.y < r.y0 || p.y > r.y1) continue;
@@ -3234,7 +3247,7 @@ function drawVeh(G, v) {
     if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
     const length=v.kind==='bus'?150:v.def.bike?82:v.kind==='wake'?133:v.kind==='van'||v.kind==='ambulance'?128:116;
     ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
-    ctx.filter='none';if(G.settings.quality!=='low'||v===G.player)drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
+    ctx.filter='none';drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
     if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
       ctx.save();ctx.rotate((v.turnSign||0)*.08);ctx.fillStyle=v===G.player?'#513d5e':'#34434b';ctx.beginPath();ctx.ellipse(0,2,8,14,0,0,TAU);ctx.fill();
       ctx.fillStyle=v===G.player?'#d2c5ad':'#27343b';ctx.beginPath();ctx.ellipse(0,-12,6,7,0,0,TAU);ctx.fill();ctx.strokeStyle='#acb7a0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-6,-4);ctx.lineTo(-11,-11);ctx.moveTo(6,-4);ctx.lineTo(11,-11);ctx.stroke();ctx.restore();
@@ -3340,12 +3353,14 @@ function drawChar(G,a){
  if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);}
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
  const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
- const layout=characterLayout(frame,hero?50:48),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
+ const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)):1;
+ const layout=characterLayout(frame,hero?50:48*stature),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
  ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
- if(a.dead){const fall=clamp((a.deadT||0)*4,0,1);ctx.globalAlpha*=.65;ctx.rotate(fall*.85);ctx.scale(1,1-fall*.7);}
+ if(a.dead){const t=clamp((a.deadT||0)*2.7,0,1),fall=t*t*(3-2*t);ctx.globalAlpha*=.82;ctx.translate(0,-5*fall);ctx.rotate(fall*1.05*(a.fallSide||1));ctx.scale(1,1-fall*.55);}
  if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
  if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
+ if(a.cityActivity==='cowering'&&!a.dead){ctx.translate(0,5);ctx.scale(1.04,.76);}
  if(a.dive>0){ctx.rotate((a.rot||0)*.15);ctx.scale(1.12,.45);}
  if(a===G.player&&G.action?.dodgeT>0){
   const k=1-G.action.dodgeT/.48,tuck=Math.sin(k*Math.PI),side=Math.sin(G.action.dodgeRot-G.cam.rot)>=0?1:-1;

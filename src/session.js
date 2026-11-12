@@ -22,6 +22,7 @@ export function settingsFrom(value, touch = false) {
     controlSize: [.9, 1, 1.15].includes(s.controlSize) ? s.controlSize : 1,
     controlOpacity: [.55, .8, 1].includes(s.controlOpacity) ? s.controlOpacity : .8,
     batterySaver: s.batterySaver === true,
+    blood: ['full','reduced','off'].includes(s.blood)?s.blood:'full',
   };
 }
 export function flagsFrom(value) {
