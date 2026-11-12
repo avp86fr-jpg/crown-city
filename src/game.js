@@ -30,6 +30,8 @@ import { createAudio } from "./audio.js";
 import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
+import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
+import {releaseBakedWorld} from './baked_world.js';
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
 import { createLighting, ambientAt, darkness, sunAt, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
 import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
@@ -313,7 +315,7 @@ function clearAt(G, x, y, r, foot = true) {
 }
 // nearest open spot with clearance r that also reaches the street grid
 function findSafe(G, x, y, r = 14, foot = true, offRoad = false) {
-  const good = (px, py) => clearAt(G, px, py, r, foot) && navOk(G, px, py) && (!offRoad || G.surfaceAt(px, py) !== "road");
+  const good = (px, py) => clearAt(G, px, py, r, foot) && navOk(G, px, py) && (!offRoad || G.surfaceAt(px, py) !== "road") && (!foot||!(G.vehicles||[]).some(v=>!v.def.boat&&!airborne(v)&&circleBody(v,px,py,r+3)));
   if (good(x, y)) return { x, y };
   for (let rad = 8; rad < 900; rad += 8) {
     const n = Math.max(8, Math.round(rad / 6));
@@ -1224,6 +1226,7 @@ function tickPlay(G, dt) {
   if (G.input.crewP && nearService(G)) { G.scene='garage'; G.menuSel=0; return; }
   if (G.input.radioP && G.player.type === "veh") { G.radioName = G.audio.nextStation(); G.radioT = 2.5; }
   G.ticks++;
+  if(G.ticks%30===0)retireStreetActors(G);
   if(G.action.contract?.id!=='airdrop')G.parcel=null;
   tickAction(G,dt,{moveFoot});
   G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);
@@ -1245,16 +1248,20 @@ function tickPlay(G, dt) {
   for(const v of G.vehicles){v.prevX=v.x;v.prevY=v.y;}
   tickPlayer(G, dt);
   if(recovery!==(G.recoverySerial||0))return;
-  G.cityAI?.begin(dt);
-  G.traffic.tick(dt);
+  // Player physics, weapons and contacts remain 60 Hz. Nearby ambient movement
+  // advances at 30 Hz on Performance mobile, with the full elapsed time.
+  const streetStep=G.touch&&G.settings.quality==='low'?2:1;
+  const streetDue=G.ticks%streetStep===0,streetDt=dt*streetStep;
+  if(streetDue){G.cityAI?.begin(streetDt);G.traffic.tick(streetDt);}
   tickVehicles(G, dt);
   if(recovery!==(G.recoverySerial||0))return;
   tickCollisions(G);
   tickJack(G, dt);
-  G.pedsys.tick(dt);
-  tickPeds(G, dt);
+  tickPlayerTrafficHits(G,dt);
   if(recovery!==(G.recoverySerial||0))return;
-  separateCharacters(G);
+  if(streetDue){G.pedsys.tick(streetDt);tickPeds(G,streetDt,false);}
+  if(recovery!==(G.recoverySerial||0))return;
+  if(streetDue)separateCharacters(G);
   const search = G.policeTarget || G.player;
   if(G.wanted>0||G.cops.length)G.nav.update(search.x, search.y);
   tickWanted(G, dt);
@@ -1424,7 +1431,7 @@ function resolveFootVehicles(G,p,oldX=p.x,oldY=p.y){
   const version=G.streetVehicleGeneration||0,current=G.streetVehicleSource===G.vehicles;
   if(current&&p._bodyPass===version&&p._bodyX===p.x&&p._bodyY===p.y)return;
   for(const v of localStreetVehicles(G,p.x,p.y)){
-    if(v.def.boat||airborne(v)||Math.abs(v.x-p.x)>90||Math.abs(v.y-p.y)>90||Math.hypot(v.vx||0,v.vy||0)>45)continue;
+    if(v.def.boat||airborne(v)||Math.abs(v.x-p.x)>120||Math.abs(v.y-p.y)>120||Math.hypot(v.vx||0,v.vy||0)>45)continue;
     if(!circleBody(v,p.x,p.y,8))continue;
     const b=bodySize(v),q=localPoint(v,p.x,p.y),c=Math.cos(v.rot),sn=Math.sin(v.rot);
     let dx=0,dy=0;
@@ -2210,7 +2217,7 @@ function lightHeld(G, rd, pos) {
   return true;
 }
 
-function tickPeds(G, dt) {
+function tickPlayerTrafficHits(G,dt){
   const pl = G.player;
   const moving=G.movingVehicles||G.vehicles.filter(v=>!v.dead&&!v.def.boat&&!airborne(v)&&Math.hypot(v.vx||0,v.vy||0)>45);
   if(pl.type==='foot'){
@@ -2223,6 +2230,10 @@ function tickPeds(G, dt) {
       if(G.health<=0){wasted(G);return;}break;
     }
   }
+}
+function tickPeds(G, dt, playerImpacts=true) {
+  const pl=G.player;
+  if(playerImpacts)tickPlayerTrafficHits(G,dt);
   for (const b of G.bullets || []) if ((G.ticks & 3) === 0) scarePeds(G, b.x, b.y, 90);
   const localView=G.touch&&G.settings.quality==='low'?streetViewport(G):null,co=Math.abs(Math.cos(G.cam.rot||0)),si=Math.abs(Math.sin(G.cam.rot||0));
   const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
@@ -2434,7 +2445,7 @@ function startRace(G, obj = {}, resuming = false) {
   const grid=side=>({x:start.x+Math.cos(start.rot)*side,y:start.y+Math.sin(start.rot)*side});
   const rival=grid(-42),player=grid(42);
   if(!resuming&&G.vehicles.some(v=>v!==G.player&&((v.x-player.x)**2+(v.y-player.y)**2<130**2||(v.x-rival.x)**2+(v.y-rival.y)**2<130**2))){G.race=null;if(G.ticks%90===0)toast(G,'Race control: waiting for the grid to clear.');return;}
-  G.race.rival=makeVeh('dart',rival.x,rival.y,start.rot,{parked:false,ai:true,raceRival:true,racerIndex:1,racePace:.70});
+  G.race.rival=makeVeh('dart',rival.x,rival.y,start.rot,{parked:false,ai:true,raceRival:true,racerIndex:1,racePace:.79});
   // Fixed, visible pace; the starter Riot can win without upgrades or rubber-banding.
   G.vehicles.push(G.race.rival);
   if(!resuming){Object.assign(G.player,grid(42),{rot:start.rot});G.cam.x=G.player.x;G.cam.y=G.player.y;}
@@ -2531,18 +2542,24 @@ function adaptRes(G, dt) {
   const A = G._ar || (G._ar = { t: 0, n: 0, sum: 0 });
   A.t += dt; A.n++; A.sum += dt;
   if (A.t < 2) return;
-  const avg = A.sum / A.n; A.t = 0; A.n = 0; A.sum = 0;
+  const avg = A.sum / A.n,elapsed=A.t; A.t = 0; A.n = 0; A.sum = 0;
   if (G.settings.autoRes === false) return;
-  const r = G.resScale || 1;
+  const floor=G.directRaster?.75:.6,r=Math.max(floor,G.resScale||1);
+  A.cooldown=Math.max(0,(A.cooldown||0)-elapsed);
+  A.goodFor=avg<1/58?(A.goodFor||0)+elapsed:0;
   let nr = r;
-  if (avg > 1 / 45 && r > 0.62) nr = Math.max(0.6, r - (avg > 1 / 28 ? 0.15 : 0.08));
-  else if (avg < 1 / 58 && r < 1) nr = Math.min(1, r + 0.05);
-  if (nr !== r) { G.resScale = nr; fit(G); }
+  if (avg > 1 / 45 && r > floor) nr = Math.max(floor, r - (avg > 1 / 28 ? 0.15 : 0.08));
+  else if (A.goodFor>=8&&!A.cooldown&&r<1){nr=Math.min(1,r+.05);A.goodFor=0;}
+  // Raising resolution every two good seconds produced repeated canvas
+  // reallocations during a long session. Recover only after sustained headroom.
+  if(nr<r){A.cooldown=10;A.goodFor=0;}
+  G.resScale=nr;if(nr!==r)fit(G);
 }
 function volStep(v, d) { const n = Math.round((v + d * 0.1) * 10) / 10; return n > 1.001 ? 0 : n < -0.001 ? 1 : n; }
 function applyQuality(G) {
   if (G.audio && G.audio.setLite) G.audio.setLite(G.settings.quality === "low");
   const q = G.settings.quality;
+  if(q!=='low')releaseBakedWorld(G);
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
   // Mobile retains composed tiles; bound duplicate source art to 8 MiB.
@@ -3184,6 +3201,7 @@ function drawVeh(G, v) {
   const spr = G.assets.sprites["veh_" + v.def.sprite] || {width:200,height:384};
   const ctx = G.ctx;
   ctx.save();
+  ctx.globalAlpha*=retirementOpacity(G,v);
   if(v.def.boat){
     let clipping=false;
     for(const b of G.world.expansion?.overpasses||[]){
@@ -3316,7 +3334,7 @@ function drawChar(G,a){
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
  const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
  const layout=characterLayout(frame,hero?50:48),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
- ctx.save();ctx.translate(a.x,a.y);
+ ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
  if(a.dead){const fall=clamp((a.deadT||0)*4,0,1);ctx.globalAlpha*=.65;ctx.rotate(fall*.85);ctx.scale(1,1-fall*.7);}
  if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
@@ -3640,7 +3658,7 @@ function drawHUD(G) {
   drawExpansionHUD(G);drawFlightHUD(G);
 }
 function drawFlightHUD(G){
-  if(G.touch&&G.action.messageT>0)return;
+  if(G.touch)return; // Flight status lives with the objective on narrow screens.
   const circuit=circuitHint(G);if(G.touch&&circuit)return;const hint=circuit?circuit+'\n'+(G.circuitSession?.running?'Eight sectors in order. Runoff invalidates the lap.':'Technical circuit / five opponents / saved personal best'):aviationHint(G);if(!hint)return;
   const c=G.ctx,d=G.touch?G.dpr:G.ui,W=G.canvas.width,H=G.canvas.height;
   const w=Math.min(W-28*d,(G.touch?360:570)*d),x=(W-w)/2;
@@ -3838,7 +3856,7 @@ function stuckProbe(G, secs = 1.5) {
 
 // Deterministic regression entry points; the shipped game still starts through boot().
 export const testing = {
-  tick, tickWeather, render, drawChar, tickPlayer, tickDrive, tickVehicles, tickMission, tickRace, startRace,
+  tick, tickWeather, render, drawChar, tickPlayer, tickDrive, tickVehicles, tickMission, tickRace, startRace, adaptRes,
   startNew, startFreeRide, tickCollisions, tickPeds, moveFoot, separateCharacters, beginMission, advanceObjective, completeMission, startPlayFromBrief, openVN,
   clearRecoveryState, endLife, busted, wasted, tickPlay, drawAirborne,
   snapshot, restoreState, loadSave, save, retryObjective, currentObjectivePos,

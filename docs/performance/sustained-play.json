@@ -1,0 +1,2327 @@
+{
+  "method": {
+    "viewport": [
+      844,
+      390
+    ],
+    "dpr": 2,
+    "cpuThrottle": 4,
+    "route": "Six-minute flight loop with actual physics, touch input, auto resolution, rain, night and vehicle radio",
+    "baselineCommit": "b3c013ba6644e4c5857614209767a8e358f23d70",
+    "after": "sustained-performance-race-map",
+    "limitations": "Headless Chromium on a shared host; not a Redmi benchmark. Baseline mid-run overlapped Node tests; late comparison uses samples at 240 seconds and later. Different accumulated positions and actors limit direct FPS attribution."
+  },
+  "summary": {
+    "before": {
+      "lateFramesPerSecond": 42.40621242754549,
+      "lateTickMs": 3.5658275789580545,
+      "lateRenderMs": 5.385531792131725,
+      "lateFpsRange": [
+        34.873786149548124,
+        50.28585111797218
+      ],
+      "heapMiBRange": [
+        20.21209144592285,
+        34.93651294708252
+      ],
+      "finalCoreMiB": 9,
+      "finalRenderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 5,
+        "composeMs": 2.5999999940395355,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 5
+      },
+      "browserErrors": []
+    },
+    "after": {
+      "lateFramesPerSecond": 47.14067818725718,
+      "lateTickMs": 1.8996214257775474,
+      "lateRenderMs": 3.698532303424757,
+      "lateFpsRange": [
+        39.04555314533625,
+        50.630298955110156
+      ],
+      "heapMiBRange": [
+        18.015077590942383,
+        24.796449661254883
+      ],
+      "finalCoreMiB": 6,
+      "finalRenderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0.7999999970197678,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 13
+      },
+      "browserErrors": []
+    }
+  },
+  "before": [
+    {
+      "seconds": 30.75679999999702,
+      "frames": 1249,
+      "ticks": 1809,
+      "rafP50": 16.700000000000728,
+      "rafP95": 50,
+      "rafP99": 83.29999999999927,
+      "over50": 40,
+      "rafSamples": 1243,
+      "prof": {
+        "render": 6.652978021477266,
+        "tick": 4.241903093051987,
+        "hud": 2.5730707842763305
+      },
+      "max": {
+        "render": 101.40000000596046,
+        "tick": 45.5,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 123,
+        "peds": 46,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 11,
+        "streetVehicleQueries": 4,
+        "crowdGrid": 3,
+        "mobileTiles": 3,
+        "hubArt": 0,
+        "aircraftArtCache": 5,
+        "placeArt": 2,
+        "mobileOuter": 40,
+        "stationArtCache": 3,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 3,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 3,
+        "composeMs": 2.5,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 14
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6100000000000001,
+      "heap": 22137159,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        8282.319452359241,
+        8366.405968129402
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 3145728,
+      "audioStreams": 1,
+      "fps": 40.60890599802713,
+      "simHz": 58.81626176976068,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 418
+        },
+        {
+          "name": "TaskDuration",
+          "value": 28.172219
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 14197828
+        }
+      ]
+    },
+    {
+      "seconds": 61.942,
+      "frames": 2464,
+      "ticks": 3621,
+      "rafP50": 16.700000000004366,
+      "rafP95": 50,
+      "rafP99": 100,
+      "over50": 53,
+      "rafSamples": 1215,
+      "prof": {
+        "render": 5.732646652781256,
+        "tick": 4.033403557753433,
+        "hud": 1.889888883250809
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 45.5,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 144,
+        "peds": 79,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 3,
+        "streetVehicleQueries": 3,
+        "crowdGrid": 5,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6100000000000001,
+      "heap": 22202961,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        6031.143427214078,
+        2244.4161858097377
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 38.96078909225799,
+      "simHz": 58.10448546104649,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 460
+        },
+        {
+          "name": "TaskDuration",
+          "value": 56.736604
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 14084976
+        }
+      ]
+    },
+    {
+      "seconds": 92.008,
+      "frames": 3446,
+      "ticks": 5419,
+      "rafP50": 33.30000000000291,
+      "rafP95": 50.10000000000582,
+      "rafP99": 83.39999999999418,
+      "over50": 65,
+      "rafSamples": 982,
+      "prof": {
+        "render": 7.487766313670085,
+        "tick": 5.24475839597935,
+        "hud": 2.3852310795703935
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 128,
+        "peds": 45,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 1.0999999940395355,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6100000000000001,
+      "heap": 21193914,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        3964.9222803266566,
+        8613.093964460495
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 32.661478081553916,
+      "simHz": 59.8017694405641,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 459
+        },
+        {
+          "name": "TaskDuration",
+          "value": 85.094048
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13062048
+        }
+      ]
+    },
+    {
+      "seconds": 122.04640000000596,
+      "frames": 4635,
+      "ticks": 7220,
+      "rafP50": 16.70000000001164,
+      "rafP95": 50,
+      "rafP99": 66.69999999999709,
+      "over50": 32,
+      "rafSamples": 1189,
+      "prof": {
+        "render": 5.871946773837911,
+        "tick": 4.032647435552708,
+        "hud": 1.9508345769899227
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 136,
+        "peds": 69,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 3,
+        "streetVehicleQueries": 1,
+        "crowdGrid": 0,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 6,
+        "composeMs": 2.800000011920929,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 4
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6100000000000001,
+      "heap": 24212611,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        10225.271891260421,
+        2613.7549614874983
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 39.58266751890127,
+      "simHz": 59.95658889953001,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 496
+        },
+        {
+          "name": "TaskDuration",
+          "value": 113.461921
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 16032612
+        }
+      ]
+    },
+    {
+      "seconds": 152.09890000000595,
+      "frames": 5940,
+      "ticks": 9020,
+      "rafP50": 16.70000000001164,
+      "rafP95": 50,
+      "rafP99": 66.60000000000582,
+      "over50": 26,
+      "rafSamples": 1305,
+      "prof": {
+        "render": 5.057175801574295,
+        "tick": 2.9839844424891693,
+        "hud": 1.7776583108900488
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 132,
+        "peds": 51,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 4,
+        "streetVehicleQueries": 5,
+        "crowdGrid": 4,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 10,
+        "composeMs": 5.899999991059303,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 7
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 23342458,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        1796.047394688126,
+        6231.20418929832
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 43.42400798602446,
+      "simHz": 59.89518342899926,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 576
+        },
+        {
+          "name": "TaskDuration",
+          "value": 140.905278
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 15301832
+        }
+      ]
+    },
+    {
+      "seconds": 182.14690000000596,
+      "frames": 7195,
+      "ticks": 10819,
+      "rafP50": 16.70000000001164,
+      "rafP95": 50,
+      "rafP99": 66.69999999998254,
+      "over50": 27,
+      "rafSamples": 1255,
+      "prof": {
+        "render": 5.553087478270876,
+        "tick": 3.654229010792638,
+        "hud": 1.7720318354308513
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 137,
+        "peds": 48,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 4,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 2,
+        "composeMs": 3.5,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 3
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 33537989,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        10967.685601437508,
+        6768.274791158389
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 41.76650692225772,
+      "simHz": 59.87087326943556,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 555
+        },
+        {
+          "name": "TaskDuration",
+          "value": 168.915828
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 25399740
+        }
+      ]
+    },
+    {
+      "seconds": 212.204,
+      "frames": 8399,
+      "ticks": 12617,
+      "rafP50": 16.70000000001164,
+      "rafP95": 50,
+      "rafP99": 66.70000000001164,
+      "over50": 42,
+      "rafSamples": 1204,
+      "prof": {
+        "render": 5.644691780013011,
+        "tick": 3.690262554010139,
+        "hud": 1.9657389526786697
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 135,
+        "peds": 84,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 7,
+        "streetVehicleQueries": 11,
+        "crowdGrid": 8,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 0,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 13
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 36633589,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        2602.539469426493,
+        2233.9013230964247
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 40.057091336164774,
+      "simHz": 59.81947692892381,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 481
+        },
+        {
+          "name": "TaskDuration",
+          "value": 197.145745
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 28334236
+        }
+      ]
+    },
+    {
+      "seconds": 242.28390000000596,
+      "frames": 9448,
+      "ticks": 14420,
+      "rafP50": 33.19999999998254,
+      "rafP95": 50.10000000000582,
+      "rafP99": 83.29999999998836,
+      "over50": 62,
+      "rafSamples": 1049,
+      "prof": {
+        "render": 6.583950695869462,
+        "tick": 4.561535042348179,
+        "hud": 2.038924060039655
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 125,
+        "peds": 47,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 6,
+        "streetVehicleQueries": 1,
+        "crowdGrid": 2,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 8,
+        "outerPending": 0,
+        "composeMs": 0.09999999403953552,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 8
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 28441407,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        7357.3225558802005,
+        8605.817106757519
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 34.873786149548124,
+      "simHz": 59.940358844266214,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 538
+        },
+        {
+          "name": "TaskDuration",
+          "value": 224.791909
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 20127492
+        }
+      ]
+    },
+    {
+      "seconds": 272.331900000006,
+      "frames": 10712,
+      "ticks": 16224,
+      "rafP50": 16.70000000001164,
+      "rafP95": 49.89999999999418,
+      "rafP99": 50.100000000034925,
+      "over50": 22,
+      "rafSamples": 1264,
+      "prof": {
+        "render": 5.3384787547832415,
+        "tick": 3.645697655242336,
+        "hud": 2.0010125607235465
+      },
+      "max": {
+        "render": 136.09999999403954,
+        "tick": 124.29999999701977,
+        "hud": 94.6000000089407
+      },
+      "entities": {
+        "vehicles": 143,
+        "peds": 77,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 3,
+        "streetVehicleQueries": 9,
+        "crowdGrid": 8,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 3
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 33427987,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        6921.142188932717,
+        2278.857941284491
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 42.06602768903084,
+      "simHz": 60.0372736954206,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 546
+        },
+        {
+          "name": "TaskDuration",
+          "value": 253.302814
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 25197900
+        }
+      ]
+    },
+    {
+      "seconds": 302.38190000000594,
+      "frames": 11801,
+      "ticks": 17881,
+      "rafP50": 16.70000000001164,
+      "rafP95": 50.100000000034925,
+      "rafP99": 200.10000000003492,
+      "over50": 61,
+      "rafSamples": 1089,
+      "prof": {
+        "render": 6.362807450182111,
+        "tick": 4.737826309231764,
+        "hud": 1.9273491639900944
+      },
+      "max": {
+        "render": 265.70000000298023,
+        "tick": 217.5,
+        "hud": 123.5
+      },
+      "entities": {
+        "vehicles": 130,
+        "peds": 45,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 1,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 1
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 28244743,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        4342.944707778157,
+        8615.889300999837
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 36.23960066555746,
+      "simHz": 55.141430948419384,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 501
+        },
+        {
+          "name": "TaskDuration",
+          "value": 280.524299
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 20062756
+        }
+      ]
+    },
+    {
+      "seconds": 332.45,
+      "frames": 13313,
+      "ticks": 19679,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.40000000002328,
+      "rafP99": 49.90000000002328,
+      "over50": 9,
+      "rafSamples": 1512,
+      "prof": {
+        "render": 4.366449381029042,
+        "tick": 2.5166428169925954,
+        "hud": 1.4844098614959131
+      },
+      "max": {
+        "render": 265.70000000298023,
+        "tick": 217.5,
+        "hud": 123.5
+      },
+      "entities": {
+        "vehicles": 135,
+        "peds": 80,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 3,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 3
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 30115643,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        9877.672355720098,
+        2415.751792022941
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 50.28585111797218,
+      "simHz": 59.797592797694435,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 562
+        },
+        {
+          "name": "TaskDuration",
+          "value": 308.182347
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 21908608
+        }
+      ]
+    },
+    {
+      "seconds": 362.53290000000595,
+      "frames": 14774,
+      "ticks": 21474,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.40000000002328,
+      "rafP99": 50.09999999997672,
+      "over50": 17,
+      "rafSamples": 1461,
+      "prof": {
+        "render": 4.27597267879477,
+        "tick": 2.3674360709753977,
+        "hud": 1.6079678451729746
+      },
+      "max": {
+        "render": 265.70000000298023,
+        "tick": 217.5,
+        "hud": 123.5
+      },
+      "entities": {
+        "vehicles": 125,
+        "peds": 50,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 0,
+        "streetVehicleQueries": 4,
+        "crowdGrid": 5,
+        "mobileTiles": 9,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 40,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 9,
+        "outerTiles": 40,
+        "outerVisible": 15,
+        "outerPending": 5,
+        "composeMs": 2.5999999940395355,
+        "outerLimit": 40,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 5
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.6,
+      "heap": 22299434,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        1759.0325669731067,
+        6679.678868457324
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 9437184,
+      "audioStreams": 1,
+      "fps": 48.56579651561885,
+      "simHz": 59.66844951782056,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 598
+        },
+        {
+          "name": "TaskDuration",
+          "value": 335.693861
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 14096468
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "seconds": 30.74260000000894,
+      "frames": 1257,
+      "ticks": 1690,
+      "rafP50": 16.700000000000728,
+      "rafP95": 49.900000000000546,
+      "rafP99": 216.69999999999982,
+      "over50": 39,
+      "rafSamples": 1251,
+      "prof": {
+        "render": 5.878748794689506,
+        "tick": 3.1863440941253613,
+        "hud": 3.193836640091561
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 72.29999999701977,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 119,
+        "peds": 52,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 9,
+        "streetVehicleQueries": 5,
+        "crowdGrid": 5,
+        "mobileTiles": 3,
+        "hubArt": 0,
+        "aircraftArtCache": 4,
+        "placeArt": 2,
+        "mobileOuter": 0,
+        "stationArtCache": 3,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 3,
+        "outerTiles": 0,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0.9000000059604645,
+        "outerLimit": 40,
+        "bakedSheets": 3,
+        "bakedReady": 3,
+        "bakedBytes": 12582912,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 14
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 18890178,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        9345.583607509116,
+        7998.861412634933
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 3145728,
+      "audioStreams": 1,
+      "fps": 40.69271954875762,
+      "simHz": 54.35454385769304,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 203
+        },
+        {
+          "name": "TaskDuration",
+          "value": 28.579675
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 10694020
+        }
+      ]
+    },
+    {
+      "seconds": 61.955,
+      "frames": 2856,
+      "ticks": 3477,
+      "rafP50": 16.69999999999709,
+      "rafP95": 33.299999999995634,
+      "rafP99": 133.3000000000029,
+      "over50": 26,
+      "rafSamples": 1599,
+      "prof": {
+        "render": 3.3698382931590474,
+        "tick": 1.913325819985262,
+        "hud": 1.3213194483996225
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 72.29999999701977,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 131,
+        "peds": 80,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 1,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 3,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0.10000000894069672,
+        "outerLimit": 40,
+        "bakedSheets": 3,
+        "bakedReady": 3,
+        "bakedBytes": 12582912,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 5
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 19434184,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        4682.172485783963,
+        2191.7155091027666
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 51.22963950226379,
+      "simHz": 57.252886673261656,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 229
+        },
+        {
+          "name": "TaskDuration",
+          "value": 54.40179
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 11198844
+        }
+      ]
+    },
+    {
+      "seconds": 91.98570000000298,
+      "frames": 4305,
+      "ticks": 5168,
+      "rafP50": 16.69999999999709,
+      "rafP95": 33.39999999999418,
+      "rafP99": 150,
+      "over50": 27,
+      "rafSamples": 1449,
+      "prof": {
+        "render": 3.788194535938612,
+        "tick": 1.6240942445607223,
+        "hud": 1.7979517858860383
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 72.29999999701977,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 126,
+        "peds": 50,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 1,
+        "crowdGrid": 0,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 12,
+        "outerPending": 0,
+        "composeMs": 0.9000000059604645,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 3
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21848301,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        6277.867069557595,
+        8628.947671352189
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 48.25062352858429,
+      "simHz": 56.30904374522846,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 269
+        },
+        {
+          "name": "TaskDuration",
+          "value": 80.941424
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13603968
+        }
+      ]
+    },
+    {
+      "seconds": 122.02810000000895,
+      "frames": 5516,
+      "ticks": 6770,
+      "rafP50": 16.69999999999709,
+      "rafP95": 50,
+      "rafP99": 200,
+      "over50": 55,
+      "rafSamples": 1211,
+      "prof": {
+        "render": 4.082223904818328,
+        "tick": 3.3478713124048367,
+        "hud": 1.5955302525487847
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 135,
+        "peds": 82,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 0,
+        "streetVehicleQueries": 8,
+        "crowdGrid": 10,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 26000962,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        6183.715026114371,
+        2249.8471673306417
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 40.30969563016801,
+      "simHz": 53.32463451653935,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 235
+        },
+        {
+          "name": "TaskDuration",
+          "value": 107.517236
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 17777868
+        }
+      ]
+    },
+    {
+      "seconds": 152.3168000000119,
+      "frames": 6719,
+      "ticks": 8429,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.40000000002328,
+      "rafP99": 200,
+      "over50": 31,
+      "rafSamples": 1203,
+      "prof": {
+        "render": 5.559174337110612,
+        "tick": 2.8266977320983147,
+        "hud": 2.7932062533098465
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 126,
+        "peds": 45,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 2.5,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 20028014,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        5062.924924304421,
+        8621.193577362048
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 39.71778253935898,
+      "simHz": 54.77290210540029,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 291
+        },
+        {
+          "name": "TaskDuration",
+          "value": 136.791582
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 11903044
+        }
+      ]
+    },
+    {
+      "seconds": 182.35640000000595,
+      "frames": 8178,
+      "ticks": 10180,
+      "rafP50": 16.699999999982538,
+      "rafP95": 33.39999999999418,
+      "rafP99": 100,
+      "over50": 27,
+      "rafSamples": 1459,
+      "prof": {
+        "render": 3.7187647722787567,
+        "tick": 2.1626326227343977,
+        "hud": 1.513002107663229
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 131,
+        "peds": 86,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 1,
+        "streetVehicleQueries": 7,
+        "crowdGrid": 4,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0.10000000894069672,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 3
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 24169451,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        8737.73658200266,
+        2350.33434680783
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 48.569221960355314,
+      "simHz": 58.289724230693736,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 247
+        },
+        {
+          "name": "TaskDuration",
+          "value": 164.442288
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 15845392
+        }
+      ]
+    },
+    {
+      "seconds": 212.392200000003,
+      "frames": 9533,
+      "ticks": 11836,
+      "rafP50": 16.699999999982538,
+      "rafP95": 33.39999999999418,
+      "rafP99": 166.70000000001164,
+      "over50": 28,
+      "rafSamples": 1355,
+      "prof": {
+        "render": 4.023380784951569,
+        "tick": 1.8480310638677417,
+        "hud": 1.8157815272815838
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 125,
+        "peds": 45,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 0,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0.5,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 2
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21265198,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        2533.9962184860733,
+        8602.310525275478
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 45.11283202046004,
+      "simHz": 55.13420651356592,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 294
+        },
+        {
+          "name": "TaskDuration",
+          "value": 192.452442
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13053532
+        }
+      ]
+    },
+    {
+      "seconds": 242.44770000000298,
+      "frames": 11050,
+      "ticks": 13571,
+      "rafP50": 16.699999999982538,
+      "rafP95": 33.30000000001746,
+      "rafP99": 99.89999999999418,
+      "over50": 22,
+      "rafSamples": 1517,
+      "prof": {
+        "render": 3.06487349157235,
+        "tick": 1.644809945482278,
+        "hud": 1.3157998500031387
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 133,
+        "peds": 52,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 4,
+        "streetVehicleQueries": 0,
+        "crowdGrid": 1,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 10,
+        "outerPending": 0,
+        "composeMs": 8.299999997019768,
+        "outerLimit": 40,
+        "bakedSheets": 3,
+        "bakedReady": 3,
+        "bakedBytes": 12582912,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 4
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21241703,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        10542.523970746928,
+        3375.3069844122865
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 50.47329107817205,
+      "simHz": 57.72653923574721,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 261
+        },
+        {
+          "name": "TaskDuration",
+          "value": 218.623742
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13051756
+        }
+      ]
+    },
+    {
+      "seconds": 272.47990000000596,
+      "frames": 12510,
+      "ticks": 15280,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.30000000001746,
+      "rafP99": 133.30000000004657,
+      "over50": 27,
+      "rafSamples": 1460,
+      "prof": {
+        "render": 3.7426146144342103,
+        "tick": 1.6102884017482861,
+        "hud": 1.9193047918221664
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 126,
+        "peds": 54,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 6,
+        "crowdGrid": 6,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 4
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21451971,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        1797.5617805138825,
+        6213.268001367392
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 48.6144871171561,
+      "simHz": 56.90558800220533,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 286
+        },
+        {
+          "name": "TaskDuration",
+          "value": 243.798667
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13123192
+        }
+      ]
+    },
+    {
+      "seconds": 302.521200000003,
+      "frames": 14031,
+      "ticks": 16990,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.29999999998836,
+      "rafP99": 66.59999999997672,
+      "over50": 20,
+      "rafSamples": 1521,
+      "prof": {
+        "render": 3.6953945864662403,
+        "tick": 1.6342917694841788,
+        "hud": 1.6953239983447301
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 131,
+        "peds": 59,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 4,
+        "streetVehicleQueries": 1,
+        "crowdGrid": 0,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 10,
+        "outerPending": 0,
+        "composeMs": 0.09999999403953552,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 1
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 20905929,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        10879.52429396985,
+        5990.367870840341
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 50.630298955110156,
+      "simHz": 56.92163787852621,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 249
+        },
+        {
+          "name": "TaskDuration",
+          "value": 269.805624
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 12644648
+        }
+      ]
+    },
+    {
+      "seconds": 332.559700000003,
+      "frames": 15441,
+      "ticks": 18686,
+      "rafP50": 16.70000000001164,
+      "rafP95": 33.399999999965075,
+      "rafP99": 150,
+      "over50": 29,
+      "rafSamples": 1410,
+      "prof": {
+        "render": 3.382507511078343,
+        "tick": 1.843180727705513,
+        "hud": 1.3881907230489654
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 126,
+        "peds": 69,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 4,
+        "streetVehicleQueries": 18,
+        "crowdGrid": 18,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 0,
+        "outerPending": 0,
+        "composeMs": 0,
+        "outerLimit": 40,
+        "bakedSheets": 2,
+        "bakedReady": 2,
+        "bakedBytes": 8388608,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 22
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21165749,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        2013.1062908408517,
+        3702.5032235627673
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 46.939760640511345,
+      "simHz": 56.46087521014698,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 284
+        },
+        {
+          "name": "TaskDuration",
+          "value": 296.880763
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 12868840
+        }
+      ]
+    },
+    {
+      "seconds": 362.75520000000296,
+      "frames": 16620,
+      "ticks": 20338,
+      "rafP50": 16.70000000001164,
+      "rafP95": 49.899999999965075,
+      "rafP99": 216.59999999997672,
+      "over50": 33,
+      "rafSamples": 1179,
+      "prof": {
+        "render": 4.6072713135726415,
+        "tick": 2.7655362844674802,
+        "hud": 1.9244246605944264
+      },
+      "max": {
+        "render": 290.70000000298023,
+        "tick": 350,
+        "hud": 290.20000000298023
+      },
+      "entities": {
+        "vehicles": 127,
+        "peds": 58,
+        "cops": 0,
+        "particles": 0,
+        "skids": 0,
+        "flashes": 0,
+        "floaters": 0,
+        "bullets": 0
+      },
+      "cache": {
+        "storyLoads": 2,
+        "contactPortraits": 2,
+        "streetVehicleGrid": 2,
+        "streetVehicleQueries": 6,
+        "crowdGrid": 10,
+        "mobileTiles": 6,
+        "hubArt": 1,
+        "aircraftArtCache": 5,
+        "placeArt": 3,
+        "mobileOuter": 0,
+        "stationArtCache": 4,
+        "regionalPlatformCache": 2
+      },
+      "renderer": {
+        "tiles": 6,
+        "outerTiles": 0,
+        "outerVisible": 15,
+        "outerPending": 0,
+        "composeMs": 0.7999999970197678,
+        "outerLimit": 40,
+        "bakedSheets": 5,
+        "bakedReady": 5,
+        "bakedBytes": 20971520,
+        "groundChunks": 0,
+        "groundLimit": 8,
+        "actors": 13
+      },
+      "world": [
+        633,
+        293
+      ],
+      "resolution": 0.75,
+      "heap": 21839825,
+      "scene": "play",
+      "touch": true,
+      "position": [
+        10257.99359059476,
+        7653.434127481609
+      ],
+      "deadPeds": 0,
+      "deadVehicles": 0,
+      "coreBytes": 6291456,
+      "audioStreams": 1,
+      "fps": 39.04555314533625,
+      "simHz": 54.710138927985994,
+      "metrics": [
+        {
+          "name": "Documents",
+          "value": 1
+        },
+        {
+          "name": "Nodes",
+          "value": 256
+        },
+        {
+          "name": "TaskDuration",
+          "value": 326.337472
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 13496136
+        }
+      ]
+    }
+  ],
+  "mapAudit": {
+    "roads": [],
+    "surfaces": [],
+    "parked": [],
+    "overlaps": [],
+    "counts": {
+      "edges": 307,
+      "vehicles": 126,
+      "hullSamples": 22340
+    }
+  },
+  "race": {
+    "stockRiotStorySeconds": {
+      "before": 99.11666666666666,
+      "after": 56.516666666666666
+    },
+    "insideLine": {
+      "riot": {
+        "beforeSeconds": 89.72,
+        "afterSeconds": 54.02,
+        "beforeMaxKmh": 67.21,
+        "afterMaxKmh": 98.08
+      },
+      "nyx": {
+        "beforeSeconds": 88.35,
+        "afterSeconds": 47.57,
+        "beforeMaxKmh": 68.34,
+        "afterMaxKmh": 118.89
+      }
+    },
+    "note": "Before inside laps were incorrectly invalidated by a hairpin projection discontinuity. All new tested laps valid; health 100."
+  }
+}

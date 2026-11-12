@@ -156,7 +156,7 @@ export function tickAircraft(G,v,I,dt,hooks={}){
 export function aviationHint(G){
  const v=G.player;if(!v?.def?.aircraft)return '';
  const controls=G.touch?(v.def.airplane?'Stick: throttle / turn · UP: climb · DOWN: descend · LAND: runway assist':'Stick: fly · UP: climb · DOWN: descend · LAND'):(v.def.airplane?'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: runway assist':'W/S: throttle · A/D: turn · SHIFT: climb · SPACE: descend · E: land');
- return `${v.def.name.toUpperCase()} / ${v.flightState||'PARKED'} · ALT ${Math.round(v.altitude||0)} · SPD ${Math.round(v.airspeed||0)}\n${controls}`;
+ return `${v.def.name.toUpperCase()} / ${v.flightState||'PARKED'} · ALT ${Math.round(v.altitude||0)} · ${Math.round(Math.hypot(v.vx||0,v.vy||0)*.1944)} KTS\n${controls}`;
 }
 function aircraftBody(G,v){
  const resolution=G.touch||G.settings.quality==='low'?1:2,key=[v.kind,v.aircraftLivery||'gold',v.dead?1:0,resolution].join(':');
