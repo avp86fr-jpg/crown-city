@@ -249,16 +249,20 @@ async function dialogue(page, choices) {
       const live = await browser.newPage({ viewport: { width: 844, height: 390 } });
       live.on('pageerror', e => failures.push(e.message));
       await live.goto(base); await live.waitForFunction(() => !!window.__CC);
-      const result = await live.evaluate(async () => {
+      const before = await live.evaluate(async () => {
         const G = __CC.G;
-        G.resScale = 1; G.settings.autoRes = true; G._ar = { t: 2, n: 10, sum: 1 };
-        const before = G.worldWidth, uiBefore=G.canvas.width;
-        return new Promise(resolve => requestAnimationFrame(() => {
-          const pixels = G.ctx.getImageData(0, 0, G.canvas.width, G.canvas.height).data;
-          resolve({ resized: before !== G.worldWidth, sharpUI:uiBefore===G.canvas.width, painted: pixels.some((v, i) => i % 4 !== 3 && v > 30) });
-        }));
+        const T=(await import(new URL('src/game.js',location.href).href)).testing;
+        G.resScale = 1; G.settings.autoRes = true; T.fit(G); G._ar = { t: 2, n: 10, sum: 1 };
+        return {world:G.worldWidth,ui:G.canvas.width,frames:G.renderCount};
       });
-      assert.equal(result.resized, true); assert.equal(result.sharpUI,true); assert.equal(result.painted, true); await live.close();
+      // The title paints at 30 Hz; an animation callback can precede its next
+      // presentation. Wait for the actual resize and draw, not a single RAF.
+      await live.waitForFunction(before=>__CC.G.worldWidth<before.world&&__CC.G.renderCount>before.frames,before,{timeout:5000});
+      const result=await live.evaluate(before=>{
+        const G=__CC.G,pixels=G.ctx.getImageData(0,0,G.canvas.width,G.canvas.height).data;
+        return {sharpUI:before.ui===G.canvas.width,painted:pixels.some((v,i)=>i%4!==3&&v>30)};
+      },before);
+      assert.equal(result.sharpUI,true); assert.equal(result.painted, true); await live.close();
     });
     await check('battery saver lowers presentation rate while simulation and native touch controls continue',async()=>{
       const live=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,hasTouch:true,isMobile:true});
