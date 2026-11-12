@@ -1,5 +1,6 @@
 /* Small, local steering decisions. Physics still performs every movement. */
-import {bodySize,worldBodyHit,segmentBody,bodyContact} from './collision.js';
+import {bodySize,worldBodyHit,segmentBody,bodyContact,circleBody} from './collision.js';
+import {pedestrianClear} from './pedestrian_motion.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const water=(G,x,y)=>['water','canal'].includes(G.world?.boatSurfaceAt?.(x,y)||G.surfaceAt(x,y));
@@ -126,11 +127,26 @@ export function safeCrossing(G,p){
 }
 
 export function escapeHeading(G,p,source){
- const base=Math.atan2(p.x-source.x,-(p.y-source.y));let best=p.rot,score=-Infinity;
+ const base=Math.atan2(p.x-source.x,-(p.y-source.y)),cars=p._escapeCars||(p._escapeCars=[]);cars.length=0;
+ const nearby=v=>{if(!v.def?.boat&&!(v.altitude>10))cars.push(v);};
+ if(G.cityAI?.nearTraffic)G.cityAI.nearTraffic(p.x,p.y,260,nearby);
+ else for(const v of G.vehicles||[])if(Math.abs(v.x-p.x)<260&&Math.abs(v.y-p.y)<260)nearby(v);
+ let best=p.rot,score=-Infinity;const empty=[],onRoad=G.surfaceAt(p.x,p.y)==='road';
  for(const turn of [0,.6,-.6,1.2,-1.2,2,-2,Math.PI]){
-  const a=base+turn,x=p.x+Math.sin(a)*42,y=p.y-Math.cos(a)*42;
-  if(['build','water','canal'].includes(G.surfaceAt(x,y))||G.solidAt((p.x+x)/2,(p.y+y)/2))continue;
-  const value=Math.hypot(x-source.x,y-source.y)-Math.abs(turn)*8;
+  const a=base+turn,hx=Math.sin(a),hy=-Math.cos(a),x=p.x+hx*70,y=p.y+hy*70;
+  let clear=true,road=0;
+  for(const d of [12,26,42,70]){const px=p.x+hx*d,py=p.y+hy*d;
+   if(!pedestrianClear(G,px,py,6,empty)){clear=false;break;}
+   if(G.surfaceAt(px,py)==='road')road++;
+  }
+  if(!clear)continue;
+  for(const v of cars){
+   // Relative swept movement predicts a car entering this escape corridor.
+   if(circleBody(v,p.x,p.y,7)){if(circleBody(v,x,y,9)){clear=false;break;}continue;}
+   if(segmentBody(v,p.x,p.y,x-(v.vx||0)*.55,y-(v.vy||0)*.55,9)!==null){clear=false;break;}
+  }
+  if(!clear)continue;
+  const value=Math.hypot(x-source.x,y-source.y)-Math.abs(turn)*8-road*(onRoad?9:22)+(onRoad&&CROSS_SAFE.has(G.surfaceAt(x,y))?30:0);
   if(value>score){score=value;best=a;}
- }return best;
+ }p._escapeBlocked=score===-Infinity;return best;
 }

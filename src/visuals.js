@@ -15,6 +15,7 @@ export function vehiclePose(v, time, reduced = false) {
   };
 }
 export function characterPose(a, moving, time, reduced = false) {
+  if(a.dead)return {bob:0,sx:1,sy:1,recoil:0};
   const stride = (a.dist || 0) / 9 * Math.PI / 2;
   const recoil = clamp((a.shotTick ?? -1000) + 9 - time * 60, 0, 9) / 9;
   return reduced ? { bob: 0, sx: 1, sy: 1, recoil } : {
@@ -25,6 +26,18 @@ export function characterPose(a, moving, time, reduced = false) {
   };
 }
 function ellipse(ctx, x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(.01, rx), Math.max(.01, ry), 0, 0, TAU); ctx.fill(); }
+let clearcoat;
+function coatAtlas(){
+  if(clearcoat)return clearcoat;
+  clearcoat=document.createElement('canvas');clearcoat.width=64*16;clearcoat.height=96;
+  const c=clearcoat.getContext('2d');
+  for(let i=0;i<16;i++){
+    c.save();c.translate(i*64+32,48);
+    const band=.45+Math.sin(i/16*TAU+.6)*.18,g=c.createLinearGradient(-32,-48,32,48);
+    for(const [at,color] of [[0,'rgba(100,170,230,0)'],[band-.12,'rgba(100,170,230,0)'],[band,'rgba(190,225,255,.24)'],[band+.12,'rgba(100,170,230,0)'],[1,'rgba(100,170,230,0)']])g.addColorStop(at,color);
+    c.fillStyle=g;ellipse(c,0,-96*.02,64*.28,96*.3);c.restore();
+  }return clearcoat;
+}
 export function drawVehicleFinish(G, v, w, h, pose) {
   const ctx = G.ctx;
   ctx.save();
@@ -35,16 +48,9 @@ export function drawVehicleFinish(G, v, w, h, pose) {
   }
   // A moving clear-coat highlight follows the car's angle to the city lights.
   ctx.globalCompositeOperation = 'screen';
-  const sheen = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
-  const band = .45 + Math.sin(v.rot * 2 + .6) * .18;
-  sheen.addColorStop(0, 'rgba(100,170,230,0)');
-  sheen.addColorStop(Math.max(0, band - .12), 'rgba(100,170,230,0)');
-  sheen.addColorStop(band, 'rgba(190,225,255,0.24)');
-  sheen.addColorStop(Math.min(1, band + .12), 'rgba(100,170,230,0)');
-  sheen.addColorStop(1, 'rgba(100,170,230,0)');
-  ctx.fillStyle = sheen;
-  // Stay inside the windshield/body rather than lighting transparent sprite margins.
-  ellipse(ctx, 0, -h * .02, w * .28, h * .30);
+  // Sixteen cached orientations avoid allocating a gradient for every car/frame.
+  const frame=((Math.round(v.rot*2/TAU*16)%16)+16)%16;
+  ctx.drawImage(coatAtlas(),frame*64,0,64,96,-w/2,-h/2,w,h);
   ctx.globalCompositeOperation = 'source-over';
   if (!v.def.bike && !v.def.boat) {
     for (const side of [-1, 1]) for (const front of [-1, 1]) {

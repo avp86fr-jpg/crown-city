@@ -39,9 +39,9 @@ export function createStreetIndex(size = 160) {
 }
 
 export function createCityAI(G) {
-  const people = createStreetIndex(), cars = createStreetIndex(), places = createStreetIndex(256);
+  const people = createStreetIndex(), cars = createStreetIndex(), casualties=createStreetIndex(), places = createStreetIndex(256);
   let brains = new WeakMap(), drivers = new WeakMap();
-  const reservations = new Map(), events = [],local=[],localCars=[],alive=new Set();
+  const reservations = new Map(), events = [],local=[],localCars=[],localDead=[],alive=new Set();
   let clock = 0, refresh = 0, serial = 0, fixtureSource = null;
   const stats = { decisions: 0, reactions: 0, conversations: 0, visits: 0, boarded: 0, indexBuilds: 0 };
   const rng = brain => {
@@ -52,7 +52,7 @@ export function createCityAI(G) {
     let b = brains.get(p);
     if (!b) {
       b = { seed: (++serial * 2654435761) >>> 0, mode: 'walk', next: clock,
-        socialAt: clock + 1 + serial % 4, goal: null, until: 0, blocked: 0, partner: null, fixture: null };
+        socialAt: clock + 1 + serial % 4, goal: null, until: 0, blocked: 0, partner: null, fixture: null, witnessed:new WeakSet() };
       brains.set(p, b);
       // The same public state can drive cup, bag, conversation and waiting poses.
       p.cityState = b;
@@ -102,6 +102,11 @@ export function createCityAI(G) {
         return;
       }
     }
+    if(!(p.flee>0))casualties.query(p.x,p.y,100,body=>{
+      if(p.flee>0||!visible(p,body))return;
+      const b=brain(p);if(b.witnessed.has(body))return;
+      b.witnessed.add(body);alarm(p,body,2.5);
+    });
     cars.query(p.x, p.y, 250, v => {
       if (p.dive > 0 || v.dead) return;
       const vx = v.vx || 0, vy = v.vy || 0, speed2 = vx * vx + vy * vy;
@@ -184,7 +189,7 @@ export function createCityAI(G) {
       // Reservations and conversation partners must not survive an actor reset.
       for(const p of G.peds||[]){p.cityState=null;p.cityActivity=null;p.cityBoarded=false;p.flee=0;p.dive=0;p.threatX=p.threatY=undefined;}
       brains=new WeakMap();drivers=new WeakMap();reservations.clear();events.length=0;
-      people.rebuild([]);cars.rebuild([]);refresh=0;
+      people.rebuild([]);cars.rebuild([]);casualties.rebuild([]);refresh=0;
     },
     emit(kind, x, y, options = {}) {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -205,6 +210,8 @@ export function createCityAI(G) {
       }
       local.length=0;for(const p of G.peds||[])if(!p.dead&&Math.abs(p.x-focus.x)<1550&&Math.abs(p.y-focus.y)<1300)local.push(p);
       people.rebuild(local);
+      localDead.length=0;for(const p of G.peds||[])if(p.dead&&!p.removed&&Math.abs(p.x-focus.x)<1650&&Math.abs(p.y-focus.y)<1400)localDead.push(p);
+      casualties.rebuild(localDead,true);
       localCars.length=0;for(const v of G.vehicles||[])if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10)&&Math.abs(v.x-focus.x)<1750&&Math.abs(v.y-focus.y)<1500)localCars.push(v);
       if(G.player?.type==='veh'&&!G.vehicles?.includes(G.player))localCars.push(G.player);cars.rebuild(localCars,true);
       if (fixtureSource !== G.street?.fixtures) { fixtureSource = G.street?.fixtures; places.rebuild(fixtureSource || []); }

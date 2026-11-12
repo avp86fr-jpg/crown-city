@@ -54,6 +54,7 @@ export function drawSettingsScreen(G,{button,panel,save,quality,back}){
    ['AUTO RESOLUTION',S.autoRes?'ON':'OFF',toggle('autoRes')],
    ['BATTERY SAVER',S.batterySaver?'30 FPS':'60 FPS',toggle('batterySaver')],
    ['REDUCED MOTION',S.reducedMotion?'ON':'OFF',toggle('reducedMotion')],
+   ['BLOOD EFFECTS',(S.blood||'full').toUpperCase(),()=>cycle('blood',['full','reduced','off'])],
    ['FPS COUNTER',S.showFps?'ON':'OFF',toggle('showFps')],
    ['CAMERA',G.cam.northUp?'NORTH UP':'CHASE',()=>{G.cam.northUp=!G.cam.northUp;}]
   ],
