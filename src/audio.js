@@ -138,11 +138,10 @@ export function createAudio() {
   };
   A.crash=(amount=1)=>A.contact({speed:amount*200,material:'body'});
   A.splash=(amount=1)=>A.contact({speed:amount*180,material:'water'});
-  A.boom = () => {
-    noiseHit({ dur: 1.6, vol: 0.9, type: "lowpass", f: 2200, f2: 80, rate: 0.6 });
-    noiseHit({ dur: 2.2, vol: 0.4, type: "lowpass", f: 600, f2: 60, out: verbSend || sfx, a: 0.02 });
-    tone(48, 0.9, "sine", 0.8, -26);
-    duck(0.25, 0.8);
+  A.rocket=()=>cue('rocket',.5,.3);
+  A.boom = (x,y) => {
+    const position=listener&&Number.isFinite(x)&&Number.isFinite(y)?soundPosition(listener,x,y,1200):{gain:1,pan:0};
+    if(cue('explosion',.72*position.gain,.075,position.pan)&&position.gain>.15)duck(.25,.8);
   };
   A.horn = (pan = 0) => cue('horn',.20,.5,pan);
   A.yelp = () => {

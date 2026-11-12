@@ -55,7 +55,7 @@ test('tuning is scoped to the player car, cannot compound, and rolls back with c
  G.action.upgrades=0;applyTune(G,v);assert.equal(v.def,stock);
 });
 test('saved action state excludes transient motion and validates legacy or malformed values',()=>{
- const A=actionState({weapon:100,ammo:[-4,Infinity,1000],upgrades:40,stamina:NaN});assert.equal(A.weapon,2);assert.equal(A.ammo[0],0);assert.equal(A.ammo[1],28);assert.equal(A.ammo[2],6);
+ const A=actionState({weapon:100,ammo:[-4,Infinity,1000],upgrades:40,stamina:NaN});assert.equal(A.weapon,WEAPONS.length-1);assert.equal(A.ammo[0],0);assert.equal(A.ammo[1],28);assert.equal(A.ammo[2],6);
  A.dodgeT=.3;A.reloadT=1;A.reputation=12;const restored=actionState(actionSave(A));assert.equal(restored.reputation,12);assert.equal(restored.dodgeT,0);assert.equal(restored.reloadT,0);
  assert.equal(actionState().weapon,0);
 });

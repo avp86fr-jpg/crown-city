@@ -1,7 +1,7 @@
 import {WEAPONS} from './action.js';
 // World-unit dimensions shared by the held artwork and the projectile origin.
-// The hero is 50 units tall; even the long gun stays below half that height.
-export const WEAPON_ART={sidearm:{length:13,width:4,muzzle:22},smg:{length:18,width:6,muzzle:27},shotgun:{length:24,width:5,muzzle:33}};
+// The hero is 50 units tall; the launcher is a compact shoulder-mounted tube.
+export const WEAPON_ART={sidearm:{length:13,width:4,muzzle:22},smg:{length:18,width:6,muzzle:27},shotgun:{length:24,width:5,muzzle:33},rocket:{length:28,width:7,muzzle:37}};
 const cache=new Map();
 function sprite(id){
  if(cache.has(id))return cache.get(id);
@@ -23,6 +23,12 @@ function sprite(id){
   block(5,-3.1,3.3,1.2,'#30424b');x.fillStyle='#c4a777';x.fillRect(7,-1.2,2,1);
   x.fillStyle='#9cb0b6';x.fillRect(2,-2.2,8,.5);x.fillRect(11,-1.3,5,.45);x.fillRect(7.3,2,.5,3);
   x.fillStyle='#172833';for(let i=11;i<15;i++)x.fillRect(i,-1.4,.4,1.2);
+ }else if(id==='rocket'){
+  block(-2,-2.4,26,4.8,'#293a31');block(0,-1.8,20,3.6,metal);block(6,-2.7,9,5.4,'#607044');
+  block(2,-3.5,2,7,'#afa47b');block(18,-2.8,1.2,5.6,'#a6b48c');block(6,2,2,3.7,'#273130');block(15,1.7,3,3,'#3b4334');
+  block(12,-4,3,1.5,'#23312c');block(13,-4.5,.7,1,'#b7d7b1');
+  x.fillStyle='#879961';x.beginPath();x.moveTo(22,-3.5);x.lineTo(28,0);x.lineTo(22,3.5);x.closePath();x.fill();
+  x.fillStyle='#c1cba1';x.fillRect(2,-1.8,17,.55);x.fillRect(7,-2.6,7,.5);
  }else{
   const wood=x.createLinearGradient(0,-2,0,3);wood.addColorStop(0,'#bd9668');wood.addColorStop(.5,'#836246');wood.addColorStop(1,'#493c31');
   x.fillStyle=wood;x.beginPath();x.moveTo(-2,-1);x.lineTo(6,-1.3);x.lineTo(7,1);x.lineTo(1,3.1);x.lineTo(-2,2.8);x.closePath();x.fill();
@@ -41,10 +47,10 @@ export function drawHeldWeapon(G,a,rot){
  // Sleeve, support hand and grip: separate from the body atlas, so muzzle
  // direction follows continuous aim instead of snapping between eight poses.
  const sleeve=c.createLinearGradient(0,-6,12,5);sleeve.addColorStop(0,'#77607e');sleeve.addColorStop(.45,'#493652');sleeve.addColorStop(1,'#281f35');
- const arm=(support=false)=>{c.beginPath();c.moveTo(-3,support?-6:3);c.quadraticCurveTo(support?8:2,support?-6:6,(support?(id==='shotgun'?22:18):11)-recoil,support?-1:1);};
+ const arm=(support=false)=>{c.beginPath();c.moveTo(-3,support?-6:3);c.quadraticCurveTo(support?8:2,support?-6:6,(support?(id==='shotgun'||id==='rocket'?22:18):11)-recoil,support?-1:1);};
  for(const support of id==='sidearm'?[false]:[true,false]){arm(support);c.lineCap='round';c.strokeStyle='#242131';c.lineWidth=4;c.stroke();c.strokeStyle=sleeve;c.lineWidth=3;c.stroke();}
  c.drawImage(sprite(id),spec.muzzle-spec.length-3-recoil,-6,32,12);
  c.fillStyle='#29493e';c.beginPath();c.ellipse(11-recoil,1,1.8,1.4,0,0,Math.PI*2);c.fill();
- if(id!=='sidearm'){c.beginPath();c.ellipse((id==='shotgun'?22:18)-recoil,-.5,1.7,1.5,0,0,Math.PI*2);c.fill();}
+ if(id!=='sidearm'){c.beginPath();c.ellipse((id==='shotgun'||id==='rocket'?22:18)-recoil,-.5,1.7,1.5,0,0,Math.PI*2);c.fill();}
  c.restore();
 }

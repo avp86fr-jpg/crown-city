@@ -1,3 +1,4 @@
+import {drawBlastFX} from './explosions.js';
 import {drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {drawStreetGateways} from './world_streets.js';
@@ -7,7 +8,7 @@ import {drawCityHubs} from './world_hubs.js';
 import {CIRCUIT} from './circuit_world.js';
 import {prepareBakedWorld,drawBakedWorldTile,hasBakedWorldTile} from './baked_world.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
-import {mobileTint,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
+import {mobileTint,drawMobileVehicleLights,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadScenery} from './assets.js';
 import {streetSceneSteps,loadStreetArt} from './citylife.js';
 import {drawExpansionPeople} from './expansion.js';
@@ -123,7 +124,7 @@ export function drawMobileWorld(G,H) {
     c.save();c.translate(p.x,p.y);c.rotate(p.rot||0);c.globalAlpha=p.broken?.7:1;c.drawImage(image,-16,-16,32,32);c.restore();
   }
   for(const p of G.pickups)if(!p.got&&p.x>r.x0&&p.x<r.x1&&p.y>r.y0&&p.y<r.y1)c.drawImage(G.assets.chipIcon,p.x-8,p.y-8,16,16);
-  drawBlood(G,r,true);H.drawObjectiveGround(G);
+  drawBlastFX(G,r,true);drawBlood(G,r,true);H.drawObjectiveGround(G);
   const actors=G._mobileActors||(G._mobileActors=[]);actors.length=0;for(const v of G.vehicles)if(v.x>r.x0-80&&v.x<r.x1+80&&v.y>r.y0-80&&v.y<r.y1+80)actors.push(v);
   for(const p of G.peds)if(p.x>r.x0-30&&p.x<r.x1+30&&p.y>r.y0-60&&p.y<r.y1+30)actors.push(p);
   if(G.player.type==='foot')actors.push(G.player);
@@ -133,14 +134,11 @@ export function drawMobileWorld(G,H) {
   H.drawParticles(G,r,false);
   // One restrained ambient tint, with a small set of additive lights. No full-screen light-map passes.
   c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(7,15,32,${tint.alpha})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
+  if(G.fog>.02||G.sand>.02){c.fillStyle=G.sand>G.fog?`rgba(176,142,98,${G.sand*.16})`:`rgba(151,167,181,${G.fog*.2})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   if(tint.warm>.002){c.fillStyle=`rgba(246,149,82,${tint.warm})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   H.worldXform(G,c,r.S);c.globalCompositeOperation='lighter';
   if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.2*night;for(const lamp of visibleStreetLights(G,r,16))c.drawImage(glow,lamp.x-42,lamp.y-42,84,84);}
-  for(const v of actors)if(v.def&&!v.dead&&!v.def.boat&&!v.def.aircraft&&(v===G.player||v.traffic||v.ai||v.siren||v.role||v.loose&&v.looseT<6)&&(night||v.cop)){
-    const s=Math.sin(v.rot),co=Math.cos(v.rot);c.globalAlpha=.65*(v.cop?1:night);c.fillStyle=v.cop?(G.ticks%36<18?'#ff5676':'#65a8ff'):'#e9ecc4';
-    const d=v.def.bike?16:Math.max(24,v.r*1.05);c.beginPath();c.arc(v.x+s*d,v.y-co*d,3.5,0,Math.PI*2);c.fill();
-    if(v===G.player&&night){c.save();c.translate(v.x,v.y);c.rotate(v.rot);c.globalAlpha=.12*night;c.fillStyle='#e7e5b6';c.beginPath();c.moveTo(-14,-42);c.lineTo(-48,-165);c.lineTo(48,-165);c.lineTo(14,-42);c.fill();c.restore();}
-  }
+  drawMobileVehicleLights(G,actors,night);
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);
