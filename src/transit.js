@@ -1,6 +1,6 @@
 /* Crown Transit. Station geometry is shared by collision, maps and rendering.
    Trains use an analytic timetable: no distant physics, pathfinding or spawned actors. */
-import {message} from './action.js';
+import {message,contractClockRunning} from './action.js';
 import {loadImage} from './assets.js';
 import {darkness} from './lighting.js';
 export const STATIONS=Object.freeze([
@@ -75,7 +75,7 @@ export function tickJourney(G,dt,H={}){
  const speed=[0,1,.5,.25][G.settings.timeSpeed??1]??1;G.time=(G.time+dt*(24/480)*speed)%24;
  H.tickWeather?.(G,dt,false);
  // Timed contracts cannot gain free time by using a train, including skipped journeys.
- if(G.action?.contract&&(G.action.contract.id!=='courier'||G.action.contract.stage)){G.action.contract.t=Math.max(0,G.action.contract.t-dt);if(G.action.contract.t===0){ride.expired=true;G.action.contract=null;G.waypoint=null;G.gps=null;G.gpsPts=null;message(G,'CREW','The job window closed while you were on the train.');}}
+ if(contractClockRunning(G.action?.contract)){G.action.contract.t=Math.max(0,G.action.contract.t-dt);if(G.action.contract.t===0){ride.expired=true;G.action.contract=null;G.waypoint=null;G.gps=null;G.gpsPts=null;message(G,'CREW','The job window closed while you were on the train.');}}
  const after=ridePhase(ride).id;if(after!==before)G.audio.transit?.(after==='boarding'||after==='alighting'?'doors':after==='departing'?'depart':after==='arriving'?'arrive':'rail');
  if(ride.elapsed>=ride.duration){
   const e=stationExit(ride.to),safe=G.findSafeAction?G.findSafeAction(e.x,e.y):e;

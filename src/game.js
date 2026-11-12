@@ -3,7 +3,7 @@ import {stepPedestrian} from './pedestrian_motion.js';
 import {drawMapPlaces,placeButtons,MAP_PLACES} from './map_places.js';
 import {drawStreetGateways} from './world_streets.js';
 import {drawDropMission,dropReady} from './airdrop.js';
-import {drawCircuitActivity,tickCircuit,startCircuit,nearCircuit,circuitHint} from './motorsport.js';
+import {drawCircuitActivity,tickCircuit,startCircuit,nearCircuit,circuitHint,pitDriveInput} from './motorsport.js';
 import {CITY_HUBS,drawCityHubs} from './world_hubs.js';
 import {drawDialogue,openingScene} from './dialogue.js';
 import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,drawCasino,drawCasinoWorld} from './casino.js';
@@ -1214,7 +1214,7 @@ function tickPlay(G, dt) {
   tickWeather(G, dt);
   tickTransit(G,dt);
   tickCasino(G,dt,CASINO_HOOKS);
-  if(G.input.enterP&&nearCircuit(G)){if(startCircuit(G,G.circuitHooks)){G.input.enterP=false;return;}}
+  if(G.input.enterP&&nearCircuit(G)){startCircuit(G,G.circuitHooks);G.input.enterP=false;return;}
   if(G.input.enterP&&interactCasino(G)){G.releaseControls?.();G.input.enterP=false;return;}
   if(G.input.enterP&&interactExpansion(G)){G.input.enterP=false;save(G);}
   if(G.input.enterP&&interactTransit(G)){G.input.enterP=false;return;}
@@ -1367,7 +1367,7 @@ function tickPlayer(G, dt) {
       if(v.health<=0&&!v.dead){explode(G,v);if(G._endT<=0||!G._endT)wasted(G);return;}
       if(flight?.exit)exitVeh(G);return;
     }
-    return tickDrive(G, v, inp, dt, true);
+    return tickDrive(G, v, pitDriveInput(v,inp), dt, true);
   }
   const p = G.player;
   const mag = Math.min(1, Math.hypot(G.input.x, G.input.y));
@@ -2229,7 +2229,7 @@ function tickPeds(G, dt) {
   const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
   for (const p of G.peds) {
     if (p.dead) { p.deadT = (p.deadT || 0) + dt; if(p.deadT<.75){const x=p.x+(p.vx||0)*dt,y=p.y+(p.vy||0)*dt;if(!G.solidAt(x,y)){p.x=x;p.y=y;}p.vx*=Math.exp(-5*dt);p.vy*=Math.exp(-5*dt);}continue; }
-    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&G.surfaceAt(p.x,p.y)!=='road') continue;
+    if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&G.surfaceAt(p.x,p.y)!=='road'&&![[14,0],[-14,0],[0,14],[0,-14]].some(([dx,dy])=>G.surfaceAt(p.x+dx,p.y+dy)==='road')) {p.speed=p.vx=p.vy=0;continue;}
     const dx = p.x - pl.x, dy = p.y - pl.y;
     const dist = Math.hypot(dx, dy);
     // Impacts are resolved before a pedestrian's dodge; a dive is never invulnerability.
@@ -3152,8 +3152,15 @@ function ensureMissionCar(G) {
   const kind = obj.vehicle || 'riot';
   if (G.vehicles.some(v => v.mission && v.kind === kind && !v.dead)) return;
   const at = G.meta.spawns[obj.near || 'garage'];
-  const spot = findSafe(G, at[0] + (kind === 'nyx' ? 120 : 0), at[1] + (kind === 'nyx' ? 100 : 0), 30, false);
-  G.vehicles.push(makeVeh(kind, spot.x, spot.y, Math.PI, { keep: true, mission: true }));
+  const existing=G.vehicles.find(v=>v.mission&&v.kind===kind),car=makeVeh(kind,at[0],at[1],Math.PI,{keep:true,mission:true});
+  let spot=null;
+  for(const [dx,dy] of [[0,0],[0,108],[120,100],[-120,100],[0,-108],[160,0]]){
+    car.x=at[0]+dx;car.y=at[1]+dy;
+    if(worldBodyHit(G,car,car.x,car.y)||G.vehicles.some(v=>v!==existing&&!(v.altitude>10)&&bodyContact(car,v))||G.player.type==='foot'&&circleBody(car,G.player.x,G.player.y,12)||G.peds.some(p=>!p.dead&&circleBody(car,p.x,p.y,10)))continue;
+    spot={x:car.x,y:car.y};break;
+  }
+  if(!spot)return; // Delivery waits for a clear full-body bay; never stack replacements.
+  if(existing){const index=G.vehicles.indexOf(existing);G.vehicles[index]=car;}else G.vehicles.push(car);
   toast(G, VEH_DEFS[kind].name + ' is waiting at the pickup.');
 }
 
@@ -3708,7 +3715,7 @@ function drawMap(G) {
   for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();}
   for(const s of G.services||[]){const p=to(s.x,s.y);ctx.fillStyle='#83d7d0';ctx.fillRect(p[0]-3*u,p[1]-3*u,6*u,6*u);}
   ctx.textAlign = "center"; ctx.font = uiFont(Math.max(9, 11 * u * Math.min(1, k * 6)), 900);
-  const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["SUNSET HILLS", 5000, 8500], ["CROWN AIRFIELD", 8300, 7300]]];
+  const labels = [["THE STRIP", 1964, 2200], ["DOWNTOWN", 900, 1700], ["HARBOUR", 1900, 500], ...[["PORT ROYALE", 7000, 1200], ["MIDTOWN", 5700, 2700], ["EASTSIDE", 8800, 2700], ["IRONSIDE", 7000, 5200], ["OLD TOWN", 2000, 5400], ["CROWN MOTORSPORT PARK", 3450, 8600], ["CROWN AIRFIELD", 8300, 7300]]];
   const badges=MAP_PLACES.map(m=>{const [x,y]=to(m.x,m.y),u=Math.max(G.ui,.9*G.dpr);return {x:x-18*u,y:y-12*u,w:36*u,h:24*u};});
   for(const station of STATIONS){const [x,y]=to(station.x,station.y);badges.push({x:x-8*u,y:y-8*u,w:16*u,h:16*u});}
   G.atlasLabels=drawAtlasLabels(G,to,labels.concat((G.world.expansion?.landmarks||[]).filter(p=>!['CROWN AIRFIELD','METAWIN CASINO'].includes(p.name)).map(p=>[p.name,p.x,p.y]),(G.contacts||[]).map(p=>[p.name,p.x,p.y])),badges);

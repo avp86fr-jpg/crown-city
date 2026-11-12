@@ -1,0 +1,153 @@
+{
+  "method": {
+    "viewport": [
+      844,
+      390
+    ],
+    "dpr": 2,
+    "quality": "low",
+    "cpuThrottle": 4,
+    "framesPerLocation": 120,
+    "simulation": "paused; render work only",
+    "baseline": "819413bfb64d18e332090c7f16caa8be62cc651b",
+    "physicalPhoneTested": false
+  },
+  "before": [
+    {
+      "scene": "circuit",
+      "p50": 2.5,
+      "p95": 28.600000008940697,
+      "max": 175.29999999701977,
+      "framesToReady": 56,
+      "tiles": {
+        "work": 1.2000000029802322,
+        "pending": 0,
+        "tiles": 15,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "airfield",
+      "p50": 1.7999999970197678,
+      "p95": 12.099999994039536,
+      "max": 30.799999997019768,
+      "framesToReady": 40,
+      "tiles": {
+        "work": 0.20000000298023224,
+        "pending": 0,
+        "tiles": 25,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "forest",
+      "p50": 1.6000000089406967,
+      "p95": 11.099999994039536,
+      "max": 297.1000000089407,
+      "framesToReady": 24,
+      "tiles": {
+        "work": 0.29999999701976776,
+        "pending": 0,
+        "tiles": 33,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "junction",
+      "p50": 2.1000000089406967,
+      "p95": 21.30000001192093,
+      "max": 240.59999999403954,
+      "framesToReady": 40,
+      "tiles": {
+        "work": 2.1000000089406967,
+        "pending": 0,
+        "tiles": 40,
+        "ground": 0
+      }
+    }
+  ],
+  "after": [
+    {
+      "scene": "circuit",
+      "p50": 1.3999999910593033,
+      "p95": 7.100000008940697,
+      "max": 185.80000001192093,
+      "framesToReady": 20,
+      "tiles": {
+        "work": 1.2000000029802322,
+        "pending": 0,
+        "tiles": 15,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "airfield",
+      "p50": 1.8999999910593033,
+      "p95": 14.099999994039536,
+      "max": 38.70000000298023,
+      "framesToReady": 45,
+      "tiles": {
+        "work": 0.7999999970197678,
+        "pending": 0,
+        "tiles": 25,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "forest",
+      "p50": 1.4000000059604645,
+      "p95": 10.799999997019768,
+      "max": 16.299999997019768,
+      "framesToReady": 28,
+      "tiles": {
+        "work": 1.199999988079071,
+        "pending": 0,
+        "tiles": 33,
+        "ground": 0
+      }
+    },
+    {
+      "scene": "junction",
+      "p50": 1.9000000059604645,
+      "p95": 25,
+      "max": 285.5,
+      "framesToReady": 36,
+      "tiles": {
+        "work": 3.0999999940395355,
+        "pending": 0,
+        "tiles": 40,
+        "ground": 0
+      }
+    }
+  ],
+  "traffic": {
+    "seed": 9921,
+    "seconds": 240,
+    "initialExpansion": {
+      "moving": 0.4081183134,
+      "maxStopSeconds": 207,
+      "finalSamplesOver45s": 0.3033354311
+    },
+    "final": {
+      "moving": 0.597,
+      "maxStopSeconds": 44,
+      "maxTurnStopSeconds": 26,
+      "finalSamplesOver45s": 0
+    }
+  },
+  "circuit": {
+    "version": 2,
+    "oldWidth": 136,
+    "newWidth": 216,
+    "oldLapLength": 7262,
+    "newLapLength": 12916.3434,
+    "mobileAtlas": [
+      2048,
+      862
+    ],
+    "desktopAtlas": [
+      4096,
+      1723
+    ]
+  }
+}

@@ -12,7 +12,7 @@ function reset(){T.startFreeRide(G);G.vehicles=[];G.peds=[];G.cops=[];G.wanted=0
 
 test('every sampled racing-line hull clears scenery; perimeter and pit buildings remain solid',()=>{
  const car=T.makeVeh('nyx',0,0,0);for(const p of TRACK){Object.assign(car,p);assert.equal(worldBodyHit(G,car,p.x,p.y),null,`track ${p.s}`);}
- assert.equal(G.surfaceAt(1600,7550),'build');assert.equal(G.surfaceAt(660,8000),'build');assert.equal(G.surfaceAt(3720,7656),'lot');assert.equal(G.surfaceAt(3008,7656),'lot');
+ assert.equal(G.surfaceAt(1700,7400),'build');assert.equal(G.surfaceAt(660,8000),'build');assert.equal(G.surfaceAt(6280,7568),'lot');assert.equal(G.surfaceAt(CIRCUIT.pit.x,CIRCUIT.pit.y),'lot');
  assert.ok(TRACK_LENGTH>7000);assert.ok(!G.graph.edges.some(e=>inCircuit((e.A.x+e.B.x)/2,(e.A.y+e.B.y)/2)),'ordinary traffic must stay outside the circuit');
 });
 test('city gateway lanes and their crossing road stay drivable with full-size hulls',()=>{
@@ -21,11 +21,11 @@ test('city gateway lanes and their crossing road stay drivable with full-size hu
  for(const y of [1600,2620])for(let x=3720;x<4160;x+=12){car.rot=Math.PI/2;assert.equal(worldBodyHit(G,car,x,y+30),null,`east ${x}/${y}`);}
  for(const x of [3790,3890])for(let y=1450;y<2830;y+=12){car.rot=0;assert.equal(worldBodyHit(G,car,x,y),null,`ring ${x}/${y}`);}
 });
-test('five opponents and a player using the same steering physics complete a clean circuit lap',()=>{
- reset();assert.equal(startCircuit(G,G.circuitHooks),true);const car=G.player;car.racerIndex=1;let frames=0,maxDistance=0;
- while(G.circuitSession.running&&frames++<60*110){if(!G.circuitSession.countdown)T.tickDrive(G,car,circuitPilot(G,car,1/60),1/60,true);tickCircuit(G,1/60,G.circuitHooks);T.tickCollisions(G);G.cam.x=car.x;G.cam.y=car.y;G.ticks++;maxDistance=Math.max(maxDistance,nearestTrack(car.x,car.y).d);}
- assert.equal(G.circuitSession.valid,true);assert.equal(G.circuitSession.running,false);assert.ok(G.action.circuitBest>35&&G.action.circuitBest<100);assert.equal(G.action.circuitLaps,1);assert.ok(maxDistance<68);
- const opponents=G.vehicles.filter(v=>v.circuitRacer);assert.equal(opponents.length,5);for(const v of opponents){assert.ok(v.health>95);assert.ok(nearestTrack(v.x,v.y).d<68);}
+for(const pace of ['club','sport','pro'])test(pace+' class completes a clean lap with five opponents using actual physics',()=>{
+ reset();G.action.circuitClass=pace;assert.equal(startCircuit(G,G.circuitHooks),true);const car=G.player;car.racerIndex=1;let frames=0,maxDistance=0;
+ while(G.circuitSession.running&&frames++<60*200){if(!G.circuitSession.countdown)T.tickDrive(G,car,circuitPilot(G,car,1/60),1/60,true);tickCircuit(G,1/60,G.circuitHooks);T.tickCollisions(G);G.cam.x=car.x;G.cam.y=car.y;G.ticks++;maxDistance=Math.max(maxDistance,nearestTrack(car.x,car.y).d);}
+ assert.equal(G.circuitSession.valid,true);assert.equal(G.circuitSession.running,false);assert.ok(G.action.circuitBest>35&&G.action.circuitBest<G.circuitSession.target);assert.equal(G.action.circuitLaps,1);assert.ok(maxDistance<CIRCUIT.half);
+ const opponents=G.vehicles.filter(v=>v.circuitRacer);assert.equal(opponents.length,5);for(const v of opponents){assert.ok(v.health>95);assert.ok(nearestTrack(v.x,v.y).d<CIRCUIT.half);}
  const record=G.action.circuitBest;tickCircuit(G,1,G.circuitHooks);assert.equal(G.action.circuitLaps,1);assert.equal(G.action.circuitBest,record);
  assert.equal(actionState(actionSave(G.action)).circuitBest,record);
 });
@@ -38,7 +38,7 @@ test('shortcuts, reversing and busted recovery cannot mint clean laps or rewards
 test('circuit evidence mission requires a clean timed lap and pit return, and pays only once',()=>{
  reset();startContract(G,'circuit');tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.action.contract.stage,1);
  G.circuitSession={running:false,valid:false,time:40};tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.action.contract.stage,1);
- G.circuitSession={running:false,valid:true,time:101};tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.action.contract.stage,1);
+ G.circuitSession={running:false,valid:true,time:181};tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.action.contract.stage,1);
  G.circuitSession={running:false,valid:true,time:75};tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.action.contract.stage,2);
  const before=G.chips;Object.assign(G.player,CIRCUIT.pit,{vx:0,vy:0});tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.chips,before+2200);assert.equal(G.action.contract,null);tickAction(G,1/60,{moveFoot:T.moveFoot});assert.equal(G.chips,before+2200);
 });
@@ -73,7 +73,7 @@ test('pedestrian prediction rejects a car in the far lane even when the near cur
 
 test('circuit streaming reuses a bounded mobile image and retires it when quality changes',async()=>{
  const {drawCircuitGround}=await import('../src/circuit_world.js');const draws=[],ctx={drawImage:(...a)=>draws.push(a)},pats={},view={x0:1024,y0:7680,x1:1536,y1:8192};
- drawCircuitGround(ctx,view,pats,.5);const first=draws[0][0];assert.deepEqual([first.width,first.height],[1536,728]);assert.equal(draws[0][3],256);
+ drawCircuitGround(ctx,view,pats,.5);const first=draws[0][0];assert.deepEqual([first.width,first.height],[2048,862]);assert.ok(first.width*first.height*4<8*1024*1024);
  drawCircuitGround(ctx,view,pats,.5);assert.equal(draws[1][0],first);
- drawCircuitGround(ctx,view,pats,1);assert.equal(first.width,1);assert.equal(draws[2][0].width,3072);assert.equal(draws[2][3],512);
+ drawCircuitGround(ctx,view,pats,1);assert.equal(first.width,1);assert.equal(draws[2][0].width,4096);assert.ok(draws[2][0].width*draws[2][0].height*4<32*1024*1024);
 });

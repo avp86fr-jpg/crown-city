@@ -1,3 +1,4 @@
+import {drawCasinoEvidence} from './casino_details.js';
 import {initSlots,slotsSave,nearSlots,tickSlots,finishSlots,drawSlots,drawSlotsWorld} from './slots.js';
 /* MetaWin's playable terrace table. All stakes are Crown City game chips.
    The wager, shuffled deck and settlement travel in the same game snapshot. */
@@ -65,7 +66,7 @@ function finishDealer(G){
  settle(G,p.bust?'lose':d.bust||p.total>d.total?'win':p.total===d.total?'push':'lose');
 }
 export function dealCasino(G,H={},random=Math.random){
- const s=G.casino;if(!s||G.scene!=='casino'||s.round&&s.round.phase!=='result'||s.delay>0||!Number.isFinite(G.chips)||G.chips<s.stake)return false;
+ const s=G.casino;if(!s||s.mode==='slots'||!CASINO_STAKES.includes(s.stake)||G.scene!=='casino'||s.round&&s.round.phase!=='result'||s.delay>0||!Number.isFinite(G.chips)||G.chips<s.stake)return false;
  G.chips-=s.stake;const r=s.round={phase:'player',base:s.stake,wager:s.stake,doubled:false,deck:shuffledDeck(random),cursor:0,player:[],dealer:[],outcome:null,returned:0,net:0};
  take(r,r.player);take(r,r.dealer);take(r,r.player);take(r,r.dealer);s.delay=.3;s.anim=0;sound(G,'card');
  const p=handValue(r.player),d=handValue(r.dealer);
@@ -73,7 +74,7 @@ export function dealCasino(G,H={},random=Math.random){
  persist(G,H);return true;
 }
 export function casinoAction(G,action,H={}){
- const s=G.casino,r=s?.round;if(G.scene!=='casino'||r?.phase!=='player'||s.delay>0||!Number.isFinite(G.chips)||G.chips<0)return false;
+ const s=G.casino,r=s?.round;if(s?.mode==='slots'||G.scene!=='casino'||r?.phase!=='player'||s.delay>0||!Number.isFinite(G.chips)||G.chips<0)return false;
  if(action==='double'&&(r.player.length!==2||G.chips<r.base))return false;
  if(!['hit','stand','double'].includes(action))return false;
  if(action==='double'){G.chips-=r.base;r.wager+=r.base;r.doubled=true;sound(G,'chips');}
@@ -130,6 +131,8 @@ export function drawCasino(G,{button,save}={}){
  const contentTop=y+82*u,footer=y+ph-(portrait?192:110)*u,tableW=portrait?pw-30*u:pw*.57,tableX=x+15*u,center=tableX+tableW/2;
  const tableBottom=portrait?footer-8*u:y+ph-50*u,tableH=tableBottom-contentTop;
  rounded(c,tableX,contentTop,tableW,tableH,Math.min(60*u,tableW*.2),'#1b4942','#577063');
+ c.save();c.beginPath();c.roundRect(tableX+8*u,contentTop+8*u,tableW-16*u,tableH-16*u,Math.min(50*u,tableW*.18));c.strokeStyle='rgba(212,191,127,.3)';c.lineWidth=2*u;c.stroke();
+ for(let i=0;i<3;i++){c.fillStyle=['#a35649','#487b83','#b49b5d'][i];c.beginPath();c.ellipse(tableX+20*u,contentTop+(55+i*14)*u,7*u,4*u,0,0,Math.PI*2);c.fill();}c.restore();
  const dealerY=contentTop+33*u,playerY=tableBottom-89*u;
  const motion=G.settings?.reducedMotion?0:Math.max(0,1-s.anim/.22)*-7*u;
  text(c,r?`DEALER${r.phase==='player'?' · '+handValue([r.dealer[0]]).total:' · '+valueLabel(r.dealer)}`:'DEALER STANDS ON 17',center,dealerY-12*u,10*u,'#d7d9bd');
@@ -163,7 +166,7 @@ export function drawCasino(G,{button,save}={}){
  c.restore();
 }
 export function drawCasinoWorld(G,r){
- drawSlotsWorld(G,r);
+ drawSlotsWorld(G,r);drawCasinoEvidence(G,r);
  const t=CASINO_TABLE;if(t.x<r.x0-100||t.x>r.x1+100||t.y<r.y0-100||t.y>r.y1+100)return;
  const c=G.ctx,near=nearCasino(G)===t;c.save();c.strokeStyle=near?'#f1cf85':'#ab9e6d';c.lineWidth=1.5;c.beginPath();c.ellipse(t.entryX,t.entryY,18,8,0,0,Math.PI*2);c.stroke();
  text(c,'BLACKJACK',t.x,t.y-34,9,'#eed49b');text(c,near?(G.touch?'TAP PLAY':'E / PLAY'):'20 / 50 / 100 CHIPS',t.entryX,t.entryY+24,near?10:8,near?'#ffe2a3':'#dbc99c');c.restore();

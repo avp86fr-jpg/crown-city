@@ -471,6 +471,13 @@ export function createPeds(G) {
     walkAmbient(p, dt) {
       // stays on sidewalks, turns at corners, crosses at green
       const onRoad=surf(p.x,p.y)==='road';p.onRoad=onRoad;
+      // Keep the whole waiting body behind the curb. A centre just outside
+      // the road blocked the outer lane while the walker waited for that lane.
+      if(!onRoad&&!p.crossing){
+        for(const [dx,dy] of CARDINAL)if(surf(p.x+dx*14,p.y+dy*14)==='road'&&FOOT_SAFE.has(surf(p.x-dx*20,p.y-dy*20))){
+          if(stepPedestrian(G,p,Math.atan2(-dx,dy),30,dt)){p.idle=0;return;}
+        }
+      }
       if(p._turning){
         const target=Math.atan2(p.hx,-p.hy),delta=Math.atan2(Math.sin(target-p.rot),Math.cos(target-p.rot));
         p.rot+=delta*Math.min(1,dt*10);p.speed=0;if(Math.abs(delta)<.12)p._turning=false;return;

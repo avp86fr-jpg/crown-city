@@ -1,6 +1,10 @@
 // One sampled racing line drives asphalt, collision, sector gates and opponents.
-export const CIRCUIT={x:656,y:7456,w:3072,h:1456,half:68,pit:{x:3008,y:7656},entry:{x:3600,y:7656}};
-const knots=[[1400,7860],[2740,7860],[3220,7890],[3420,8130],[3190,8400],[2770,8220],[2440,8270],[2720,8560],[2460,8710],[2070,8630],[1790,8360],[1390,8500],[1040,8690],[854,8440],[1070,8190],[880,7940],[1070,7820]];
+export const CIRCUIT_VERSION=2;
+export const CIRCUIT={x:656,y:7040,w:5632,h:2368,half:108,pit:{x:5200,y:7568},entry:{x:6432,y:7568}};
+export const PIT_LANE=[[1120,8020],[1376,7728],[1728,7568],[5056,7568],[5440,7728],[5680,7920]];
+export const PADDOCK={x:1280,y:7104,w:4288,h:400};
+export const inPitLane=(x,y)=>x>=1376&&x<=5280&&y>=7504&&y<=7696;
+const knots=[[1600,7900],[2000,7900],[3000,7900],[4400,7900],[5550,7900],[5940,8170],[5620,8590],[4950,8400],[4280,8440],[4660,8930],[4200,9150],[3500,8980],[3000,8520],[2440,8720],[1880,9150],[1130,9010],[960,8560],[1150,8260],[1040,7950],[1280,7810]];
 export const TRACK=[];
 for(let i=0;i<knots.length;i++)for(let j=0;j<24;j++){
  const t=j/24,p0=knots[(i+knots.length-1)%knots.length],p1=knots[i],p2=knots[(i+1)%knots.length],p3=knots[(i+2)%knots.length];
@@ -19,68 +23,96 @@ export function nearestTrack(x,y){
  return {x:best.x+best.dx*bestT,y:best.y+best.dy*bestT,s:best.s+bestT*best.len,rot:best.rot,d:Math.sqrt(d2)};
 }
 export const inCircuit=(x,y,pad=0)=>x>=CIRCUIT.x-pad&&x<CIRCUIT.x+CIRCUIT.w+pad&&y>=CIRCUIT.y-pad&&y<CIRCUIT.y+CIRCUIT.h+pad;
-const buildings=[{x:1248,y:7512,w:1152,h:96,type:'pit'},{x:3136,y:7488,w:160,h:112,type:'control'},{x:1536,y:8056,w:512,h:80,type:'stand'},{x:2960,y:8672,w:480,h:96,type:'stand'}];
+export const CIRCUIT_BUILDINGS=[
+ ...Array.from({length:10},(_,i)=>({x:1648+i*304,y:7344,w:272,h:144,type:'pit',name:'GARAGE '+String(i+1).padStart(2,'0')})),
+ {x:5280,y:7184,w:256,h:192,type:'control',name:'RACE CONTROL'},
+ {x:1744,y:8176,w:768,h:112,type:'stand',name:'MAIN GRANDSTAND'},
+ {x:4944,y:9040,w:640,h:160,type:'stand',name:'SOUTH GRANDSTAND'},
+ {x:3632,y:7140,w:320,h:120,type:'medical',name:'MEDICAL / TECH'},
+ ...Array.from({length:6},(_,i)=>({x:1664+i*304,y:7140,w:224,h:96,type:'truck',name:'TEAM '+(i+1)}))
+];
 export function applyCircuit(W,CODE){
  W.circuit=CIRCUIT;
- const hit=p=>p.x+(p.w||p.r||0)>CIRCUIT.x&&p.x-(p.r||0)<CIRCUIT.x+CIRCUIT.w&&p.y+(p.h||p.r||0)>CIRCUIT.y&&p.y-(p.r||0)<CIRCUIT.y+CIRCUIT.h;
+ const site={x:608,y:7008,w:5784,h:2448};
+ const hit=p=>p.x+(p.w||p.r||0)>site.x&&p.x-(p.r||0)<site.x+site.w&&p.y+(p.h||p.r||0)>site.y&&p.y-(p.r||0)<site.y+site.h;
  for(const key of ['buildings','trees','lamps','props','features','lots','parking','pools'])W[key]=W[key].filter(p=>!hit(p));
- // Internal grid streets are removed all the way to the surrounding boulevards.
- W.roads=W.roads.flatMap(s=>{const min=s.v?500:7300,max=s.v?3840:9000;if(s.c<=min||s.c>=max)return [s];const a=s.v?7300:500,b=s.v?9000:3840;if(s.b<=a||s.a>=b)return [s];return [{...s,b:Math.min(a,s.b)},{...s,a:Math.max(b,s.a)}].filter(r=>r.b-r.a>=180);});
- W.inter=W.inter.filter(n=>!(n.x>500&&n.x<3840&&n.y>7300&&n.y<9000));
- W.signals=W.signals.filter(n=>!inCircuit(n.x,n.y,64));
- W.inter=[];for(const v of W.roads)if(v.v)for(const h of W.roads)if(!h.v&&h.c>=v.a&&h.c<=v.b&&v.c>=h.a&&v.c<=h.b)W.inter.push({x:v.c,y:h.c,vs:v,hs:h});
- W.signals=W.signals.filter(n=>W.inter.some(i=>i.x===n.x&&i.y===n.y)||n.x<4096&&n.y<4096);
- W.fill(608,7408,3136,1488,CODE.grass);
- // Rasterize only segment envelopes, instead of scanning the whole circuit
- // against every segment. This keeps mobile world startup bounded.
- for(const a of TRACK){
-  const x0=Math.floor((Math.min(a.x,a.x+a.dx)-112)/16)*16,x1=Math.ceil((Math.max(a.x,a.x+a.dx)+112)/16)*16;
-  const y0=Math.floor((Math.min(a.y,a.y+a.dy)-112)/16)*16,y1=Math.ceil((Math.max(a.y,a.y+a.dy)+112)/16)*16;
-  for(let y=y0;y<y1;y+=16)for(let x=x0;x<x1;x+=16){const t=Math.max(0,Math.min(1,((x+8-a.x)*a.dx+(y+8-a.y)*a.dy)/(a.len*a.len))),d2=(x+8-a.x-a.dx*t)**2+(y+8-a.y-a.dy*t)**2;
-   if(d2<68*68)W.fill(x,y,16,16,CODE.track);else if(d2<112*112)W.fill(x,y,16,16,CODE.sand,c=>c!==CODE.track);
-  }
+ if(W.expansion?.obstacles)W.expansion.obstacles=W.expansion.obstacles.filter(p=>!hit(p));
+ // A connected perimeter boulevard replaces the internal residential grid.
+ W.roads=W.roads.flatMap(s=>{const min=s.v?500:6900,max=s.v?6500:9488;if(s.c<=min||s.c>=max)return [s];const a=s.v?6900:500,b=s.v?9488:6500;if(s.b<=a||s.a>=b)return [s];return [{...s,b:Math.min(a,s.b)},{...s,a:Math.max(b,s.a)}].filter(r=>r.b-r.a>=180);});
+ for(const y of [6900,9488])W.roads.push({v:false,c:y,a:500,b:6500,w:144,lanes:1,med:0,k:'arterial'});
+ for(const x of [500,6500])W.roads.push({v:true,c:x,a:9000,b:9488,w:200,lanes:2,med:0,k:'arterial'});
+ // Clear only the two new perimeter corridors; keep the Mesa supply outpost south of them.
+ const corridor=p=>[6900,9488].some(y=>p.x+(p.w||p.r||0)>392&&p.x-(p.r||0)<6608&&p.y+(p.h||p.r||0)>y-80&&p.y-(p.r||0)<y+80);
+ for(const key of ['buildings','trees','lamps','props','features','lots','parking','pools'])W[key]=W[key].filter(p=>!corridor(p));
+ if(W.expansion?.obstacles)W.expansion.obstacles=W.expansion.obstacles.filter(p=>!corridor(p));
+ if(W.expansion){
+  const E=W.expansion;
+  E.decor=E.decor.filter(p=>{
+   const centred=['rock','mesa','cactus','scrub','limit-sign'].includes(p.kind),w=p.w||40,h=p.h||40;
+   const bounds={x:p.x-(centred?w*.65:0),y:p.y-(centred?h*.75:0),w:centred?w*1.3:w,h:centred?h*1.5:h};
+   return !hit(bounds)&&!corridor(bounds);
+  });
+  E.decor.push({kind:'limit-sign',x:3500,y:9620,label:'RED MESA / COUNTY ROAD'},{kind:'limit-sign',x:6150,y:9620,label:'CROWN CITY / MOTORSPORT PARK'});
+  E.decorBins=new Map();for(const p of E.decor){const r=Math.max(p.w||0,p.h||0,p.r||0,140);for(let y=Math.floor((p.y-r)/512);y<=Math.floor((p.y+r)/512);y++)for(let x=Math.floor((p.x-r)/512);x<=Math.floor((p.x+r)/512);x++){const key=x+':'+y,list=E.decorBins.get(key)||[];list.push(p);E.decorBins.set(key,list);}}
  }
- W.fill(1152,7616,2690,96,CODE.lot);W.fill(2640,7616,128,288,CODE.lot);
- for(const b of buildings)W.fill(b.x,b.y,b.w,b.h,CODE.build);
- // Physical perimeter, with a deliberate eastern entrance.
- for(const r of [{x:656,y:7456,w:3072,h:16},{x:656,y:8896,w:3072,h:16},{x:656,y:7456,w:16,h:1456},{x:3712,y:7456,w:16,h:160},{x:3712,y:7712,w:16,h:1200}])W.fill(r.x,r.y,r.w,r.h,CODE.build);
+ W.fill(site.x,site.y,site.w,site.h,CODE.grass);
+ for(const r of W.roads)if(r.c===6900||r.c===9488||r.v&&[500,6500].includes(r.c))W.fill(r.v?r.c-r.w/2:r.a,r.v?r.a:r.c-r.w/2,r.v?r.w:r.b-r.a,r.v?r.b-r.a:r.w,CODE.road);
+ W.inter=[];for(const v of W.roads)if(v.v)for(const h of W.roads)if(!h.v&&h.c>=v.a&&h.c<=v.b&&v.c>=h.a&&v.c<=h.b)W.inter.push({x:v.c,y:h.c,vs:v,hs:h});
+ W.signals=W.signals.filter(n=>!inCircuit(n.x,n.y,64)&&(W.inter.some(i=>i.x===n.x&&i.y===n.y)||n.x<4096&&n.y<4096));
+ function ribbon(points,half,runoff,code){for(let i=0;i<points.length-1;i++){
+  const a=points[i],b=points[i+1],dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;
+  for(let y=Math.floor((Math.min(a.y,b.y)-runoff)/16)*16;y<Math.max(a.y,b.y)+runoff;y+=16)for(let x=Math.floor((Math.min(a.x,b.x)-runoff)/16)*16;x<Math.max(a.x,b.x)+runoff;x+=16){const t=Math.max(0,Math.min(1,((x+8-a.x)*dx+(y+8-a.y)*dy)/l2)),d2=(x+8-a.x-dx*t)**2+(y+8-a.y-dy*t)**2;if(d2<half*half)W.fill(x,y,16,16,code);else if(d2<runoff*runoff)W.fill(x,y,16,16,CODE.sand,c=>c!==CODE.track&&c!==CODE.lot);}
+ }}
+ ribbon([...TRACK,TRACK[0]],108,152,CODE.track);
+ W.fill(PADDOCK.x,PADDOCK.y,PADDOCK.w,PADDOCK.h,CODE.lot);
+ ribbon(PIT_LANE.map(([x,y])=>({x,y})),72,80,CODE.lot);
+ W.fill(5056,7472,1440,192,CODE.lot);W.fill(4800,7168,224,448,CODE.lot);
+ for(const b of CIRCUIT_BUILDINGS){W.fill(b.x,b.y,b.w,b.h,CODE.build);W.expansion?.obstacles.push({...b,hgt:b.type==='stand'?14:b.type==='truck'?12:24});}
+ W.fill(1840,7728,2960,16,CODE.build);
+ for(const r of [{x:656,y:7040,w:5632,h:16},{x:656,y:9392,w:5632,h:16},{x:656,y:7040,w:16,h:2368},{x:6272,y:7040,w:16,h:432},{x:6272,y:7664,w:16,h:1744}])W.fill(r.x,r.y,r.w,r.h,CODE.build);
 }
-function path(c){c.beginPath();c.moveTo(TRACK[0].x,TRACK[0].y);for(const p of TRACK)c.lineTo(p.x,p.y);c.closePath();}
+function path(c,points=TRACK,closed=true){c.beginPath();c.moveTo(points[0].x,points[0].y);for(const p of points)c.lineTo(p.x,p.y);if(closed)c.closePath();}
 function paintCircuit(c,view,pats={}){
- if(CIRCUIT.x>view.x1||CIRCUIT.y>view.y1||CIRCUIT.x+CIRCUIT.w<view.x0||CIRCUIT.y+CIRCUIT.h<view.y0)return;
- c.save();c.beginPath();c.rect(CIRCUIT.x,CIRCUIT.y,CIRCUIT.w,CIRCUIT.h);c.clip();
- c.fillStyle=pats.grass||'#526247';c.fillRect(CIRCUIT.x,CIRCUIT.y,CIRCUIT.w,CIRCUIT.h);
- c.fillStyle='rgba(170,179,119,.10)';for(let y=CIRCUIT.y;y<8912;y+=48)c.fillRect(656,y,3072,24);
- c.lineJoin='round';c.lineCap='round';path(c);c.strokeStyle=pats.sand||'#b4a483';c.lineWidth=224;c.stroke();c.strokeStyle='#393f40';c.lineWidth=152;c.stroke();c.strokeStyle='#ddd8c5';c.lineWidth=144;c.stroke();c.setLineDash([24,24]);c.strokeStyle='#b6463a';c.stroke();c.setLineDash([]);c.strokeStyle=pats.asphalt||'#30373b';c.lineWidth=136;c.stroke();c.strokeStyle='rgba(31,39,43,.35)';c.stroke();
- // Rubber line is subtle and baked into each visible ground chunk once.
- c.strokeStyle='rgba(15,20,24,.27)';c.lineWidth=9;c.stroke();
- c.fillStyle='#434d50';c.fillRect(1152,7616,2576,96);c.fillRect(2640,7616,128,288);
- c.strokeStyle='#cfbf7f';c.lineWidth=2;c.setLineDash([18,18]);c.beginPath();c.moveTo(1200,7670);c.lineTo(3712,7670);c.stroke();c.setLineDash([]);
- for(let x=1260;x<2400;x+=144){c.strokeStyle='#c0c6ba';c.strokeRect(x,7618,100,48);c.fillStyle='#d4cfb2';c.font='bold 13px sans-serif';c.fillText('PIT '+(1+(x-1260)/144),x+12,7650);}
- for(const b of buildings){c.fillStyle='#14242d';c.fillRect(b.x+6,b.y+7,b.w,b.h);c.fillStyle=b.type==='stand'?'#758687':'#465c64';c.fillRect(b.x,b.y,b.w,b.h);c.strokeStyle='#a2afb1';c.lineWidth=2;for(let y=b.y+9;y<b.y+b.h;y+=10){c.beginPath();c.moveTo(b.x+5,y);c.lineTo(b.x+b.w-5,y);c.stroke();}c.fillStyle='#e4ddba';c.textAlign='center';c.font='bold 15px sans-serif';c.fillText(b.type==='pit'?'BUGATTI  /  CROWN CIRCUIT  /  PIT LANE':b.type==='control'?'RACE CONTROL':'GRANDSTAND',b.x+b.w/2,b.y+b.h-10);}
- for(let y=7792;y<7928;y+=12)for(let x=1392;x<1416;x+=12){c.fillStyle=((y-7792)/12+(x-1392)/12)%2?'#252b30':'#e3dfcd';c.fillRect(x,y,12,12);}
- for(let i=1;i<=7;i++){const p=trackPoint(length*i/8);c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.strokeStyle='#a7c8bc';c.lineWidth=2;c.setLineDash([8,8]);c.beginPath();c.moveTo(-66,0);c.lineTo(66,0);c.stroke();c.setLineDash([]);c.fillStyle='#d9dbc4';c.font='bold 14px sans-serif';c.fillText('S'+i,82,0);c.restore();}
- for(const b of buildings.filter(b=>b.type==='stand')){for(let y=b.y+10;y<b.y+b.h-22;y+=12)for(let x=b.x+12;x<b.x+b.w-12;x+=14){c.fillStyle=((x+y)/2)%3?'#bd9a76':'#c6c7ab';c.fillRect(x,y,5,5);c.fillStyle=((x+y)/2)%4?'#293b4a':'#aa4e3c';c.fillRect(x-1,y+5,7,4);}}
- for(const y of [7490,8870])for(let x=740;x<3650;x+=144){c.fillStyle='#23382e';c.beginPath();c.ellipse(x+5,y+4,13,8,0,0,Math.PI*2);c.fill();c.fillStyle='#617e50';c.beginPath();c.arc(x,y,12,0,Math.PI*2);c.fill();}
- c.fillStyle='#c8d5ca';c.font='bold 15px sans-serif';c.textAlign='center';c.fillText('40 / PIT LIMIT',2860,7695);c.fillText('ENTRY  →',3480,7650);
- c.strokeStyle='#afb9b5';c.lineWidth=8;c.strokeRect(664,7464,3056,1440);c.fillStyle='#434d50';c.fillRect(3708,7616,20,96);
- c.restore();
+ const {x,y,w,h,half}=CIRCUIT;c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
+ c.fillStyle=pats.grass||'#526247';c.fillRect(x,y,w,h);c.fillStyle='rgba(177,187,131,.06)';for(let yy=y;yy<y+h;yy+=64)c.fillRect(x,yy,w,32);
+ c.lineJoin='round';c.lineCap='round';path(c);c.strokeStyle=pats.sand||'#b4a483';c.lineWidth=304;c.stroke();c.strokeStyle='#393f40';c.lineWidth=236;c.stroke();c.strokeStyle='#ddd8c5';c.lineWidth=228;c.stroke();c.setLineDash([24,24]);c.strokeStyle='#b6463a';c.stroke();c.setLineDash([]);c.strokeStyle=pats.asphalt||'#30373b';c.lineWidth=216;c.stroke();c.strokeStyle='rgba(15,20,24,.22)';c.lineWidth=11;c.stroke();
+ c.fillStyle='#515b5b';c.fillRect(PADDOCK.x,PADDOCK.y,PADDOCK.w,PADDOCK.h);c.fillRect(5056,7472,1440,192);c.fillRect(4800,7168,224,448);
+ path(c,PIT_LANE.map(([x,y])=>({x,y})),false);c.strokeStyle='#d4ceb0';c.lineWidth=150;c.stroke();c.strokeStyle='#434d50';c.lineWidth=144;c.stroke();c.setLineDash([20,16]);c.strokeStyle='#c9b373';c.lineWidth=2;c.stroke();c.setLineDash([]);
+ for(let xx=1664;xx<4688;xx+=304){c.strokeStyle='#cfccae';c.lineWidth=2;c.strokeRect(xx,7504,224,104);c.fillStyle='#c8bc8b';c.font='bold 13px sans-serif';c.textAlign='center';c.fillText('PIT '+(1+(xx-1664)/304),xx+112,7580);}
+ for(const b of CIRCUIT_BUILDINGS){
+  c.fillStyle='#18272c';c.fillRect(b.x+7,b.y+9,b.w,b.h);c.fillStyle=b.type==='stand'?'#73878a':b.type==='truck'?'#c4c7bc':'#49646c';c.fillRect(b.x,b.y,b.w,b.h);c.strokeStyle='#9ba9a8';c.lineWidth=2;
+  for(let yy=b.y+10;yy<b.y+b.h-20;yy+=12){c.beginPath();c.moveTo(b.x+6,yy);c.lineTo(b.x+b.w-6,yy);c.stroke();}
+  c.fillStyle='#1e3137';c.fillRect(b.x+4,b.y+b.h-30,b.w-8,26);c.fillStyle='#e6dcbd';c.textAlign='center';c.font='bold 13px sans-serif';c.fillText(b.name,b.x+b.w/2,b.y+b.h-12);
+  if(b.type==='pit'){
+   c.fillStyle=['#397d88','#b7955b','#9a5254'][Math.floor(b.x/304)%3];c.fillRect(b.x+4,b.y+3,b.w-8,7);c.fillRect(b.x+8,b.y+b.h-4,b.w-16,9);
+   for(const xx of [b.x+24,b.x+b.w-48]){c.fillStyle='#23373c';c.fillRect(xx,b.y+18,25,26);c.fillStyle='#809697';c.fillRect(xx+3,b.y+21,19,19);}
+   c.fillStyle='#c8c9b8';c.fillRect(b.x+16,b.y+b.h+14,34,13);c.fillStyle='#26373d';c.fillRect(b.x+17,b.y+b.h+15,32,5);
+  }
+  if(b.type==='truck'){
+   c.fillStyle='#22313b';for(const xx of [b.x+22,b.x+b.w-42])for(const yy of [b.y-4,b.y+b.h-3])c.fillRect(xx,yy,20,7);
+   c.fillStyle='#6d858b';c.fillRect(b.x+b.w-42,b.y+7,35,b.h-14);c.fillStyle='#173038';c.fillRect(b.x+b.w-20,b.y+15,10,b.h-30);
+  }
+  if(b.type==='stand')for(let yy=b.y+10;yy<b.y+b.h-34;yy+=14)for(let xx=b.x+10;xx<b.x+b.w-10;xx+=16){c.fillStyle=(xx+yy)%3?'#bd9a76':'#d1d3c6';c.fillRect(xx,yy,5,5);c.fillStyle=(xx+yy)%4?'#294356':'#9c5145';c.fillRect(xx-1,yy+5,7,4);}
+ }
+ c.fillStyle='#b6bdb2';c.fillRect(1840,7728,2960,16);c.fillStyle='#34444a';c.fillRect(1840,7736,2960,4);
+ for(let yy=7792;yy<8008;yy+=12)for(let xx=1592;xx<1616;xx+=12){c.fillStyle=((yy-7792)/12+(xx-1592)/12)%2?'#252b30':'#e3dfcd';c.fillRect(xx,yy,12,12);}
+ for(let i=1;i<=7;i++){const p=trackPoint(length*i/8);c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.strokeStyle='#a7c8bc';c.lineWidth=2;c.setLineDash([8,8]);c.beginPath();c.moveTo(-half,0);c.lineTo(half,0);c.stroke();c.setLineDash([]);c.fillStyle='#dedac0';c.font='bold 15px sans-serif';c.fillText('S'+i,half+30,0);c.restore();}
+ c.fillStyle='#e2d6ad';c.font='bold 23px sans-serif';c.textAlign='center';c.fillText('BUGATTI / CROWN MOTORSPORT PARK',3400,7092);c.font='bold 14px sans-serif';c.fillText('PADDOCK / TRANSPORT & SCRUTINEERING',2820,7296);c.fillText('40 / PIT SPEED',4980,7650);c.fillText('PUBLIC ENTRY',6010,7580);c.fillText('PIT IN',1300,7830);c.fillText('PIT EXIT / YIELD',5430,7670);
+ for(const xx of [1350,4700,5850]){c.fillStyle='#bda46d';c.fillRect(xx,7180,110,64);c.fillStyle='#285563';c.fillRect(xx+5,7185,100,52);}
+ c.strokeStyle='#afb9b5';c.lineWidth=8;c.strokeRect(x+8,y+8,w-16,h-16);c.fillStyle='#515b5b';c.fillRect(6268,7472,24,192);c.restore();
 }
-
-// A mobile circuit image is 1536 × 728 (4.3 MiB); desktop uses the original
-// resolution. Streamed tiles copy only their intersecting rectangle. Repeating
-// the full curved path and grandstands for every tile caused frame spikes.
+// Cap the large venue's static bitmap at 8 MiB on Performance, 32 MiB on PC.
+// Geometry and collisions stay full resolution; only distant static paint scales.
 const artwork=new WeakMap();
 export function drawCircuitGround(c,view,pats={},scale=1){
  const x=Math.max(view.x0,CIRCUIT.x),y=Math.max(view.y0,CIRCUIT.y),w=Math.min(view.x1,CIRCUIT.x+CIRCUIT.w)-x,h=Math.min(view.y1,CIRCUIT.y+CIRCUIT.h)-y;
  if(w<=0||h<=0)return;
- let cached=artwork.get(pats);
+ scale=Math.min(scale,(scale<1?2048:4096)/CIRCUIT.w);let cached=artwork.get(pats);
  if(!cached||cached.scale!==scale||cached.asphalt!==pats.asphalt||cached.grass!==pats.grass){
   if(cached){cached.retired=true;cached.bitmap?.close();cached.canvas.width=1;}
-  const canvas=document.createElement('canvas');canvas.width=CIRCUIT.w*scale;canvas.height=CIRCUIT.h*scale;
-  const a=canvas.getContext('2d');a.scale(scale,scale);a.translate(-CIRCUIT.x,-CIRCUIT.y);paintCircuit(a,{x0:CIRCUIT.x,y0:CIRCUIT.y,x1:CIRCUIT.x+CIRCUIT.w,y1:CIRCUIT.y+CIRCUIT.h},pats);
+  const canvas=document.createElement('canvas');canvas.width=Math.ceil(CIRCUIT.w*scale);canvas.height=Math.ceil(CIRCUIT.h*scale);
+  const a=canvas.getContext('2d');a.scale(scale,scale);a.translate(-CIRCUIT.x,-CIRCUIT.y);paintCircuit(a,view,pats);
   cached={canvas,scale,asphalt:pats.asphalt,grass:pats.grass};artwork.set(pats,cached);
-  // Immutable pixels avoid repeat canvas uploads on Android's canvas backend.
   if(typeof createImageBitmap==='function'){const entry=cached;createImageBitmap(canvas).then(bitmap=>{if(entry.retired)bitmap.close();else{entry.bitmap=bitmap;entry.canvas.width=1;}}).catch(()=>{});}
  }
  c.drawImage(cached.bitmap||cached.canvas,(x-CIRCUIT.x)*scale,(y-CIRCUIT.y)*scale,w*scale,h*scale,x,y,w,h);

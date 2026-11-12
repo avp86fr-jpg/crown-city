@@ -60,3 +60,8 @@ test('portrait and landscape table buttons remain inside safe canvas bounds with
   }
  }
 });
+
+test('blackjack rejects unsupported stakes and cannot accept actions while the slot interface owns input',()=>{
+ for(const stake of [-1,0,1,25,NaN,Infinity]){const G=game();G.casino.stake=stake;assert.equal(dealCasino(G),false);assert.equal(G.chips,400);}
+ const G=game();G.casino.mode='slots';assert.equal(dealCasino(G),false);round(G,[9,7],[8,5],[12]);const hand=[...G.casino.round.player],chips=G.chips;assert.equal(casinoAction(G,'hit'),false);assert.deepEqual(G.casino.round.player,hand);assert.equal(G.chips,chips);
+});

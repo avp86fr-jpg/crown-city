@@ -1,3 +1,4 @@
+import {racePace,cycleRacePace} from './circuit_rules.js';
 import {WEAPONS,CONTRACTS,nearService,buyService,startContract,servicePoints} from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px Inter, system-ui, sans-serif`;
 function textLines(c,text,max){const out=[];let line='';for(const word of text.split(' ')){const n=line?line+' '+word:word;if(line&&c.measureText(n).width>max){out.push(line);line=word;}else line=n;}if(line)out.push(line);return out;}
@@ -57,21 +58,24 @@ export function drawCrew(G,{button,panel,save}){
 }
 export function drawWorkshop(G,{button,panel,save}){
  const c=G.ctx,W=G.canvas.width,H=G.canvas.height,u=G.ui,A=G.action,service=nearService(G);
+ G.buttons.length=0;if(G._nav)G._nav.length=0; // The modal owns input, including over the hidden minimap.
  c.setTransform(1,0,0,1,0,0);c.fillStyle='rgba(5,10,15,.93)';c.fillRect(0,0,W,H);
  const ww=Math.min(W-40*u,520*u),xx=(W-ww)/2,hh=Math.min(H-30*u,470*u),yy=(H-hh)/2;
  panel(c,xx,yy,ww,hh,12*u,{fill:'#152027',stroke:'#8b7960'});
  c.textAlign='left';c.fillStyle='#e8d8b8';c.font=font(22*u,900);c.fillText('AFTER HOURS',xx+20*u,yy+36*u);
  c.fillStyle='#97c6bb';c.font=font(11*u,700);c.fillText(service?service.name:'DRIVE TO A MARKED WORKSHOP',xx+20*u,yy+57*u,ww-40*u);
  c.fillStyle='#d5c5a7';c.fillText(Math.round(G.chips)+' CHIPS / STREET TUNE '+A.upgrades+'/3',xx+20*u,yy+78*u);
- const items=[['repair','REPAIR / 120'],['tune','ENGINE + TIRES / 500'],['respray','LOSE HEAT / 250'],['supply','HEALTH + AMMO / 90']];
- const bh=Math.min(44*u,(hh-185*u)/5),gap=8*u;
- items.forEach(([id,label],i)=>button(G,xx+20*u,yy+96*u+i*(bh+gap),ww-40*u,bh,label,()=>{
-  if(!nearService(G)){
-    const target=[...servicePoints(G)].sort((a,b)=>Math.hypot(a.x-G.player.x,a.y-G.player.y)-Math.hypot(b.x-G.player.x,b.y-G.player.y))[0];
-    G.waypoint={x:target.x,y:target.y};G.gps=null;A.message={name:'HUNTER',text:'Nearest workshop marked blue. Drive there and open C / CREW when you arrive.'};G.scene='play';return;
+ const items=[['repair','REPAIR / 120'],['tune','ENGINE + TIRES / 500'],['respray','LOSE HEAT / 250'],['supply','HEALTH + AMMO / 90'],['recover','RECOVER RIOT / FREE AT HUNTER'],['pace','RACE CLASS / '+racePace(G).label+' / '+racePace(G).target+'s']];
+ const columns=W>H*1.35?2:1,rows=Math.ceil(items.length/columns),gap=6*u,bh=Math.min(38*u,(hh-184*u)/rows-gap),bw=(ww-40*u-gap*(columns-1))/columns;
+ items.forEach(([id,label],i)=>button(G,xx+20*u+(i%columns)*(bw+gap),yy+96*u+Math.floor(i/columns)*(bh+gap),bw,bh,label,()=>{
+  if(id==='pace'){if(cycleRacePace(G))save(G);else {A.message={name:'RACE CONTROL',text:'Finish or cancel the active circuit job before changing class.'};A.messageT=7;}return;}
+  if(id==='recover'&&service?.id==='garage'){if(buyService(G,id))save(G);return;}
+  if(!nearService(G)||id==='recover'){
+    const target=servicePoints(G).filter(s=>id!=='recover'||s.id==='garage').sort((a,b)=>Math.hypot(a.x-G.player.x,a.y-G.player.y)-Math.hypot(b.x-G.player.x,b.y-G.player.y))[0];
+    G.waypoint={x:target.x,y:target.y};G.gps=null;A.message={name:'HUNTER',text:id==='recover'?'Hunter Garage marked blue. Visit its reserved Riot bays on foot and request recovery.':'Nearest workshop marked blue. Drive there and open C / CREW when you arrive.'};G.scene='play';return;
   }
   if(buyService(G,id))save(G);
- },{size:12*u,primary:i===0&&!!service}));
+ },{size:(columns===2?9:12)*u,primary:i===0&&!!service}));
  c.fillStyle='#bdc8c3';c.font=font(10*u,600);const msg=A.message?.text||'Repair, respray and tune cars. Medical supplies also refill magazines.';
  textLines(c,msg,ww-40*u).slice(0,2).forEach((line,i)=>c.fillText(line,xx+20*u,yy+hh-(70-i*13)*u));
  const footer=(ww-48*u)/2;

@@ -1,5 +1,6 @@
 /* A shared, bounded local planner for walkers and venue visitors. */
-import {circleBody} from './collision.js';
+import {circleBody,localPoint,bodySize} from './collision.js';
+const EMPTY_CARS=[];
 export function pedestrianClear(G,x,y,r=6,vehicles=null){
  const pass=(x,y)=>!['build','water','canal'].includes(G.surfaceAt(x,y));
  if(!pass(x,y)||!pass(x-r,y)||!pass(x+r,y)||!pass(x,y-r)||!pass(x,y+r))return false;
@@ -17,7 +18,14 @@ export function stepPedestrian(G,p,heading,speed,dt,{road=false}={}){
  else for(const v of G.vehicles||[])if(Math.abs(v.x-p.x)<210&&Math.abs(v.y-p.y)<210)cars.push(v);
  G.cityAI?.nearPeople?.(p.x,p.y,48,other=>people.push(other));
  const safe=(x,y)=>{
-  if(!pedestrianClear(G,x,y,6,cars)||!road&&G.surfaceAt(x,y)==='road')return false;
+  if(!pedestrianClear(G,x,y,6,EMPTY_CARS)||!road&&G.surfaceAt(x,y)==='road')return false;
+  for(const car of cars)if(!car.def?.boat&&!(car.def?.aircraft&&car.altitude>10)&&circleBody(car,x,y,6)){
+   // A crossing pedestrian tangent to two stopped cars must be able to slide
+   // out of the gap. Reject new/deeper contact, but allow an existing touch to clear.
+   if(!circleBody(car,p.x,p.y,6))return false;
+   const b=bodySize(car),a=localPoint(car,p.x,p.y),n=localPoint(car,x,y),clear=q=>Math.max(Math.abs(q.x)-b.w,Math.abs(q.y)-b.l);
+   if(clear(n)<clear(a)-.001)return false;
+  }
   let clear=true;for(const other of people){
    if(other===p||other.dead||other.dive>0)continue;
    const next=(other.x-x)**2+(other.y-y)**2,current=(other.x-p.x)**2+(other.y-p.y)**2;
@@ -26,7 +34,7 @@ export function stepPedestrian(G,p,heading,speed,dt,{road=false}={}){
  };
  // Retain the chosen side around a parked body, rather than changing sides
  // every frame. Look farther than one step so the turn begins before contact.
- for(const turn of [0,.55*side,1.05*side,1.55*side,-.55*side,-1.05*side,-1.55*side]){
+ for(const turn of [0,.55*side,1.05*side,Math.PI/2*side,-.55*side,-1.05*side,-Math.PI/2*side,Math.PI]){
   const a=heading+turn,hx=Math.sin(a),hy=-Math.cos(a),x=p.x+hx*step,y=p.y+hy*step;
   if(!safe(x,y)||!safe(p.x+hx*Math.max(16,step),p.y+hy*Math.max(16,step)))continue;
   if(turn)p._walkSide=Math.sign(turn);

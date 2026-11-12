@@ -46,10 +46,10 @@ test('train rolling sound follows acceleration and station stops; dirt has no as
 
 test('casino, station and material footsteps create finite reusable PCM with bounded voices',()=>withAudio(get=>{
  const A=createAudio();A.setLite(true);assert.equal(A.unlock(),true);const ctx=get(),play=createEffects(ctx,{});
- for(const kind of ['card','chips','casinoWin','casinoLose','casinoPush','casinoOpen','stepHard','stepLoose','stepWood','arrive','platform','horn']){
+ for(const kind of ['card','chips','casinoWin','casinoLose','casinoPush','casinoOpen','stepHard','stepLoose','stepWood','arrive','platform','horn','raceCount','raceGo','raceGate','raceFinish','raceInvalid','pitService','reelStop']){
   for(let i=0;i<8;i++){assert.equal(play(kind,.2,NaN,NaN),true);const s=ctx.sources.at(-1);assert.ok(Number.isFinite(s.playbackRate.value));assert.ok(s.buffer.getChannelData(0).some(x=>Math.abs(x)>.01));assert.ok(s.buffer.getChannelData(0).every(x=>Number.isFinite(x)&&Math.abs(x)<=1));s.onended();}
  }
- assert.equal(play.stats().voices,0);assert.equal(play.stats().buffers,22);assert.ok(play.stats().bytes<1_000_000);
+ assert.equal(play.stats().voices,0);assert.equal(play.stats().buffers,29);assert.ok(play.stats().bytes<1_000_000);
  for(let i=0;i<12;i++)assert.equal(play('card'),true);assert.equal(play('card'),false);
 }));
 
