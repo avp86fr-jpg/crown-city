@@ -3,6 +3,27 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const url = process.env.CC_URL || 'http://127.0.0.1:8000/';
 
+async function playing(page) {
+  try {
+    // Autoplay policies differ between Chrome installations. Exercise the
+    // visible user-gesture fallback when the browser requires it.
+    await page.waitForFunction(() => {
+      const video = document.querySelector('#introPlayer video');
+      return video?.error || video?.currentTime > .3 || document.querySelector('#playIntro')?.hidden === false;
+    });
+    if (await page.locator('#playIntro').isVisible()) await page.locator('#playIntro').click();
+    await page.waitForFunction(() => document.querySelector('#introPlayer video')?.currentTime > .3);
+  } catch (error) {
+    const details = await page.evaluate(() => {
+      const video = document.querySelector('video');
+      return { scene: window.__CC?.G.scene, active: window.__CC?.G.introActive, time: video?.currentTime,
+        ready: video?.readyState, network: video?.networkState, paused: video?.paused,
+        mediaError: video?.error?.message, status: document.querySelector('#introStatus')?.textContent };
+    });
+    throw new Error(`Intro did not play: ${JSON.stringify(details)}`, { cause: error });
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), headless: true });
   async function setup(options = {}, init) {
@@ -31,7 +52,7 @@ const url = process.env.CC_URL || 'http://127.0.0.1:8000/';
       await page.evaluate(() => { __CC.G.chips = 1732; localStorage.setItem('intro-save-sentinel', 'unchanged'); });
       const saved = await page.evaluate(() => JSON.stringify(localStorage));
       await menu('WATCH INTRO');
-      await page.waitForFunction(() => document.querySelector('#introPlayer video')?.currentTime > .3);
+      await playing(page);
       const state = await page.evaluate(() => {
         const video = document.querySelector('#introPlayer video');
         return { ticks: __CC.G.ticks, master: __CC.G.audio.masterVol, duration: video.duration, inline: video.playsInline };
@@ -48,14 +69,14 @@ const url = process.env.CC_URL || 'http://127.0.0.1:8000/';
       assert.equal(await page.locator('#introPlayer').count(), 0);
 
       await menu('WATCH INTRO');
-      await page.waitForFunction(() => document.querySelector('video')?.currentTime > .1);
+      await playing(page);
       assert.ok(await page.locator('video').evaluate(video => video.currentTime < 3), 'Rewatch restarts the movie');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !__CC.G.introActive);
       assert.equal(await page.evaluate(() => __CC.G.scene), 'title');
 
       await menu('NEW GAME');
-      await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+      await playing(page);
       if (viewport.width === 1280) {
         await page.locator('video').evaluate(video => { video.currentTime = video.duration - .2; });
         await page.waitForFunction(() => !__CC.G.introActive);
