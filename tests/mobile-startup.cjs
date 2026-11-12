@@ -7,8 +7,8 @@ try{
  async function ready(){await page.goto(url);await page.waitForFunction(()=>!!window.__CC);await page.evaluate(async()=>{window.T=(await import(new URL('src/game.js',location.href).href)).testing;__CC.G.settings.autoFS=false;});}
  async function tap(label){await page.waitForFunction(label=>__CC.G.buttons.some(b=>b.label===label),label);const b=await page.evaluate(label=>{const G=__CC.G,b=G.buttons.find(b=>b.label===label);return{x:(b.x+b.w/2)/G.dpr,y:(b.y+b.h/2)/G.dpr};},label);await page.touchscreen.tap(b.x,b.y);}
  async function worldPixels(){await page.waitForTimeout(1000);return page.evaluate(()=>{const G=__CC.G,c=G.ctx,W=G.canvas.width,H=G.canvas.height,d=c.getImageData(W*.25,H*.25,W*.5,H*.5).data;let opaque=0,lit=0;for(let i=0;i<d.length;i+=4){if(d[i+3]===255)opaque++;if(Math.max(d[i],d[i+1],d[i+2])>30)lit++;}return{opaque:opaque/(d.length/4),lit:lit/(d.length/4),quality:G.settings.quality,layered:G.layered,scene:G.scene};});}
- await ready();assert.equal(await page.evaluate(()=>__CC.G.settings.quality),'low');await tap('NEW GAME');await page.waitForFunction(()=>__CC.G.scene==='vn'&&!__CC.G.vn.pending);
- await page.waitForTimeout(600);await page.screenshot({path:'.qa/ai/opening-mobile.png'});await tap('SKIP OPENING');
+ await ready();assert.equal(await page.evaluate(()=>__CC.G.settings.quality),'low');await tap('NEW GAME');await page.locator('#skipIntro').click();await page.waitForFunction(()=>__CC.G.scene==='vn'&&!__CC.G.vn.pending);
+ await page.waitForTimeout(600);await page.screenshot({path:'.qa/ai/opening-mobile.png'});assert.ok(await page.evaluate(()=>__CC.G.vn.t>=7.5));
  await page.waitForFunction(()=>__CC.G.vn.t>=7.5);await page.evaluate(()=>{__CC.G.vn.char=__CC.G.vn.node.text.length;});await page.waitForTimeout(100);await page.screenshot({path:'.qa/ai/dialogue-mobile.png'});
  for(let i=0;i<15&&await page.evaluate(()=>__CC.G.scene==='vn');i++){
   await page.waitForFunction(()=>!__CC.G.vn.pending);await page.evaluate(()=>{__CC.G.vn.char=__CC.G.vn.node.text.length;});await page.waitForTimeout(100);

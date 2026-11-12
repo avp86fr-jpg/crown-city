@@ -1,3 +1,4 @@
+import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
 import {drawBikeRider} from './rider_art.js';
@@ -233,7 +234,7 @@ export async function boot() {
   const STEP = 1 / 60;
   function frame() {
     const t = now();
-    if(document.hidden){last=t;acc=0;requestAnimationFrame(frame);return;}
+    if(document.hidden||G.introActive){last=t;acc=0;requestAnimationFrame(frame);return;}
     let dt = Math.min(0.1, t - last);
     last = t;
     acc += dt;
@@ -476,6 +477,7 @@ function bindKeys(G) {
   const down = new Set(), releasedHolds=new Set();
   const I = G.input;
   const on = (e, d) => {
+    if (G.introActive) return;
     const k = e.code;
     if(d){if(e.repeat&&releasedHolds.has(k))return;if(!e.repeat)releasedHolds.delete(k);down.add(k);}
     else {down.delete(k);releasedHolds.delete(k);}
@@ -903,6 +905,7 @@ function tickPickups(G, dt) {
 
 /* -------------------- Tick -------------------- */
 function tick(G, dt) {
+  if (G.introActive) return;
   G._pulseInput();
   if (G.scene === "title") tickTitle(G, dt);
   else if (G.scene === "settings") tickSettings(G, dt);
@@ -3727,7 +3730,12 @@ function drawBanner(G, W, H) {
 }
 
 function drawTitle(G) {
-  drawTitleScreen(G,{button:uiButton,startNew:()=>startNew(G),continueGame:()=>loadSave(G,'story'),freeRide:()=>startFreeRide(G),settings:()=>{G.pausedFrom='title';G.scene='settings';G.menuSel=0;}});
+  const beginStory = () => {
+    startNew(G);
+    // The film replaces the old timed title card; retain all story dialogue.
+    G.vn.t = 7.5; G.vn.wipe = 0;
+  };
+  drawTitleScreen(G,{button:uiButton,startNew:()=>G.settings.reducedMotion?beginStory():playIntro(G,beginStory),watchIntro:()=>playIntro(G),continueGame:()=>loadSave(G,'story'),freeRide:()=>startFreeRide(G),settings:()=>{G.pausedFrom='title';G.scene='settings';G.menuSel=0;}});
 }
 
 function drawPause(G) {
