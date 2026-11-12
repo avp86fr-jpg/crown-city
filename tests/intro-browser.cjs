@@ -1,6 +1,5 @@
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const url = process.env.CC_URL || 'http://127.0.0.1:8000/';
 
 async function playing(page) {
@@ -25,7 +24,9 @@ async function playing(page) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), headless: true });
+  // Use full Chrome for Testing: some system Chromium/headless-shell builds
+  // omit H.264/AAC decoding even though the game itself renders correctly.
+  const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: 'chromium' }), headless: true });
   async function setup(options = {}, init) {
     const context = await browser.newContext(options);
     const page = await context.newPage(), errors = [], movies = [];
