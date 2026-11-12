@@ -6,6 +6,7 @@ export function trafficDemand(G,base){
  if(h>=2&&h<6)density*=.65;
  else if(nightlife&&(h>=18||h<2))density*=1.18;
  else if(h>=7&&h<10||h>=16&&h<19)density*=1.14;
- return Math.min(Math.ceil(base*1.25),Math.max(3,Math.round(base*density)));
+ const budget=G.touch&&G.settings?.quality==='low'?Math.max(.8,Math.min(1,G.streetBudget??1)):1;
+ return Math.min(Math.ceil(base*1.25*budget),Math.max(3,Math.round(base*density*budget)));
 }
 export const spawnWeight=e=>Math.max(1,e.len-340)*e.lanes*(e.k==='frontier'?.35:e.k==='strip'?1.25:1);

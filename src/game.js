@@ -2553,6 +2553,14 @@ function adaptRes(G, dt) {
   if (A.t < 2) return;
   const avg = A.sum / A.n,elapsed=A.t; A.t = 0; A.n = 0; A.sum = 0;
   if (G.settings.autoRes === false) return;
+  if(G.touch&&G.settings.quality==='low'){
+    A.streetBadFor=avg>1/42?(A.streetBadFor||0)+elapsed:0;
+    A.streetGoodFor=avg<1/52?(A.streetGoodFor||0)+elapsed:0;
+    // Resolution cannot cure crowded simulation work. Reduce only unseen
+    // ambient replenishment after sustained load; preserve visible actors.
+    if(A.streetBadFor>=4){G.streetBudget=.8;A.streetGoodFor=0;}
+    else if(A.streetGoodFor>=16){G.streetBudget=1;A.streetBadFor=0;}
+  }
   const floor=G.directRaster?.75:.6,r=Math.max(floor,G.resScale||1);
   A.cooldown=Math.max(0,(A.cooldown||0)-elapsed);
   A.goodFor=avg<1/58?(A.goodFor||0)+elapsed:0;
@@ -2566,6 +2574,7 @@ function adaptRes(G, dt) {
 }
 function volStep(v, d) { const n = Math.round((v + d * 0.1) * 10) / 10; return n > 1.001 ? 0 : n < -0.001 ? 1 : n; }
 function applyQuality(G) {
+  G.streetBudget=1;if(G._ar)G._ar.streetBadFor=G._ar.streetGoodFor=0;
   if (G.audio && G.audio.setLite) G.audio.setLite(G.settings.quality === "low");
   const q = G.settings.quality;
   if(q!=='low')releaseBakedWorld(G);

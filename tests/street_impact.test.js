@@ -85,3 +85,15 @@ test('actual bullets and runovers trigger impact effects, while scenery hits do 
  G.solidAt=()=>false;G.bloodFX=null;const car=T.makeVeh('riot',2180,2400,Math.PI/2);car.vx=200;car.vy=0;G.vehicles=[car];G.movingVehicles=[car];G.peds=[{x:2180,y:2400,rot:0,hp:10,dist:0,walk:30}];T.tickPeds(G,1/60);
  assert.equal(G.peds[0].dead,true);assert.ok(G.bloodFX.drops.some(d=>d.chunk));
 });
+test('sustained mobile load reduces ambient demand with hysteresis, leaving visible and protected pedestrians in place',async()=>{
+ const {G,T}=await harness();T.startFreeRide(G);G.touch=true;G.settings.quality='low';G.settings.autoRes=true;G.directRaster=true;G.resScale=.75;T.applyQuality(G);
+ for(let i=0;i<240;i++)T.adaptRes(G,1/30);assert.equal(G.streetBudget,.8);
+ G.time=21;G.player.x=2100;G.player.y=2400;assert.ok(trafficDemand(G,24)<=24);
+ for(let i=0;i<400;i++)T.adaptRes(G,1/60);assert.equal(G.streetBudget,.8,'a short recovery must not immediately repopulate');
+ for(let i=0;i<1000;i++)T.adaptRes(G,1/60);assert.equal(G.streetBudget,1);
+ G.streetBudget=.8;G.ticks=600;G.cam.x=G.player.x;G.cam.y=G.player.y;
+ const visible={x:G.cam.x,y:G.cam.y,ambient:true},mission={x:G.cam.x+1500,y:G.cam.y,ambient:true,mission:true},crossing={x:G.cam.x+1400,y:G.cam.y,ambient:true,crossing:true};
+ G.peds=[visible,mission,crossing,...Array.from({length:50},(_,i)=>({x:G.cam.x+1200+i,y:G.cam.y,ambient:true}))];
+ const before=G.peds.length;G.pedsys.tick(1/60);assert.equal(G.peds.length,before-1);assert.ok(G.peds.includes(visible)&&G.peds.includes(mission)&&G.peds.includes(crossing));
+ assert.equal(G.pedsys.effectiveTarget,34);G.settings.quality='high';T.applyQuality(G);assert.equal(G.streetBudget,1);
+});

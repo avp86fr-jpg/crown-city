@@ -48,7 +48,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:
    });
    s.fps=(s.frames-lastFrames)/(s.seconds-lastTime);s.simHz=(s.ticks-lastTicks)/(s.seconds-lastTime);lastFrames=s.frames;lastTicks=s.ticks;lastTime=s.seconds;
    s.metrics=(await cdp.send('Performance.getMetrics')).metrics.filter(m=>/JSHeapUsedSize|Nodes|Documents|TaskDuration/.test(m.name));
-   s.effects=await page.evaluate(()=>{const G=__CC.G;return{drops:G.bloodFX?.drops.length||0,stains:G.bloodFX?.stains.length||0,pool:G.bloodFX?.pool.length||0,population:G.traffic.population};});
+   s.effects=await page.evaluate(()=>{const G=__CC.G;return{drops:G.bloodFX?.drops.length||0,stains:G.bloodFX?.stains.length||0,pool:G.bloodFX?.pool.length||0,budget:G.streetBudget||1,pedTarget:G.pedsys.effectiveTarget,population:G.traffic.population};});
    samples.push(s);fs.writeFileSync(path.join(out,label+'.json'),JSON.stringify({url,route,cpu:Number(cpu),errors,samples},null,2));
    console.log(JSON.stringify({seconds:Math.round(s.seconds),fps:s.fps,simHz:s.simHz,rafP95:s.rafP95,heap:s.heap,entities:s.entities,prof:s.prof}));
    if(elapsed===0||elapsed+30>=Number(seconds))await page.screenshot({path:path.join(out,label+'-'+Math.round(s.seconds)+'.png')});

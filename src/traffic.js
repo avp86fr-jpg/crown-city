@@ -539,9 +539,22 @@ export function createPeds(G) {
     tick(dt) {
       const pl = G.player;
       if (G.ticks % 10 === 0) {
-        const live = G.peds.filter((p) => !p.dead && p.ambient).length;
-        if (live < P.target) { const {halfW,halfH}=streetViewport(G); const minD=Math.min(halfW,halfH)+60; for (let k = 0; k < 3 && live + k < P.target; k++) P.spawn(pl, minD, minD + 600); }
+        if(!(G.touch&&G.settings?.quality==='low')){
+          const live=G.peds.filter(p=>!p.dead&&p.ambient).length;P.effectiveTarget=P.target;
+          if(live<P.target){const {halfW,halfH}=streetViewport(G),minD=Math.min(halfW,halfH)+60;for(let k=0;k<3&&live+k<P.target;k++)P.spawn(pl,minD,minD+600);}
+          G.peds=G.peds.filter(p=>!p.ambient||Math.hypot(p.x-pl.x,p.y-pl.y)<1700||p.dead&&p.deadT<30);
+          return;
+        }
         G.peds = G.peds.filter((p) => !p.ambient || Math.hypot(p.x - pl.x, p.y - pl.y) < 1700 || (p.dead && p.deadT < 30));
+        let live=0;for(const p of G.peds)if(!p.dead&&p.ambient)live++;
+        P.effectiveTarget=Math.round(P.target*(G.touch&&G.settings?.quality==='low'?(G.streetBudget??1):1));
+        if(live>P.effectiveTarget){
+          const i=G.peds.findIndex(p=>p.ambient&&!p.dead&&!p.mission&&!p.copPed&&!p.crossing&&!p.onRoad&&!visibleSpawn(G,p.x,p.y));
+          if(i>=0){G.peds.splice(i,1);live--;}
+        }
+        if(live<P.effectiveTarget){const {halfW,halfH}=streetViewport(G),minD=Math.min(halfW,halfH)+60;
+          for(let k=0;k<3&&live<P.effectiveTarget;k++){const before=G.peds.length;P.spawn(pl,minD,minD+600);live+=G.peds.length-before;}
+        }
       }
     },
     walkAmbient(p, dt) {
