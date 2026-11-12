@@ -9,7 +9,7 @@ const url=process.env.CC_URL||'http://127.0.0.1:8000/';
   await page.addInitScript(()=>{window.__media=[];window.Audio=new Proxy(Audio,{construct(Target,args){const el=Reflect.construct(Target,args);__media.push(el);return el;}});});
   await page.goto(url);await page.waitForFunction(()=>!!window.__CC);
   const start=await page.evaluate(async()=>{window.T=(await import(new URL('src/game.js',location.href).href)).testing;const G=__CC.G;G.settings.autoFS=false;const b=G.buttons.find(b=>b.label==='NEW GAME');return{x:(b.x+b.w/2)/G.dpr,y:(b.y+b.h/2)/G.dpr};});
-  await page.touchscreen.tap(start.x,start.y);
+  await page.touchscreen.tap(start.x,start.y);await page.locator('#skipIntro').click();
   await page.waitForFunction(()=>__CC.G.audio.recordedMusic&&__CC.G.audio.trackTitle.startsWith('RETURN TO CROWN')&&__media.some(e=>e.src.includes('return-to-crown')&&!e.paused&&e.currentTime>.25));
   const track=await page.evaluate(()=>{const a=__media.find(e=>e.src.includes('return-to-crown'));return{src:a.src,duration:a.duration,streams:__CC.G.audio.activeStreams};});
   assert.match(track.src,fallback?/return-to-crown\.mp3$/:/return-to-crown\.ogg$/);assert.ok(track.duration>=59&&track.duration<62);assert.ok(track.streams<=2);

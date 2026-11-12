@@ -64,7 +64,7 @@ async function dialogue(page, choices) {
   try {
     const { page } = await setup(browser);
     await check('keyboard and E dialogue advance through the opening', async () => {
-      await button(page, 'NEW GAME'); await dialogue(page, { stash: 'safe' });
+      await button(page, 'NEW GAME'); await page.locator('#skipIntro').click(); await step(page); await dialogue(page, { stash: 'safe' });
       assert.equal(await page.evaluate(() => __CC.G.scene), 'play');
       assert.equal(await page.evaluate(() => __CC.G.missionIndex), 0);
     });
