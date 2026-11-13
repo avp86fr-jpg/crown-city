@@ -141,14 +141,22 @@ export function drawAtmosphere(G, r, night) {
 }
 
 const _puffs=new Map();
+// Painterly puff: many soft lobes with long alpha falloff, a warm lit crown and
+// a cool shaded underside. Built once per tint into a 96px texture.
 function puff(col){
  let c=_puffs.get(col);if(c)return c;
- c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
- const lobes=[[32,36,22],[20,34,14],[44,32,15],[30,24,13],[40,42,12],[22,44,11]];
- for(const [lx,ly,r] of lobes){const g=x.createRadialGradient(lx-r*.25,ly-r*.3,r*.1,lx,ly,r);g.addColorStop(0,`rgba(${col},.9)`);g.addColorStop(.55,`rgba(${col},.55)`);g.addColorStop(1,`rgba(${col},0)`);x.fillStyle=g;x.beginPath();x.arc(lx,ly,r,0,Math.PI*2);x.fill();}
- // Painted top-light: a pale highlight on the upper lobes, a cooler shade below.
+ c=document.createElement('canvas');c.width=c.height=96;const x=c.getContext('2d');
+ let seed=col.length*9301+49297;const rnd=()=>((seed=(seed*9301+49297)%233280)/233280);
+ const [r,g,b]=col.split(',').map(Number);
+ for(let i=0;i<14;i++){
+  const a=rnd()*Math.PI*2,d=rnd()*20,lx=48+Math.cos(a)*d,ly=50+Math.sin(a)*d*.8,rr=14+rnd()*16;
+  const gr=x.createRadialGradient(lx,ly,0,lx,ly,rr);
+  gr.addColorStop(0,`rgba(${r},${g},${b},.5)`);gr.addColorStop(.45,`rgba(${r},${g},${b},.3)`);gr.addColorStop(.8,`rgba(${r},${g},${b},.08)`);gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+  x.fillStyle=gr;x.beginPath();x.arc(lx,ly,rr,0,Math.PI*2);x.fill();
+ }
  x.globalCompositeOperation='source-atop';
- const h=x.createLinearGradient(0,8,0,58);h.addColorStop(0,'rgba(255,255,255,.22)');h.addColorStop(.5,'rgba(255,255,255,0)');h.addColorStop(1,'rgba(20,24,40,.22)');x.fillStyle=h;x.fillRect(0,0,64,64);
+ const warm=x.createRadialGradient(36,30,2,40,36,46);warm.addColorStop(0,'rgba(255,236,206,.55)');warm.addColorStop(1,'rgba(255,236,206,0)');x.fillStyle=warm;x.fillRect(0,0,96,96);
+ const cool=x.createRadialGradient(62,70,4,58,66,44);cool.addColorStop(0,'rgba(70,92,138,.42)');cool.addColorStop(1,'rgba(70,92,138,0)');x.fillStyle=cool;x.fillRect(0,0,96,96);
  _puffs.set(col,c);return c;
 }
 export function drawParticleFX(ctx, p) {
@@ -186,10 +194,12 @@ export function drawParticleFX(ctx, p) {
     const grow=k==='smoke'?(p.dark?30:24):k==='dust'?15:k==='gunsmoke'?14*(p.size||1):k==='steam'?14:46;
     const size=base+ease*grow,fade=k==='haze'?Math.sin(Math.PI*Math.min(1,age*1.4+.05))*.5:(1-age)*(1-age*.35);
     const alpha=(k==='smoke'?(p.dark?.66:.5):k==='dust'?.42:k==='gunsmoke'?.72:k==='steam'?.46:.26)*fade*(p.a??1);
-    const col=k==='dust'?'178,151,111':k==='steam'?'232,238,242':k==='gunsmoke'?'206,206,200':k==='haze'?'190,194,196':p.dark?'34,36,42':'178,186,194';
+    const col=k==='dust'?'190,160,118':k==='steam'?'240,244,246':k==='gunsmoke'?'236,232,224':k==='haze'?'214,214,210':p.dark?'40,40,46':'206,210,214';
     const tex=puff(col);ctx.translate(p.x,p.y);ctx.rotate((p.seed||0)+age*.6);
-    ctx.globalAlpha=alpha*.55;ctx.drawImage(tex,-size*.92+size*.12,-size*.72+size*.14,size*1.84,size*1.44);
-    ctx.globalAlpha=alpha;ctx.drawImage(tex,-size,-size*.8,size*2,size*1.6);
+    // Billow: a main puff plus two smaller offset lobes that separate as it ages.
+    const A=Math.min(1,alpha*1.5),sp=size*(.35+age*.35);
+    ctx.globalAlpha=A;ctx.drawImage(tex,-size*1.2,-size,size*2.4,size*2);
+    if(k!=='dust'&&k!=='haze'){ctx.globalAlpha=A*.7;ctx.drawImage(tex,sp-size*.8,-sp*.5-size*.7,size*1.6,size*1.4);ctx.drawImage(tex,-sp-size*.7,sp*.3-size*.6,size*1.4,size*1.2);}
   } else if (p.kind === 'glass') {
     ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)+age*9);ctx.globalAlpha=clamp(p.life*2.5)*.9;
     ctx.fillStyle='#cfe9f2';ctx.beginPath();ctx.moveTo(-2.4,0);ctx.lineTo(0,-1.3);ctx.lineTo(2.4,.2);ctx.lineTo(0,1.2);ctx.closePath();ctx.fill();
