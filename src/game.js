@@ -1,4 +1,4 @@
-import {drawWaterMotion} from './water_motion.js';
+import {drawWaterMotion,tickWakes} from './water_motion.js';
 import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
@@ -54,7 +54,8 @@ import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from 
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
-import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail } from './open_world.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail, drawStatsCard } from './open_world.js';
+import { tickPursuit, drawPursuit, drawRadio, laySpikes } from './pursuit.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
@@ -2101,7 +2102,7 @@ function tickWanted(G, dt) {
         for(const side of [-1,1]){const x=back.x+(-hy)*side*58,y=back.y+hx*side*58;if(carHit(G,{def:VEH_DEFS.metro,r:25,rot:across,x,y},x,y))continue;
           const v=makeVeh('metro',x,y,across+(side>0?Math.PI:0),{keep:true,cop:true,siren:true,roadblock:true,parked:true,ambient:false,blockT:30});G.vehicles.push(v);n++;
           const s2=findSafe(G,x-hx*40,y-hy*40,8);G.peds.push({x:s2.x,y:s2.y,rot:Math.atan2(-hx,hy),vx:0,vy:0,sprite:'cop',speed:0,walk:130,dist:0,flee:0,r:8,hp:50,dead:false,copPed:true,car:v,grabT:0});}
-        if(n){toast(G,'Roadblock ahead!');G.lastRoadblock={x:back.x,y:back.y};}else G.roadblockT=2;
+        if(n){toast(G,G.wanted>=4?'Roadblock and spike strip ahead!':'Roadblock ahead!');G.lastRoadblock={x:back.x,y:back.y};if(G.wanted>=4||G.wanted>=3&&Math.random()<.5)laySpikes(G,back.x-hx*95,back.y-hy*95,Math.atan2(hx,-hy));}else G.roadblockT=2;
       }else G.roadblockT=2;
     }else G.roadblockT=2;
   }
@@ -2483,7 +2484,7 @@ function tickProps(G, dt) {
 }
 
 function tickParticles(G, dt) {
-  tickBlood(G,dt);tickBlastFX(G,dt);
+  tickBlood(G,dt);tickBlastFX(G,dt);tickWakes(G,dt);tickPursuit(G,dt);
   tickLightEffects(G,dt);
   // Smoke-like particles drift downwind and slow; haze settles after a burst.
   const wind=sceneWind(G),wx=wind.x*22,wy=wind.y*22,drag=Math.max(0,1-dt*1.8);
@@ -3060,7 +3061,7 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
-  drawOpenWorld(G, r);
+  drawOpenWorld(G, r);drawPursuit(G, r);
   drawRouteChevrons(G);
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
@@ -3476,6 +3477,12 @@ function drawVeh(G, v) {
       ctx.fillStyle='#12181c';ctx.fillRect(-8,-49,16,5);ctx.fillStyle=(G.night||0)>.3?'#ffd36a':'#e0a93a';ctx.font='700 4px system-ui';ctx.textAlign='center';ctx.fillText('12 CENTRAL',0,-45.4,15);
       ctx.restore();
     }
+    // Armoured van: roof ID plate, amber corner beacons and reflective rear chevrons.
+    if(v.kind==='van'&&!v.dead&&G.settings.quality!=='low'){
+      ctx.save();ctx.fillStyle='#e9e4d2';ctx.fillRect(-7,6,14,7);ctx.fillStyle='#1b2738';ctx.font='800 6px system-ui';ctx.textAlign='center';ctx.fillText('C-07',0,11.6,13);
+      const on=(G.night||0)>.3&&(G.ticks>>4)%2;ctx.fillStyle=on?'#ffc65a':'#c98a2c';ctx.fillRect(-15,-26,3,3);ctx.fillRect(12,-26,3,3);
+      ctx.fillStyle='#e3c46a';for(let i=0;i<4;i++){ctx.fillRect(-14+i*8,49,4,2);}ctx.restore();
+    }
     drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
     if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
       drawBikeRider(ctx,v,v===G.player);
@@ -3617,6 +3624,20 @@ function drawPedAccessory(ctx,a,dx,dy,dw,dh,moving){
   ctx.strokeStyle='rgba(20,20,24,.6)';ctx.beginPath();ctx.moveTo(cx-side*3,torso-dh*.12);ctx.lineTo(px,py-r);ctx.stroke();
   ctx.fillStyle=a.accCol;ctx.beginPath();ctx.roundRect(px-r,py-r*.8,r*2,r*1.7,1.6);ctx.fill();}
 }
+// Hats add clothing silhouettes the painted crowd keys lack: caps (brim
+// toward the facing), wide sun hats, knit beanies and banded fedoras.
+const HAT_COL=['#2d3a4f','#a8432f','#d8c9a3','#3e5a3a','#6b4a7a','#1f1f24','#c79b3b','#e8e2d4','#7a2f3f'];
+function drawPedHat(ctx,a,dx,dy,dw,dh){
+ if(a.hat===undefined){const h=(Math.abs(Math.sin((a.id||0)*37.3+a.x*.021+a.y*.017)*4517.9))%1;a.hat=h<.38?['cap','sun','beanie','fedora','cap','sun'][Math.floor(h/.38*6)]:'';a.hatCol=HAT_COL[Math.floor(h*731)%HAT_COL.length];}
+ if(!a.hat)return;
+ const cx=dx+dw/2,cy=dy+dh*.115,hx=Math.sin(a.rot||0),hy=-Math.cos(a.rot||0),w=dw*.26;
+ ctx.save();ctx.strokeStyle='rgba(10,12,16,.55)';ctx.lineWidth=.8;ctx.fillStyle=a.hatCol;
+ if(a.hat==='sun'){ctx.beginPath();ctx.ellipse(cx,cy+1,w*1.45,w*1.05,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cx,cy+.5,w*.72,w*.6,0,0,TAU);ctx.fill();ctx.fillStyle='#8a5a3a';ctx.fillRect(cx-w*.72,cy+.2,w*1.44,1.2);}
+ else if(a.hat==='cap'){ctx.beginPath();ctx.ellipse(cx+hx*w*.75,cy+hy*w*.55+1,w*.62,w*.42,Math.atan2(hy,hx),0,TAU);ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(cx,cy,w*.78,w*.7,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.22)';ctx.fillRect(cx-1,cy-w*.6,2,w*.9);}
+ else if(a.hat==='beanie'){ctx.beginPath();ctx.ellipse(cx,cy,w*.8,w*.72,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(cx-w*.8,cy+w*.2,w*1.6,1.6);ctx.fillStyle='rgba(255,255,255,.35)';ctx.beginPath();ctx.arc(cx,cy-w*.45,1.4,0,TAU);ctx.fill();}
+ else {ctx.beginPath();ctx.ellipse(cx,cy+.5,w*1.08,w*.82,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(cx,cy,w*.66,w*.52,0,0,TAU);ctx.fill();ctx.fillStyle=a.hatCol;ctx.beginPath();ctx.ellipse(cx,cy-.6,w*.56,w*.42,0,0,TAU);ctx.fill();}
+ ctx.restore();
+}
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
@@ -3661,7 +3682,20 @@ function drawChar(G,a){
  }
  const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
+ const heroFX=a===G.player&&!a.dead&&G.settings.quality!=='low';
+ // Chaos sprint: a faint purple after-image trails the run, and boots kick up dust.
+ if(heroFX&&running&&!G.settings.reducedMotion){const vx=a.vx??Math.sin(a.rot||0)*a.speed,vy=a.vy??-Math.cos(a.rot||0)*a.speed;ctx.save();ctx.globalAlpha*=.2;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.045,dy-vy*.045,dw,dh);ctx.globalAlpha*=.5;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.09,dy-vy*.09,dw,dh);ctx.restore();
+  if(pass&&(G.ticks%6===0)&&G.particles.length<400)G.particles.push({kind:'dust',x:a.x-Math.sin(a.rot||0)*8,y:a.y+Math.cos(a.rot||0)*8+6,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.45,maxLife:.45,size:.6});}
  ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ if(heroFX){
+  // Hit reaction: the sprite flares white-hot for a beat when Chaos is hurt.
+  if(G.hurtT>.2){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.7,(G.hurtT-.2)*1.6);ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);ctx.restore();}
+  // Red visor mark glows at night and while aiming: the hero's signature read.
+  const glow=Math.max((G.night||0)>.35?.55:0,aiming?.8:0);if(glow){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=glow*(.8+.2*Math.sin(G.ticks*.15));ctx.drawImage(LIGHT.radial('rgba(255,60,70,0.9)',32),dx+dw/2-7,dy+dh*.1-5,14,10);ctx.restore();
+   // and casts a small red pool into the night light pass (one frame, re-added each draw).
+   if((G.night||0)>.35&&G.flashes.length<60)G.flashes.push({x:a.x+dx+dw/2,y:a.y+dy+dh*.12,r:aiming?15:9,col:'rgba(255,50,64,0.6)',life:.017,max:.017});}
+ }
+ if(crowd&&!a.dead&&G.settings.quality!=='low'&&!a.copPed&&!a.gang&&a.cityActivity!=='cowering')drawPedHat(ctx,a,dx,dy,dw*(a.build||1),dh);
  if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
@@ -3678,7 +3712,7 @@ function drawHitMark(G){
   c.strokeStyle=m.kill?'#ff4d5e':'#fff6df';c.lineWidth=2;c.stroke();c.restore();
 }
 function drawAimGuide(G){
-  drawHitMark(G);
+  drawHitMark(G);drawRadio(G);drawStatsCard(G);
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
   const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);
@@ -4041,7 +4075,7 @@ function drawPause(G) {
     ["RESUME", () => { G.scene = "play"; }, { primary: true }],
     ["STORY / DOSSIER", () => {G.scene="dossier";G.menuSel=0;}, {}],
     ["CITY MAP", () => { G.scene = "map"; }, {}],
-    ...(G.ow ? [["CITY LIFE " + owProgress(G), () => { G.scene = "play"; G.toast = owDetail(G); G.toastT = 4.5; }, {}]] : []),
+    ...(G.ow ? [["CITY LIFE " + owProgress(G), () => { G.scene = "play"; G.statsCardT = 9; }, {}]] : []),
     ["CREW / CONTRACTS", () => { G.scene='crew';G.menuSel=0; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
     ["SAVE GAME", () => save(G), {}],

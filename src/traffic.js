@@ -455,7 +455,7 @@ export function createTraffic(G) {
         const cells=Math.ceil(range/160),cx=Math.floor(v.x/160),cy=Math.floor(v.y/160);
         for(let ix=cx-cells;ix<=cx+cells;ix++)for(let iy=cy-cells;iy<=cy+cells;iy++){
           for(const o of hash.get(ix+iy*10000)||EMPTY){
-            if(o===v)continue;const dx=o.x-v.x,dy=o.y-v.y,forward=dx*hx+dy*hy;
+            if(o===v||v.ghostT>0&&o.def&&o!==P)continue;const dx=o.x-v.x,dy=o.y-v.y,forward=dx*hx+dy*hy;
             if(forward<=0||forward>range+110)continue;
             const veh=!!o.def,body=veh?bodySize(o):{w:8,l:8},sn=Math.sin(o.rot||0),co=Math.cos(o.rot||0);
             const length=veh?Math.abs(hx*sn-hy*co)*body.l+Math.abs(hx*co+hy*sn)*body.w:8;
@@ -482,6 +482,14 @@ export function createTraffic(G) {
         const lead=tr.turn?null:aheadObj;
         v.redQueue=!!(tr.waitSince!=null&&!lightGreen(G,tr.fwd?tr.e.B:tr.e.A,tr.e))||(gap<40&&lead&&lead.traffic&&lead.redQueue&&lead.tr?.e===tr.e);
         passParked(v,gap);
+        // Deadlock breaker: two or three cars that block each other nose to
+        // nose (a junction knot), or a car stuck behind a stalled non-traffic
+        // wreck out of view, briefly ignores the blocker and threads through.
+        if(v.ghostT>0)v.ghostT-=dt;
+        v.blocker=gap<14&&lead&&lead.def&&lead!==P?lead:null;
+        if(v.blocker&&!(v.ghostT>0)&&!v.redQueue&&(v.blockedT||0)>2.5){const b=v.blocker,cyc=b.blocker===v||b.blocker?.blocker===v||b.blocker?.blocker?.blocker===v;
+          const stalled=!b.traffic&&Math.hypot(b.vx||0,b.vy||0)<4&&(v.blockedT||0)>7&&!(Math.abs(v.x-G.cam.x)<900&&Math.abs(v.y-G.cam.y)<600);
+          if(cyc||stalled){v.ghostT=2.4;G.trafficKnots=(G.trafficKnots||0)+1;}}
         if(tr.backoff!=null){
           const next=Math.max(tr.backoff,tr.s-18*dt),p=edgePoint(tr.e,tr.fwd,next,tr.lane),travel=tr.s-next;
           if(poseClear(v,p)){tr.s=next;commit(v,p,dt);v.vx=-Math.sin(v.rot)*travel/dt;v.vy=Math.cos(v.rot)*travel/dt;}

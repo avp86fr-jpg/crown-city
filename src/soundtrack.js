@@ -7,7 +7,13 @@ export const TRACKS=[
  {file:'last-train.ogg',title:'LAST TRAIN HOME / THE CROWN SESSIONS',station:'CROWN TRANSIT'},
  {file:'return-to-crown.ogg',title:'RETURN TO CROWN / THE CROWN SESSIONS',station:'STORY OVERTURE'},
  {file:'lucky-isle.ogg',title:'SUNSET DRIVE / LUCKY ISLE SOUND SYSTEM',station:'ISLAND FM 91.1'},
+ {file:'open-road.ogg',title:'OPEN ROAD / THE DESERT LINE',station:'OPEN ROAD 89.3'},
+ {file:'harbour-lights.ogg',title:'HARBOUR LIGHTS / SLOW TIDE',station:'TIDE FM 93.5'},
+ {file:'veil-afterhours.ogg',title:'AFTER HOURS / VEIL HOUSE BAND',station:'AFTER HOURS 101.1'},
 ];
+// In-car radio dial: six stations. On foot the city score alternates with the
+// slow harbour piece on night beaches and piers, so the bed fits the place.
+export const RADIO=[0,1,2,7,8,9];
 export function createSoundtrack(ctx,bus){
  const channels=[];let started=false,selected=3,previous=-1,lastScene='title',openingEpoch=-1,loadingSince=0,musicEnabled=true;
  const overlays=new Set(['pause','map','settings','crew','garage','dossier','transit']);
@@ -31,7 +37,7 @@ export function createSoundtrack(ctx,bus){
   const intro=G.scene==='vn'&&G.vn?.id?.startsWith('intro_');
   // Menus duck the current performance without retuning the radio or restarting
   // a chase/opening cue each time the player checks their map.
-  const wanted=overlays.has(G.scene)?selected:intro?5:G.scene==='train'?4:G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player&&G.player.y<180&&!G.player.def?.aircraft?6:G.scene==='play'&&G.player?.type==='veh'?station%3:3;
+  const wanted=overlays.has(G.scene)?selected:intro?5:G.scene==='train'?4:G.scene==='play'&&G.wanted>=2?2:G.scene==='play'&&G.player&&G.player.y<180&&!G.player.def?.aircraft?6:G.scene==='play'&&G.player?.type==='veh'?RADIO[station%RADIO.length]:(G.night||0)>.5&&['sand','pier'].includes(G.surfaceAt?.(G.player.x,G.player.y))?8:3;
   if(wanted!==selected){previous=channels[selected]?.ready?selected:channels[previous]?.ready?previous:selected;selected=wanted;loadingSince=ctx.currentTime;for(let i=0;i<channels.length;i++)if(channels[i]&&i!==selected&&i!==previous){fade(channels[i],0,.06);stop(channels[i]);}}
   if(document.hidden)return false;
   for(let i=0;i<channels.length;i++)if(i!==selected&&channels[i]&&ctx.currentTime>=channels[i].stopAt&&(!channels[i].el.paused||channels[i].pending))stop(channels[i]);

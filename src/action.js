@@ -76,6 +76,7 @@ export function buyService(G,choice) {
  G.chips-=offer.cost;
  if(choice==='repair'){P.health=100;P.burning=false;P.wrecked=false;P.burnT=0;}
  if(choice==='tune'){A.upgrades++;P.tune=A.upgrades;message(G,'HUNTER','Stage '+A.upgrades+' fitted: more torque, better brakes, sharper turn-in.');}
+ if(choice==='respray'||choice==='repair')P.flat=false;
  if(choice==='respray'){G.wanted=0;G.seenT=0;G.cops.forEach(c=>{c.chasing=false;c.siren=false;c.ai=false;c.loose=true;c.keep=false;c.ambient=true;c.knocked=true;c.restT=0;});G.cops=[];P.paint=(P.paint||0)+1;}
  if(choice==='paint'){P.paint=((P.paint||0)+1+Math.floor(Math.random()*4))%6;A.paints=(A.paints||0)+1;message(G,'HUNTER','Fresh coat, same engine. Looks expensive, which is the point.');}
  if(choice==='armor'){A.armor=100;message(G,'MERCY','Plated vest fitted. It soaks most of a firefight, not a bus.');}
