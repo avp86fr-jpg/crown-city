@@ -11,3 +11,4 @@
 
 # Pass 3 (from main 7b80db0)
 - [x] 8-phase gait (4 painted keys + passing poses), crowds 4-phase, topple death + lying pose, walk-to-door + door swing on enter; light map 1/3 res on desktop
+- [x] East frontier: roadhouse, motel, farm+barn, crop fields with hay bales, power lines, ranch fences, farm tracks, unbranded road signs; hotel facades deeper (3-5 balcony floors, side returns)

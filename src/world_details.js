@@ -47,6 +47,22 @@ export function applyWorldDetails(W,{CODE}){
  W.fill(11708,4635,490,65,CODE.walk);W.fill(11664,4800,56,140,CODE.lot,c=>c!==CODE.road);
  W.fill(7830,8150,72,160,CODE.walk);W.fill(7800,8490,800,30,CODE.walk);
  W.places=[{name:'CROWN AIR TERMINAL',x:8200,y:8390},{name:'PINEWATCH VILLAGE',x:11940,y:4640}];
+ // East highway stops: a roadhouse, a motel and a farm break up the scrub,
+ // with tree-free crop fields. All names invented; nothing branded.
+ site({x:10966,y:2560,w:400,h:340},CODE.grass);site({x:10520,y:6900,w:280,h:360},CODE.grass);site({x:11040,y:7180,w:470,h:520},CODE.grass);
+ W.eastFields=[{x:11000,y:3320,w:460,h:420},{x:10320,y:5280,w:440,h:520},{x:11080,y:7420,w:400,h:250}];
+ for(const f of W.eastFields)site(f,CODE.grass);
+ for(const b of [
+  {x:11010,y:2600,w:176,h:92,name:'ROADHOUSE / DINER',roof:'metal2',wall:'cream',hgt:20},
+  {x:10560,y:6940,w:96,h:280,name:"DUSTY STAR / MOTEL",roof:'terra',wall:'tan',hgt:20},
+  {x:11070,y:7210,w:120,h:90,name:'HOLLOW CREEK / FARM',roof:'terra',wall:'white',hgt:20},
+  {x:11300,y:7200,w:150,h:110,name:'HOLLOW CREEK / BARN',roof:'metal',wall:'rust',hgt:26},
+ ]){const building={...b,kind:'outpost'};W.buildings.push(building);W.details.buildings.push(building);W.fill(b.x,b.y,b.w,b.h,CODE.build);E.obstacles.push({x:b.x,y:b.y,w:b.w,h:b.h,hgt:b.hgt});}
+ for(const p of [
+  {x:10966,y:2716,w:380,h:170,entry:{x:10958,y:2800},name:'ROADHOUSE / PARKING'},
+  {x:10676,y:6940,w:124,h:280,entry:{x:10804,y:7080},name:'DUSTY STAR / PARKING'},
+ ]){W.fill(p.x,p.y,p.w,p.h,CODE.lot);W.lots.push({...p,k:'parking'});}
+ W.places.push({name:'ROADHOUSE',x:11100,y:2660},{name:"DUSTY STAR MOTEL",x:10610,y:7080});
  // Small solid footprints match the visible tent bodies and fuel pumps.
  for(const p of [{x:11147,y:4975,w:53,h:50},{x:11257,y:4975,w:53,h:50},{x:5755,y:9687,w:20,h:30},{x:5817,y:9687,w:20,h:30}]){W.fill(p.x,p.y,p.w,p.h,CODE.build);E.obstacles.push({...p,hgt:12});}
 }
@@ -186,9 +202,53 @@ function roadside(c,W,r,codeAt){
   }
  }
 }
+
+// Far-east frontier dressing: power lines, ranch fences, farm tracks, crop
+// fields in tree-free clearings and unbranded roadside signs, so the long
+// highway through the scrub reads as lived-in country rather than filler.
+const EAST_SIGNS=['PINEWATCH  2','FRESH PEACHES','LUCKY ISLE  ←','MOTEL · VACANCY','CITY LIMITS','REST AREA  1'];
+function eastland(c,W,r,codeAt){
+ if(r.x1<10000)return;
+ const open=(x,y)=>{const k=codeAt(x,y);return k===5||k===10;};
+ const clearOfTrees=(x,y,w,h)=>!W.trees.some(t=>t.x>x-14&&t.x<x+w+14&&t.y>y-14&&t.y<y+h+14);
+ for(const s of W.roads){
+  if(s.k!=='frontier'||!s.v||s.c<10000)continue;
+  if(s.c<r.x0-620||s.c>r.x1+620)continue;
+  const px=s.c+s.w/2+62,fx=s.c-s.w/2-104;
+  // power line: poles every 220 with cross-arms; three wires between them
+  const p0=Math.max(s.a+60,Math.floor((r.y0-220)/220)*220),p1=Math.min(s.b-60,r.y1+220);
+  c.strokeStyle='rgba(28,26,22,.7)';c.lineWidth=1.3;
+  for(const o of [-7,0,7]){c.beginPath();c.moveTo(px+o,p0);c.lineTo(px+o,p1);c.stroke();}
+  c.strokeStyle='rgba(0,0,0,.12)';c.lineWidth=1.4;for(const o of [-7,0,7]){c.beginPath();c.moveTo(px+o+16,p0+20);c.lineTo(px+o+16,p1+20);c.stroke();}
+  for(let y=Math.ceil(p0/220)*220;y<=p1;y+=220){if(!open(px,y))continue;
+   c.fillStyle='rgba(0,0,0,.28)';c.fillRect(px+4,y+6,34,5);c.fillStyle='#4a3826';c.beginPath();c.arc(px,y,5,0,Math.PI*2);c.fill();c.fillStyle='#6d5a43';c.fillRect(px-13,y-2.5,26,5);c.fillStyle='#d9d3c1';for(const o of [-11,0,11])c.fillRect(px+o-1.5,y-3,3,3);}
+  // ranch fence on the other verge
+  c.fillStyle='rgba(0,0,0,.18)';
+  for(let y=Math.ceil(r.y0/36)*36;y<=r.y1;y+=36){if(y<s.a+80||y>s.b-80||!open(fx,y))continue;c.fillStyle='rgba(0,0,0,.2)';c.fillRect(fx+2,y+3,4,4);c.fillStyle='#6f5236';c.fillRect(fx-3,y-3,6,6);c.fillStyle='#a4825a';c.fillRect(fx-1.5,y-1,3,36);c.fillStyle='rgba(0,0,0,.16)';c.fillRect(fx+2,y+2,2,36);}
+  // farm tracks branching off every ~960 with rutted tyre lines
+  for(let y=Math.ceil((r.y0-500)/960)*960+300;y<=r.y1+500;y+=960){if(y<s.a+200||y>s.b-200)continue;
+   const dir=((y/960)|0)%2?1:-1,x0=s.c+dir*(s.w/2+4),len=520;
+   c.strokeStyle='rgba(150,122,82,.55)';c.lineWidth=18;c.lineCap='round';c.beginPath();c.moveTo(x0,y);c.bezierCurveTo(x0+dir*160,y+30,x0+dir*260,y-90,x0+dir*len,y-60);c.stroke();
+   c.strokeStyle='rgba(96,74,48,.45)';c.lineWidth=2.2;for(const o of [-5,5]){c.beginPath();c.moveTo(x0,y+o);c.bezierCurveTo(x0+dir*160,y+30+o,x0+dir*260,y-90+o,x0+dir*len,y-60+o);c.stroke();}c.lineCap='butt';
+  }
+  // roadside signs every 1500
+  for(let y=Math.ceil((r.y0-80)/1500)*1500+700;y<=r.y1+80;y+=1500){if(y<s.a+200||y>s.b-200)continue;const sx=s.c-s.w/2-40;if(!open(sx,y))continue;
+   const t=EAST_SIGNS[((y/1500)|0)%EAST_SIGNS.length];c.fillStyle='rgba(0,0,0,.25)';c.fillRect(sx-30,y+6,70,16);c.fillStyle='#4f4436';c.fillRect(sx-4,y+12,3,10);c.fillRect(sx+22,y+12,3,10);
+   c.fillStyle=t.includes('LIMITS')?'#2f6b4f':'#e7dcc2';c.fillRect(sx-34,y-4,70,16);c.strokeStyle='#3a3328';c.lineWidth=1.5;c.strokeRect(sx-34,y-4,70,16);
+   c.fillStyle=t.includes('LIMITS')?'#f1ead4':'#3a2f22';c.font='800 8px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText(t,sx+1,y+4);c.textAlign='left';c.textBaseline='alphabetic';}
+ }
+ // crop fields and hay bales in the cleared plots
+ for(const [i,F] of (W.eastFields||[]).entries()){const {x,y,w,h:hh}=F;if(x>r.x1||x+w<r.x0||y>r.y1||y+hh<r.y0)continue;
+  let h=(i*2654435761)>>>0;const rn=()=>((h=(Math.imul(h,1664525)+1013904223)>>>0)/4294967296);
+  const crop=i%3;c.fillStyle=crop===0?'#b89b55':crop===1?'#7f8f45':'#9c7448';c.fillRect(x+10,y+10,w-20,hh-20);
+  c.fillStyle='rgba(0,0,0,.12)';const vert=i%2===0;for(let q=10;q<(vert?w:hh)-10;q+=10)vert?c.fillRect(x+q,y+10,3,hh-20):c.fillRect(x+10,y+q,w-20,3);
+  c.strokeStyle='#7a5c3c';c.lineWidth=3;c.strokeRect(x+10,y+10,w-20,hh-20);
+  if(crop===0)for(let k=0;k<9;k++){const bx=x+30+rn()*(w-60),by=y+30+rn()*(hh-60);c.fillStyle='rgba(0,0,0,.24)';c.beginPath();c.arc(bx+3,by+4,8,0,Math.PI*2);c.fill();c.fillStyle='#d8b964';c.beginPath();c.arc(bx,by,8,0,Math.PI*2);c.fill();c.strokeStyle='rgba(140,100,40,.6)';c.lineWidth=1;c.beginPath();c.arc(bx,by,4.5,0,Math.PI*2);c.stroke();}
+ }
+}
 export function drawWorldDetails(c,W,r,pats,codeAt){
  if(!W.details)return;
- frontierFloor(c,r,codeAt);roadside(c,W,r,codeAt);
+ frontierFloor(c,r,codeAt);roadside(c,W,r,codeAt);eastland(c,W,r,codeAt);
  let seed=(Math.imul(r.x0|0,73856093)^Math.imul(r.y0|0,19349663))>>>0;
  const rnd=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
  // Botanical clusters and pebble fans break up repeated terrain. No per-frame particles.
