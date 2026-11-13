@@ -56,12 +56,27 @@ export function drawVehicleFinish(G, v, w, h, pose) {
     for (const side of [-1, 1]) for (const front of [-1, 1]) {
       ctx.save(); ctx.translate(side * w * .39, front * h * .28);
       if (front < 0) ctx.rotate(pose.wheel);
-      ctx.fillStyle = '#10171d'; ctx.fillRect(-2.5, -6, 5, 12);
-      ctx.strokeStyle = 'rgba(205,221,230,.65)'; ctx.lineWidth = .7;
-      const spin = Math.sin((v.visualTravel || 0) * .23) * 3.5;
-      ctx.beginPath(); ctx.moveTo(-1.6, spin); ctx.lineTo(1.6, spin); ctx.stroke(); ctx.restore();
+      // Painted tyre: rounded rubber, rolling tread bands, outer sidewall
+      // light and a small alloy glint on the outside face.
+      ctx.fillStyle = '#0b1014'; ctx.beginPath(); ctx.roundRect(-2.9, -6.3, 5.8, 12.6, 2.2); ctx.fill();
+      ctx.fillStyle = '#2b343b'; ctx.fillRect(side < 0 ? -2.7 : 1.5, -5.2, 1.2, 10.4);
+      const ph = (((v.visualTravel || 0) * .23) % 3 + 3) % 3;
+      ctx.fillStyle = 'rgba(112,124,132,.5)';
+      for (let k = -5.6 + ph; k < 5.4; k += 3) ctx.fillRect(-2.2, k, 4.4, .8);
+      ctx.fillStyle = 'rgba(222,231,238,.85)'; ctx.fillRect(side < 0 ? -2.9 : 2.1, -1.6, .9, 3.2);
+      ctx.restore();
     }
-    if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);}
+    // Painted lenses are always present: pale headlamps, dark-red tail lamps
+    // that flare when braking. Lit cars at night also get a warm lens core.
+    if(!v.dead){
+      const nite=G.night||0;
+      ctx.fillStyle=nite>.3?'#fff4cf':'#e9e4cf';ctx.globalAlpha=.6;
+      ctx.beginPath();ctx.roundRect(-w*.31,-h*.425,w*.16,2.2,1.1);ctx.roundRect(w*.15,-h*.425,w*.16,2.2,1.1);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.8)';ctx.fillRect(-w*.29,-h*.42,1.4,1);ctx.fillRect(w*.17,-h*.42,1.4,1);
+      ctx.globalAlpha=1;
+      if(!v.braking){ctx.fillStyle=nite>.3?'#c8342e':'#7c1f22';ctx.fillRect(-w*.3,h*.385,w*.13,2.2);ctx.fillRect(w*.17,h*.385,w*.13,2.2);}
+    }
+    if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);ctx.fillStyle='rgba(255,190,170,.8)';ctx.fillRect(-w*.29+1,h*.39+1,2,1);ctx.fillRect(w*.29-4,h*.39+1,2,1);}
     // Reverse lights are distinct from the warm brake lamps.
     if (!v.dead && (v.fwd || 0) < -5) { ctx.fillStyle = '#d3f4ff'; ctx.fillRect(-w * .24, h * .39, 3, 2); ctx.fillRect(w * .24 - 3, h * .39, 3, 2); }
   }
@@ -84,16 +99,16 @@ export function drawVehicleFinish(G, v, w, h, pose) {
 export function drawWetReflections(G, r, night) {
   if (G.wet < .08 || night < .1) return;
   const ctx = G.ctx, low = G.settings.quality === 'low';
-  const max = low ? 16 : G.settings.quality === 'med' ? 36 : 60;
+  const max = low ? 16 : G.settings.quality === 'med' ? 28 : 40;
   let count = 0;
   const emit = (x, y, rgb, strength, seed) => {
     if (x < r.x0 - 80 || x > r.x1 + 80 || y < r.y0 - 130 || y > r.y1 || count >= max) return;
     count++;
     const phase = G.settings.reducedMotion ? 0 : G.ticks / 60;
     const length = 55 + hash(seed) * 75, width = 18 + hash(seed + 3) * 15;
-    ctx.save(); ctx.globalCompositeOperation = 'screen';
-    for (let j = 0; j < (low ? 6 : 12); j++) {
-      const k = j / (low ? 6 : 12), yy = y + 9 + k * length;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let j = 0; j < (low ? 6 : 8); j++) {
+      const k = j / (low ? 6 : 8), yy = y + 9 + k * length;
       if (!['road', 'walk', 'lot', 'pier'].includes(G.surfaceAt(x, yy))) continue;
       const wave = Math.sin(phase * 1.6 + k * 18 + seed) * (2 + k * 3);
       const alpha = (1 - k) * G.wet * night * strength * (.4 + hash(seed + j) * .28);
@@ -118,11 +133,13 @@ export function drawAtmosphere(G, r, night) {
     for (let x = Math.floor(r.x0 / step) * step; x < r.x1; x += step) for (let y = Math.floor(r.y0 / step) * step; y < r.y1; y += step) {
       const seed = x * .13 + y * .71;
       if (hash(seed) > .28 || !['road', 'walk'].includes(G.surfaceAt(x, y))) continue;
+      ctx.fillStyle = '#a5c4d4';
       for (let i = 0; i < 3; i++) {
         const age = ((t * .25 + hash(seed + i) + i / 3) % 1);
-        ctx.save(); ctx.globalAlpha = Math.sin(age * Math.PI) * (.045 + night * .04);
-        ctx.fillStyle = '#a5c4d4'; ellipse(ctx, x + Math.sin(t + seed + i) * age * 11, y - age * 55, 7 + age * 17, 4 + age * 8); ctx.restore();
+        ctx.globalAlpha = Math.sin(age * Math.PI) * (.045 + night * .04);
+        ellipse(ctx, x + Math.sin(t + seed + i) * age * 11, y - age * 55, 7 + age * 17, 4 + age * 8);
       }
+      ctx.globalAlpha = 1;
     }
   }
   // Stable world-space rain ripples; no allocation or random flicker per frame.
@@ -140,6 +157,25 @@ export function drawAtmosphere(G, r, night) {
   }
 }
 
+const _puffs=new Map();
+// Painterly puff: many soft lobes with long alpha falloff, a warm lit crown and
+// a cool shaded underside. Built once per tint into a 96px texture.
+function puff(col){
+ let c=_puffs.get(col);if(c)return c;
+ c=document.createElement('canvas');c.width=c.height=96;const x=c.getContext('2d');
+ let seed=col.length*9301+49297;const rnd=()=>((seed=(seed*9301+49297)%233280)/233280);
+ const [r,g,b]=col.split(',').map(Number);
+ for(let i=0;i<14;i++){
+  const a=rnd()*Math.PI*2,d=rnd()*20,lx=48+Math.cos(a)*d,ly=50+Math.sin(a)*d*.8,rr=14+rnd()*16;
+  const gr=x.createRadialGradient(lx,ly,0,lx,ly,rr);
+  gr.addColorStop(0,`rgba(${r},${g},${b},.5)`);gr.addColorStop(.45,`rgba(${r},${g},${b},.3)`);gr.addColorStop(.8,`rgba(${r},${g},${b},.08)`);gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+  x.fillStyle=gr;x.beginPath();x.arc(lx,ly,rr,0,Math.PI*2);x.fill();
+ }
+ x.globalCompositeOperation='source-atop';
+ const warm=x.createRadialGradient(36,30,2,40,36,46);warm.addColorStop(0,'rgba(255,236,206,.55)');warm.addColorStop(1,'rgba(255,236,206,0)');x.fillStyle=warm;x.fillRect(0,0,96,96);
+ const cool=x.createRadialGradient(62,70,4,58,66,44);cool.addColorStop(0,'rgba(70,92,138,.42)');cool.addColorStop(1,'rgba(70,92,138,0)');x.fillStyle=cool;x.fillRect(0,0,96,96);
+ _puffs.set(col,c);return c;
+}
 export function drawParticleFX(ctx, p) {
   const age = 1 - clamp(p.life / (p.maxLife || p.life || 1));
   ctx.save();
@@ -167,11 +203,31 @@ export function drawParticleFX(ctx, p) {
     ctx.strokeStyle = '#ffd3a0'; ctx.lineWidth = 1.3;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - (p.vx || 0) * .035, p.y - (p.vy || 0) * .035); ctx.stroke();
     ctx.fillStyle = '#fff6d1'; ellipse(ctx, p.x, p.y, 1.6, 1.6);
-  } else if (p.kind === 'smoke' || p.kind === 'dust') {
-    const size = (p.kind === 'smoke' ? 6 : 3) + age * (p.kind === 'smoke' ? 22 : 14);
-    ctx.globalAlpha = (1 - age) * .42 * (p.a ?? 1);
-    const col=p.kind==='dust'?'178,151,111':p.dark?'34,39,48':'166,181,196';
-    ctx.drawImage(LIGHT.radial(`rgba(${col},.65)`,64),p.x-size,p.y-size*.8,size*2,size*1.6);
+  } else if (p.kind === 'smoke' || p.kind === 'dust' || p.kind === 'gunsmoke' || p.kind === 'haze' || p.kind === 'steam') {
+    // Painted, layered puffs: a soft shadow lobe under a lit lobe, growing and
+    // easing out. Colour and scale per source; rotation from a per-puff seed.
+    const k=p.kind,ease=1-(1-age)*(1-age);
+    const base=k==='smoke'?(p.dark?7:6):k==='dust'?3:k==='gunsmoke'?3*(p.size||1):k==='steam'?4:14;
+    const grow=k==='smoke'?(p.dark?30:24):k==='dust'?15:k==='gunsmoke'?14*(p.size||1):k==='steam'?14:46;
+    const size=base+ease*grow,fade=k==='haze'?Math.sin(Math.PI*Math.min(1,age*1.4+.05))*.5:(1-age)*(1-age*.35);
+    const alpha=(k==='smoke'?(p.dark?.66:.5):k==='dust'?.42:k==='gunsmoke'?.72:k==='steam'?.46:.26)*fade*(p.a??1);
+    const col=k==='dust'?'190,160,118':k==='steam'?'240,244,246':k==='gunsmoke'?'240,237,230':k==='haze'?'214,214,210':p.dark?'40,40,46':'224,227,230';
+    const tex=puff(col);ctx.translate(p.x,p.y);
+    // Pale smoke vanished on mid-grey asphalt: a cool contact shadow cast
+    // down-screen gives every light puff an edge and a sense of height.
+    if(!p.dark&&k!=='haze'&&k!=='dust'){const sh=puff('22,27,36'),o=size*.22+age*4;ctx.globalAlpha=Math.min(1,alpha*1.5)*.52;ctx.drawImage(sh,-size*1.1+o*.7,-size*.82+o*1.2,size*2.2,size*1.7);}
+    ctx.rotate((p.seed||0)+age*.6);
+    // Billow: a main puff plus two smaller offset lobes that separate as it ages.
+    const A=Math.min(1,alpha*1.5),sp=size*(.35+age*.35);
+    ctx.globalAlpha=A;ctx.drawImage(tex,-size*1.2,-size,size*2.4,size*2);
+    // Dark engine smoke read as a hole on night asphalt: a sky-lit crown
+    // on the upper lobe separates it from the road.
+    if(p.dark){ctx.globalAlpha=A*.42;ctx.drawImage(puff('128,130,138'),-size*.95,-size*1.05,size*1.5,size*1.2);}
+    if(k!=='dust'&&k!=='haze'){ctx.globalAlpha=A*.7;ctx.drawImage(tex,sp-size*.8,-sp*.5-size*.7,size*1.6,size*1.4);ctx.drawImage(tex,-sp-size*.7,sp*.3-size*.6,size*1.4,size*1.2);}
+  } else if (p.kind === 'glass') {
+    ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)+age*9);ctx.globalAlpha=clamp(p.life*2.5)*.9;
+    ctx.fillStyle='#cfe9f2';ctx.beginPath();ctx.moveTo(-2.4,0);ctx.lineTo(0,-1.3);ctx.lineTo(2.4,.2);ctx.lineTo(0,1.2);ctx.closePath();ctx.fill();
+    if(((p.rot*10|0)+(age*20|0))%3===0){ctx.globalCompositeOperation='lighter';ctx.fillStyle='#ffffff';ellipse(ctx,0,0,1.1,1.1);}
   } else if (p.kind === 'boom') {
     ctx.globalCompositeOperation = 'lighter';
     const radius = (p.big ? 90 : 36) * age + 3;
@@ -199,6 +255,7 @@ export function drawGrade(G) {
   ctx.restore();
 }
 
+const _signs = new Map();
 export function drawArchitectureLights(G, r, night) {
   if (night < .1) return;
   const ctx = G.ctx, time = G.settings.reducedMotion ? 0 : G.ticks / 60;
@@ -212,7 +269,7 @@ export function drawArchitectureLights(G, r, night) {
     const color = b.kind === 'loft' ? '98,208,255' : b.kind === 'garage' ? '255,165,76' : b.kind === 'casino' ? '255,106,194' : ['60,219,232', '244,104,171', '255,193,106'][Math.floor(hash(b.seed) * 3)];
     ctx.save();
     // Corner strips give selected commercial buildings a clear silhouette.
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = `rgba(${color},${night * .65})`; ctx.lineWidth = 1.6;
     if (b.kind !== 'office') {
       ctx.beginPath(); ctx.moveTo(rx + 5, ry + Math.min(38, rh * .25)); ctx.lineTo(rx + 5, ry + 5); ctx.lineTo(rx + Math.min(55, rw * .35), ry + 5); ctx.stroke();
@@ -223,12 +280,16 @@ export function drawArchitectureLights(G, r, night) {
     const label = b.kind === 'loft' ? 'NEURAL' : b.kind === 'garage' ? 'CUSTOMS' : ['AFTER HOURS', 'OPEN 24', 'NIGHT MARKET', 'CROWN CLUB'][Math.floor(hash(b.seed + 1) * 4)];
     const sw = Math.min(rw - 16, 140), sh = 24, sx = rx + (rw - sw) / 2, sy = ry + rh - 36;
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';ctx.globalAlpha=night*.32;
+    ctx.globalCompositeOperation = 'lighter';ctx.globalAlpha=night*.26;
     ctx.drawImage(LIGHT.radial(`rgba(${color},1)`,128),sx-sw*.3,sy-sw*.5,sw*1.6,sw*1.3);ctx.globalAlpha=1;
-    ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#101925'; ctx.fillRect(sx,sy,sw,sh);
-    ctx.strokeStyle = `rgba(${color},${.3 + night * .65})`; ctx.lineWidth = 1; ctx.strokeRect(sx + 1,sy + 1,sw - 2,sh - 2);
-    ctx.fillStyle = `rgb(${color})`; ctx.textAlign = 'center'; ctx.font = '700 10px system-ui, sans-serif';
-    ctx.fillText(label, sx + sw / 2, sy + 16, sw - 10);
+    // Sign face (box, rule, text) is cached per label/colour/width: text raster was a per-frame cost.
+    ctx.globalCompositeOperation = 'source-over';
+    const key = label + color + Math.round(sw) + (night > .6 ? 1 : 0); let face = _signs.get(key);
+    if (!face) { face = document.createElement('canvas'); face.width = Math.ceil(sw) * 2; face.height = sh * 2; const f = face.getContext('2d'); f.scale(2, 2);
+      f.fillStyle = '#101925'; f.fillRect(0, 0, sw, sh); f.strokeStyle = `rgba(${color},${.3 + (night > .6 ? 1 : .6) * .65})`; f.lineWidth = 1; f.strokeRect(1, 1, sw - 2, sh - 2);
+      f.fillStyle = `rgb(${color})`; f.textAlign = 'center'; f.font = '700 10px system-ui, sans-serif'; f.fillText(label, sw / 2, 16, sw - 10);
+      if (_signs.size > 120) _signs.clear(); _signs.set(key, face); }
+    ctx.drawImage(face, sx, sy, sw, sh);
     // A slow travelling trim light, with no random flashing.
     const dot = (time * 12 + b.seed) % (sw - 8);
     ctx.fillStyle = '#e7fcff'; ctx.fillRect(sx + 4 + dot, sy + sh - 3, 4, 1);

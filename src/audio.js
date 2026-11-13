@@ -41,7 +41,8 @@ export function createAudio() {
     glue.connect(limiter); limiter.connect(master); master.connect(ctx.destination);
     sfx = ctx.createGain(); sfx.gain.value = A.sfxVol; sfx.connect(glue);
     mus = ctx.createGain(); mus.gain.value = 0; mus.connect(glue);
-    amb = ctx.createGain(); amb.gain.value = 0.55 * A.sfxVol; amb.connect(glue);
+    amb = ctx.createGain(); amb.gain.value = 0.8 * A.sfxVol; amb.connect(glue);
+    A._buses = { sfx, mus, amb, glue, limiter, master }; // measurement taps (tools/audio-mix)
     // Performance mode never allocates an unused convolution impulse. Build
     // it once, on demand, if the player later selects a richer sound tier.
     verbSend=ctx.createGain();verbSend.gain.value=.32;if(!lite)verbSend.connect(reverb());
@@ -104,7 +105,7 @@ export function createAudio() {
   };
   const volume=v=>Number.isFinite(v)?Math.max(0,Math.min(1,v)):0;
   const fadeVolume=(p,v)=>{const t=now();p.cancelScheduledValues(t);p.setValueAtTime(p.value,t);p.linearRampToValueAtTime(v,t+.035);};
-  A.setSfx = (v) => { A.sfxVol=volume(v);if(sfx){fadeVolume(sfx.gain,A.sfxVol);fadeVolume(amb.gain,.55*A.sfxVol);} };
+  A.setSfx = (v) => { A.sfxVol=volume(v);if(sfx){fadeVolume(sfx.gain,A.sfxVol);fadeVolume(amb.gain,.8*A.sfxVol);} };
   A.setMus = (v) => { A.musVol=volume(v);if(mus)mus.gain.setTargetAtTime(A.musVol*musLevel,now(),.1); };
   A.setMaster = (v) => { A.masterVol=volume(v);if(master)fadeVolume(master.gain,A.masterVol); };
   A.ui = () => { tone(880, 0.05, "triangle", 0.05); tone(1320, 0.06, "triangle", 0.035, 0, sfx, ctx && now() + 0.035); };
@@ -131,6 +132,8 @@ export function createAudio() {
   // Spatial gunfire: close shots get the full layered sample plus a street
   // slapback (stronger between buildings); distant shots roll off to a thump.
   A.gunfire=(kind='pistol',x,y,urban=.6)=>{
+    // Mix: heavy shots dip the score briefly (rate-limited) so gunfire reads over music.
+    if(ctx&&kind!=="pistol"&&now()-(A._gunDuck||0)>.3){A._gunDuck=now();duck(kind==="shotgun"?.6:.78,.18);}
     if(!ctx||!listener?.player)return A.shot(0,0,kind);
     soundPosition(listener,x,y,1700,position);const d=position.distance,pan=position.pan;
     const base=kind==='shotgun'?.62:kind==='smg'?.46:.36,near=Math.max(0,1-d/650);

@@ -29,6 +29,10 @@ export function waterMotionPlan(codeAt,tx,ty){
  }
  return {waves,shores};
 }
+let _shelf=null;
+function shelfTex(){if(_shelf||typeof document==='undefined')return _shelf;const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(96,222,206,.9)');g.addColorStop(.6,'rgba(70,190,190,.35)');g.addColorStop(1,'rgba(60,170,180,0)');x.fillStyle=g;x.fillRect(0,0,64,64);return _shelf=c;}
+let _foam=null;
+function foamTex(){if(_foam||typeof document==='undefined')return _foam;const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d'),g=x.createRadialGradient(16,16,0,16,16,16);g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.5,'rgba(236,252,250,.5)');g.addColorStop(1,'rgba(220,245,245,0)');x.fillStyle=g;x.fillRect(0,0,32,32);return _foam=c;}
 export function drawWaterMotion(G,r){
  const low=G.settings.quality==='low',stats=G.waterMotionStats||(G.waterMotionStats={});stats.waves=stats.shores=stats.built=0;
  if(G.settings.reducedMotion)return;
@@ -37,8 +41,9 @@ export function drawWaterMotion(G,r){
  const state=G._waterMotion||(G._waterMotion={chunks:new Map(),frame:0}),stamp=++state.frame;
  const x0=Math.max(0,Math.floor(r.x0/CHUNK)),x1=Math.min(47,Math.floor(r.x1/CHUNK)),y0=Math.max(0,Math.floor(r.y0/CHUNK)),y1=Math.min(39,Math.floor(r.y1/CHUNK));
  if((x1-x0+1)*(y1-y0+1)>80)return;
- const c=G.ctx,t=G.ticks/60,wind=sceneWind(G),waveLimit=low?64:150,shoreLimit=low?40:90;
+ const c=G.ctx,t=G.ticks/60,wind=sceneWind(G),waveLimit=low?64:220,shoreLimit=low?40:120;
  const stride=Math.max(1,Math.ceil((x1-x0+1)*(y1-y0+1)*16/waveLimit));
+ const night=(G.night||0)>.45,shelf=shelfTex(),foam=foamTex();
  c.save();c.lineWidth=low?1.15:1;c.lineCap='round';c.strokeStyle='#a4cec8';
  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
   const key=y*48+x;let chunk=state.chunks.get(key);
@@ -49,15 +54,28 @@ export function drawWaterMotion(G,r){
    if((Math.floor(p.x/64)+Math.floor(p.y/64)*3)%stride)continue;
    if(p.x<r.x0-30||p.x>r.x1||p.y<r.y0-12||p.y>r.y1+12)continue;
    const phase=t*(p.canal?.8:1.05)+p.phase,sway=Math.sin(phase),dx=sway*6*wind.x,dy=Math.cos(phase*.8)*2+wind.y*2;
-   c.globalAlpha=(p.canal?.12:.16)*(.4+.6*(.5+.5*Math.sin(phase)));
-   c.beginPath();c.moveTo(p.x+dx,p.y+dy);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy-2.2,p.x+dx+p.len*.6,p.y+dy+2,p.x+dx+p.len,p.y+dy-.6);c.stroke();stats.waves++;
+   const crest=.4+.6*(.5+.5*Math.sin(phase)),peak=Math.max(0,Math.sin(phase));
+   // Painted swell: a broad dark trough, a pale crest band and a bright core at the peak.
+   c.globalAlpha=(p.canal?.14:.34)*crest;c.strokeStyle=night?'#061a2e':'#0a3552';c.lineWidth=low?3.6:6;
+   c.beginPath();c.moveTo(p.x+dx,p.y+dy+3);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy+1,p.x+dx+p.len*.6,p.y+dy+5,p.x+dx+p.len,p.y+dy+2.4);c.stroke();
+   c.globalAlpha=(p.canal?.22:.46)*crest;c.strokeStyle=night?'#7a9dc2':'#c8f2ea';c.lineWidth=low?2.6:3.6;
+   c.beginPath();c.moveTo(p.x+dx,p.y+dy);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy-2.2,p.x+dx+p.len*.6,p.y+dy+2,p.x+dx+p.len,p.y+dy-.6);c.stroke();
+   c.fillStyle=night?'#d5e6ff':'#ffffff';
+   c.globalAlpha=(p.canal?.28:.72)*peak;const L=p.len,X=p.x+dx,Y=p.y+dy;
+   c.beginPath();c.moveTo(X+L*.1,Y-1);c.quadraticCurveTo(X+L*.45,Y-3.6-peak,X+L*.85,Y-.8);c.quadraticCurveTo(X+L*.45,Y-1.2,X+L*.1,Y-1);c.fill();stats.waves++;
+   // Sun sparkle by day, a cool moon glint at night: brief, crest-timed twinkles.
+   const tw=Math.sin(phase*2.3+p.phase*3);if(!p.canal&&tw>.82){const k=(tw-.82)/.18;c.globalAlpha=k*(night?.35:.7);c.fillStyle=night?'#bcd4ff':'#fffbe8';const sx=p.x+dx+p.len*.45,sy=p.y+dy-1;c.fillRect(sx-2.5*k,sy-.5,5*k,1);c.fillRect(sx-.5,sy-1.6*k,1,3.2*k);}
   }
   c.lineWidth=1.7;
   for(const p of chunk.shores){
    if(stats.shores>=shoreLimit)break;
    if(p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;
-   const pulse=.5+.5*Math.sin(t*.95+p.phase),retreat=3+3*pulse,px=p.x-p.dx*retreat,py=p.y-p.dy*retreat;
-   c.globalAlpha=.08+.16*pulse;c.beginPath();c.moveTo(px-p.dy*6,py+p.dx*6);c.quadraticCurveTo(px-p.dx*1.5,py-p.dy*1.5,px+p.dy*6,py-p.dx*6);c.stroke();stats.shores++;
+   const pulse=.5+.5*Math.sin(t*.95+p.phase),retreat=3+5*pulse,px=p.x-p.dx*retreat,py=p.y-p.dy*retreat;
+   // Shallow shelf: turquoise light near the beach fading into deep water.
+   if(shelf){c.globalAlpha=night?.12:.3;c.drawImage(shelf,p.x-p.dx*14-22,p.y-p.dy*14-22,44,44);}
+   if(foam){c.globalAlpha=.32+.4*pulse;const fx=px-p.dx*2,fy=py-p.dy*2;if(p.dx)c.drawImage(foam,fx-6,fy-13,12,26);else c.drawImage(foam,fx-13,fy-6,26,12);
+    c.globalAlpha=.16+.2*(1-pulse);const bx=px-p.dx*(9+4*pulse),by=py-p.dy*(9+4*pulse);if(p.dx)c.drawImage(foam,bx-4,by-11,8,22);else c.drawImage(foam,bx-11,by-4,22,8);}
+   c.fillStyle='#ffffff';c.globalAlpha=.45*pulse;c.fillRect(px+p.dy*3-1,py-p.dx*3-1,2,2);c.fillRect(px-p.dy*4-p.dx*5,py+p.dx*4-p.dy*5,1.5,1.5);stats.shores++;
   }
   c.lineWidth=low?1.15:1;
  }

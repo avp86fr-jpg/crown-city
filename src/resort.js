@@ -79,7 +79,7 @@ export function applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  const names=[['AZURE CROWN','#e8e2d4','#2f8fb4'],['CORAL PALMS','#f0d6c2','#e2725b'],['PEARL TOWER','#e9ecef','#9a7fd1'],['SOLARIS','#f3e3b5','#e4a92a'],['LUCKY SEVEN','#efe0d0','#c73a4c'],['DUNE HOUSE','#e7d3ae','#5f9f88']];
  const spans=[[5760,6380],[6460,7080],[7170,7790]];let hi=0;
  for(const [bi,b] of blocks.entries())for(const [x0,x1] of spans){
-  const [name,wall,accent]=names[hi],tower=hi===2||hi===4,fac=tower?78:52,h=tower?236:196,y=b.y+12;
+  const [name,wall,accent]=names[hi],tower=hi===2||hi===4,fac=tower?112:80,h=tower?236:196,y=b.y+12;
   const H={x:x0,y,w:x1-x0,h,fac,name,wall,accent,tower,seed:rnd(),roof:['#c9c2b3','#b8a48c','#d6d0c6','#c7b28e','#b9a69a','#cbb797'][hi],id:hi};
   R.hotels.push(H);fillAny(H.x,H.y,H.w,H.h,CODE.build);
   // canopy drop-off in front of the lobby, pool deck to the south
@@ -230,6 +230,12 @@ function paintHotel(c,H,G){
  }
  // vertical fins every few bays
  c.fillStyle=shade(H.wall,-.12);for(let k=0;k<=cols;k+=H.tower?2:3){const fx=x+6+k*bw;c.fillRect(fx,y+roofH,4,fac-12);c.fillStyle='rgba(255,255,255,.4)';c.fillRect(fx,y+roofH,1.5,fac-12);c.fillStyle=shade(H.wall,-.12);}
+ // side returns: the east flank is in shade and the west catches light, so
+ // the facade reads as a deep block rather than a painted strip
+ {const sw=14,g1=c.createLinearGradient(x+w-sw,0,x+w,0);g1.addColorStop(0,shade(H.wall,-.28));g1.addColorStop(1,shade(H.wall,-.45));c.fillStyle=g1;c.beginPath();c.moveTo(x+w-sw,y+roofH);c.lineTo(x+w,y+roofH-10);c.lineTo(x+w,y+h-10);c.lineTo(x+w-sw,y+h);c.closePath();c.fill();
+  c.fillStyle='rgba(255,255,255,.22)';c.fillRect(x,y+roofH,3,fac);
+  for(let r2=1;r2<rows;r2++){c.fillStyle='rgba(0,0,0,.28)';c.fillRect(x+6,y+roofH+4+r2*rowH-1,w-6-sw,2);}
+  c.fillStyle='rgba(0,0,0,.25)';c.fillRect(x,y+roofH,w-sw,5);}
  c.fillStyle=acc;c.fillRect(x,y+h-12,w,12);c.fillStyle='rgba(255,255,255,.3)';c.fillRect(x,y+h-12,w,2);
  // lobby: glass doors, columns, canopy with name
  const lx=x+w/2;c.fillStyle='#22313c';c.fillRect(lx-46,y+h-26,92,16);c.fillStyle='#6fb3c9';for(let q=0;q<4;q++)c.fillRect(lx-42+q*22,y+h-24,18,12);

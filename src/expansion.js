@@ -1,3 +1,4 @@
+import {heistHint} from './street_heists.js';
 import {operationHint,drawOperationMarkers} from './crew_operations.js';
 /* Encounterable MetaWinners cast: original portraits, local story and optional contracts. */
 import {loadImage} from './assets.js';
@@ -44,7 +45,7 @@ export function tickExpansion(G,dt){
  const P=G.player;G.contactNear=P.type==='foot'&&!G.jack?(G.contacts||[]).find(p=>Math.hypot(p.x-P.x,p.y-P.y)<60)||null:null;
  if(G.contactTalk){G.contactTalk.t-=dt;if(G.contactTalk.t<=0)G.contactTalk=null;}
  for(const p of G.contacts||[])if(Math.abs(p.x-P.x)<800&&Math.abs(p.y-P.y)<700)portrait(G,p);
- if(G.action?.contract&&EXPANSION_STEPS[G.action.contract.id])G.expansionHint=operationHint(G,G.action.contract)||EXPANSION_STEPS[G.action.contract.id][G.action.contract.stage];else G.expansionHint='';
+ if(G.action?.contract&&EXPANSION_STEPS[G.action.contract.id])G.expansionHint=heistHint(G,G.action.contract)||operationHint(G,G.action.contract)||EXPANSION_STEPS[G.action.contract.id][G.action.contract.stage];else G.expansionHint='';
 }
 export function interactExpansion(G){
  const P=G.player;if(P.type!=='foot')return false;const contact=(G.contacts||[]).find(p=>Math.hypot(p.x-P.x,p.y-P.y)<60);if(!contact)return false;

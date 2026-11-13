@@ -1,6 +1,6 @@
 import {stepPedestrian,pedestrianClear} from './pedestrian_motion.js';
 import {ROAD_CRUISE,trafficDriver,trafficCruise,trafficTurnSpeed} from './traffic_drivers.js';
-import {trafficDemand,spawnWeight,trafficFlowBudget} from './street_population.js';
+import {trafficDemand,spawnWeight,trafficFlowBudget,pedDemand,trafficKind,streetDensity} from './street_population.js';
 import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
@@ -15,10 +15,10 @@ export function streetViewport(G){
  const scale=(G.cam.scale||1)*Math.sqrt(w*h/(1280*720))*(Math.min(w,h)<520?1.12:1)*(G.zoomMul||1);
  return {halfW:w/2/scale,halfH:h/2/scale};
 }
-function visibleSpawn(G,x,y){
+function visibleSpawn(G,x,y,m=35){
  if(!G.ticks)return false;
  const {halfW,halfH}=streetViewport(G),angle=-(G.cam.rot||0),dx=x-G.cam.x,dy=y-G.cam.y;
- return Math.abs(dx*Math.cos(angle)-dy*Math.sin(angle))<halfW+35&&Math.abs(dx*Math.sin(angle)+dy*Math.cos(angle))<halfH+35;
+ return Math.abs(dx*Math.cos(angle)-dy*Math.sin(angle))<halfW+m&&Math.abs(dx*Math.sin(angle)+dy*Math.cos(angle))<halfH+m;
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -316,7 +316,7 @@ export function createTraffic(G) {
     }
   }
   function trafficPose(v,p,dt){const decay=Math.exp(-dt*4);p.x+=(v.tr.offsetX||0)*decay;p.y+=(v.tr.offsetY||0)*decay;return p;}
-  function commit(v,p,dt){v.x=p.x;v.y=p.y;v.rot=p.rot;v.tr.offsetX=(v.tr.offsetX||0)*Math.exp(-dt*4);v.tr.offsetY=(v.tr.offsetY||0)*Math.exp(-dt*4);}
+  function commit(v,p,dt){v.x=p.x;v.y=p.y;const ro=v.tr.rotOff||0;v.rot=p.rot+ro;if(ro){const k=Math.exp(-dt*3);v.tr.rotOff=Math.abs(ro*k)<.002?0:ro*k;}v.tr.offsetX=(v.tr.offsetX||0)*Math.exp(-dt*4);v.tr.offsetY=(v.tr.offsetY||0)*Math.exp(-dt*4);}
   // An isolated spur with no full-body turnaround is not an ambient route.
   // Keep it playable, but do not dispatch cars into an inescapable corner.
   if(G.surfaceAt)for(const e of graph.edges)for(const end of [e.A,e.B])if(end.edges.length===1){
@@ -330,6 +330,33 @@ export function createTraffic(G) {
   const T = {
     target: 34,
     diagnostics(){return [...junctions].map(([zone,owners])=>({zone,owners:[...owners].map(v=>({kind:v.kind,x:v.x,y:v.y,s:v.tr?.s,releaseAt:v.tr?.releaseAt,turn:!!v.tr?.turn,route:!!v.tr?.route,edge:[v.tr?.e.A.id,v.tr?.e.B.id]}))}));},
+    // Crash recovery: put a knocked-loose car back on the nearest lane that
+    // runs the way it is facing. Position and heading blend back over ~1 s
+    // through the lane controller's offset decay, so nothing snaps or spins.
+    visible(x,y){return visibleSpawn(G,x,y);},
+    rejoin(v){
+      if(!v.def||v.def.boat||v.def.aircraft||v.dead)return false;
+      const hx=Math.sin(v.rot),hy=-Math.cos(v.rot),own=bodySize(v),late=(v.restT||0)>3.5;let best=null,bd=late?72:48;
+      // A car left sideways after a few seconds may swing out into the lane
+      // nearest its heading (never against the flow of that lane).
+      for(const e of graph.edges){
+        if(closedCaps.has(e))continue;
+        const minx=Math.min(e.A.x,e.B.x)-e.w,maxx=Math.max(e.A.x,e.B.x)+e.w,miny=Math.min(e.A.y,e.B.y)-e.w,maxy=Math.max(e.A.y,e.B.y)+e.w;
+        if(v.x<minx||v.x>maxx||v.y<miny||v.y>maxy)continue;
+        const t=clamp((v.x-e.A.x)*e.dx+(v.y-e.A.y)*e.dy,0,e.len);
+        for(const fwd of [true,false]){
+          if((fwd?1:-1)*(e.dx*hx+e.dy*hy)<(late?-.15:.64))continue;
+          const s=fwd?t:e.len-t,lo=trimAt(fwd?e.A:e.B,e)+own.l+20,hi=e.len-trimAt(fwd?e.B:e.A,e)-own.l-30;if(s<lo||s>hi)continue;
+          for(let lane=0;lane<e.lanes;lane++){const p=edgePoint(e,fwd,s,lane),d=Math.hypot(p.x-v.x,p.y-v.y);if(d<bd&&canDepart(v,e,fwd,lane)&&poseClear(v,p)){bd=d;best={e,fwd,s,lane,p};}}
+        }
+      }
+      if(!best)return false;
+      const dr=Math.atan2(Math.sin(v.rot-best.p.rot),Math.cos(v.rot-best.p.rot));
+      v.traffic=true;v.loose=false;v.parked=false;v.knocked=false;v.vx=v.vy=v.yaw=0;
+      v.tr={e:best.e,fwd:best.fwd,s:best.s,lane:best.lane,spd:0,turn:null,offsetX:v.x-best.p.x,offsetY:v.y-best.p.y,rotOff:dr};
+      v.driverPace??=.82+Math.random()*.26;v.cruise=trafficCruise(v,best.e,G);v.ambient=true;
+      return true;
+    },
     spawnCar(near, minD, maxD, kind) {
       const candidates=spawnEdges(near,maxD);if(!candidates.edges.length)return null;
       for (let tries = 0; tries < 24; tries++) {
@@ -349,7 +376,7 @@ export function createTraffic(G) {
         if(visibleSpawn(G,p.x,p.y))continue;
         if (G.vehicles.some((v) => Math.abs(v.x - p.x) < 90 && Math.abs(v.y - p.y) < 90)) continue;
         const kinds = ["fare", "fare", "dart", "riot", "taxi", "fare", "dart", "bus", "fare", "taxi", "stitch", "hog"];
-        const k = kind || kinds[(Math.random() * kinds.length) | 0];
+        const k = kind || trafficKind(G,p.x,p.y) || kinds[(Math.random() * kinds.length) | 0];
         if(k==="bus"&&(e.w-e.med)/(2*e.lanes)<58)continue;
         const v = G.makeVeh(k, p.x, p.y, p.rot, { parked: false, traffic: true, tr: { e, fwd, s, lane, spd: 0, turn: null }, ambient: true });
         if(G.surfaceAt&&worldBodyHit(G,v,v.x,v.y))continue;
@@ -380,19 +407,34 @@ export function createTraffic(G) {
           if (!v.ambient && !v.loose) return true;
           return Math.hypot(v.x - P.x, v.y - P.y) < 2400;
         });
+        // Deadlock relief. A car frozen for 16 s that nobody can see is
+        // quietly retired (and respawned elsewhere by the budget). A frozen
+        // junction owner in view gives up its reservation so the queue moves.
+        for(let i=G.vehicles.length-1;i>=0;i--){const v=G.vehicles[i];if(!v.traffic||!v.tr||v.dead||v===P)continue;
+          if(!((v.stillT||0)>14))continue;
+          const special=v.mission||v.isVan||v.keep||v.siren||v.role||v.pdCar||v.chasing;
+          if(!special&&v.ambient&&!visibleSpawn(G,v.x,v.y,260)){G.vehicles.splice(i,1);T.retired=(T.retired||0)+1;continue;}
+          // Last resort for an in-view gridlock (e.g. two cars locked mid-turn):
+          // after 24 s the car fades out over two seconds rather than freezing the block.
+          if(!special&&v.ambient&&!v.redQueue&&v.stillT>26){v.retireAt??=G.ticks;if(G.ticks-v.retireAt>=120){G.vehicles.splice(i,1);T.retired=(T.retired||0)+1;continue;}}
+          if(v.tr.reserved!=null&&!v.tr.turn){const o=junctions.get(v.tr.reserved);o?.delete(v);v.tr.reserved=null;v.tr.route=null;v.tr.candidates=null;v.tr.junctionCheck=G.ticks+90;v.stillT=8;}
+        }
         let n=0,blocked=0;for(const v of G.vehicles)if(v.traffic&&v.tr&&!v.dead){n++;if(v.tr.waitSince!=null&&G.ticks-v.tr.waitSince>600||v.blockedT>4)blocked++;}
         const elapsed=Math.min(1,(G.ticks-(T.populationTick??G.ticks-15))/60);T.populationTick=G.ticks;
         const flow=trafficFlowBudget(T,blocked,n,elapsed);
         T.effectiveTarget=Math.round(trafficDemand(G,T.target)*flow);T.population={active:n,queued:blocked,target:T.effectiveTarget,flow};
         if(n>T.effectiveTarget){
-          const i=G.vehicles.findIndex(v=>v!==P&&v.ambient&&v.traffic&&!v.mission&&!v.isVan&&!v.keep&&!v.siren&&!v.role&&!v.pdCar&&!v.chasing&&!visibleSpawn(G,v.x,v.y));
+          const i=G.vehicles.findIndex(v=>v!==P&&v.ambient&&v.traffic&&!v.mission&&!v.isVan&&!v.keep&&!v.siren&&!v.role&&!v.pdCar&&!v.chasing&&!v.owEvent&&!visibleSpawn(G,v.x,v.y,220));
           if(i>=0){G.vehicles.splice(i,1);n--;}
         }
         // Let a jam clear before feeding it more cars. Signals alone do not
         // trigger this: a meaningful fraction must wait longer than ten seconds.
         if(blocked<Math.max(5,n*.35)){
           const {halfW,halfH}=streetViewport(G),minD=Math.min(halfW,halfH)+80;
-          for(let k=0;k<3&&n<T.effectiveTarget;k++)if(T.spawnCar(P,minD,minD+900))n++;
+          // Busy districts feed cars from just beyond the screen edge so the
+          // extra demand is visible; quiet areas spread spawns wider.
+          const busy=!G.densityLegacy&&streetDensity(G,P.x,P.y)>1.05;
+          for(let k=0;k<(busy?4:3)&&n<T.effectiveTarget;k++)if(T.spawnCar(P,minD,minD+(busy?560:900)))n++;
         }
       }
       // spatial hash for following
@@ -407,8 +449,9 @@ export function createTraffic(G) {
       for(const v of G.vehicles)if(!v.def?.boat&&!(v.def?.aircraft&&v.altitude>10))add(v);
       if(P.type==='foot')add(P);
       for(const p of G.peds)if(!p.dead&&(p.onRoad||p.crossing))add(p);
+      let aheadObj=null;
       const ahead=(v,hx,hy,range)=>{
-        let best=range;const own=bodySize(v);
+        let best=range;const own=bodySize(v);aheadObj=null;
         const cells=Math.ceil(range/160),cx=Math.floor(v.x/160),cy=Math.floor(v.y/160);
         for(let ix=cx-cells;ix<=cx+cells;ix++)for(let iy=cy-cells;iy<=cy+cells;iy++){
           for(const o of hash.get(ix+iy*10000)||EMPTY){
@@ -417,7 +460,7 @@ export function createTraffic(G) {
             const veh=!!o.def,body=veh?bodySize(o):{w:8,l:8},sn=Math.sin(o.rot||0),co=Math.cos(o.rot||0);
             const length=veh?Math.abs(hx*sn-hy*co)*body.l+Math.abs(hx*co+hy*sn)*body.w:8;
             const width=veh?Math.abs(hx*sn-hy*co)*body.w+Math.abs(hx*co+hy*sn)*body.l:8;
-            if(forward+length+own.l>0&&Math.abs(-dx*hy+dy*hx)<own.w+width-.5)best=Math.min(best,Math.max(0,forward-own.l-length-12));
+            if(forward+length+own.l>0&&Math.abs(-dx*hy+dy*hx)<own.w+width-.5){const g=Math.max(0,forward-own.l-length-12);if(g<best){best=g;aheadObj=o;}}
           }
         }return best;
       };
@@ -434,6 +477,10 @@ export function createTraffic(G) {
         const driver=trafficDriver(v,tr.e),cruise=trafficCruise(v,tr.e,G);
         let want=cruise;
         const gap=tr.turn?300:ahead(v,hx,hy,300);
+        // Queue behind a red light (directly or through the cars ahead) is a
+        // legitimate wait, not gridlock: keep it out of the stuck timer.
+        const lead=tr.turn?null:aheadObj;
+        v.redQueue=!!(tr.waitSince!=null&&!lightGreen(G,tr.fwd?tr.e.B:tr.e.A,tr.e))||(gap<40&&lead&&lead.traffic&&lead.redQueue&&lead.tr?.e===tr.e);
         passParked(v,gap);
         if(tr.backoff!=null){
           const next=Math.max(tr.backoff,tr.s-18*dt),p=edgePoint(tr.e,tr.fwd,next,tr.lane),travel=tr.s-next;
@@ -521,6 +568,8 @@ export function createTraffic(G) {
         }
 
         v.vx = Math.sin(v.rot) * tr.spd; v.vy = -Math.cos(v.rot) * tr.spd;
+        // A red-light queue is never faded out in view (see the relief pass).
+        v.stillT=tr.spd<3?(v.stillT||0)+dt:0;
         v.braking = want < tr.spd - 5 || tr.spd < 3;
         v.fwd = tr.spd;
       }
@@ -546,13 +595,15 @@ export function createPeds(G) {
         const dirs = CARDINAL.filter(([dx, dy]) => surf(x + dx * 40, y + dy * 40) === "walk");
         const dd = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [1, 0];
         const n = Math.random() < 0.3 ? 2 : 1;
+        // Pairs walk as couples: one pace, usually one man and one woman.
+        const pace = 26 + Math.random() * 22, firstSex = Math.random() < .5 ? 'f' : 'm';
         for (let k = 0; k < n; k++) {
           const px=x+k*22*-dd[1],py=y+k*22*dd[0];
           if(!pedestrianClear(G,px,py)||[[0,0],[-7,0],[7,0],[0,-7],[0,7]].some(([ox,oy])=>surf(px+ox,py+oy)!=='walk'))continue;
           if(k&&G.peds.some(p=>!p.dead&&(p.x-px)**2+(p.y-py)**2<19**2))continue;
           G.peds.push({
             x:px,y:py, rot: Math.atan2(dd[0], -dd[1]), vx: 0, vy: 0,
-            sprite: PED_SPR[(Math.random() * PED_SPR.length) | 0], speed: 0, walk: 26 + Math.random() * 22,
+            sprite: PED_SPR[(Math.random() * PED_SPR.length) | 0], speed: 0, walk: n > 1 ? pace : 26 + Math.random() * 22, sex: k && Math.random() < .8 ? (firstSex === 'f' ? 'm' : 'f') : firstSex, couple: n > 1,
             dist: Math.random() * 20, flee: 0, r: 8, hp: 30, dead: false, ambient: true, idle: 0, hx: dd[0], hy: dd[1],
           });
         }
@@ -564,14 +615,15 @@ export function createPeds(G) {
       const pl = G.player;
       if (G.ticks % 10 === 0) {
         if(!(G.touch&&G.settings?.quality==='low')){
-          const live=G.peds.filter(p=>!p.dead&&p.ambient).length;P.effectiveTarget=P.target;
-          if(live<P.target){const {halfW,halfH}=streetViewport(G),minD=Math.min(halfW,halfH)+60;for(let k=0;k<3&&live+k<P.target;k++)P.spawn(pl,minD,minD+600);}
+          const live=G.peds.filter(p=>!p.dead&&p.ambient).length;P.effectiveTarget=pedDemand(G,P.target);
+          if(live<P.effectiveTarget){const {halfW,halfH}=streetViewport(G),minD=Math.min(halfW,halfH)+60;for(let k=0;k<3&&live+k<P.effectiveTarget;k++)P.spawn(pl,minD,minD+600);}
+          else if(live>P.effectiveTarget+4){const i=G.peds.findIndex(p=>p.ambient&&!p.dead&&!p.mission&&!p.copPed&&!p.crossing&&!p.onRoad&&!visibleSpawn(G,p.x,p.y,200));if(i>=0)G.peds.splice(i,1);}
           G.peds=G.peds.filter(p=>!p.ambient||Math.hypot(p.x-pl.x,p.y-pl.y)<1700||p.dead&&p.deadT<30);
           return;
         }
         G.peds = G.peds.filter((p) => !p.ambient || Math.hypot(p.x - pl.x, p.y - pl.y) < 1700 || (p.dead && p.deadT < 30));
         let live=0;for(const p of G.peds)if(!p.dead&&p.ambient)live++;
-        P.effectiveTarget=Math.round(P.target*(G.touch&&G.settings?.quality==='low'?(G.streetBudget??1):1));
+        P.effectiveTarget=Math.round(pedDemand(G,P.target)*(G.touch&&G.settings?.quality==='low'?(G.streetBudget??1):1));
         if(live>P.effectiveTarget){
           const i=G.peds.findIndex(p=>p.ambient&&!p.dead&&!p.mission&&!p.copPed&&!p.crossing&&!p.onRoad&&!visibleSpawn(G,p.x,p.y));
           if(i>=0){G.peds.splice(i,1);live--;}
@@ -607,6 +659,11 @@ export function createPeds(G) {
             let clear=true;for(let t=12;t<distance;t+=12){const at=surf(p.x+hx*t,p.y+hy*t);if(at==='build'||at==='water'||at==='canal'){clear=false;break;}}
             if(clear){exit={hx,hy};break outer;}
           }
+          // Kerb corners: the nearest pavement can sit diagonally behind the
+          // walker, with only carriageway along every cardinal ray.
+          if(!exit)diag:for(let distance=12;distance<=240;distance+=12)for(const [hx,hy] of [[.7071,.7071],[-.7071,.7071],[.7071,-.7071],[-.7071,-.7071]]){
+            if(FOOT_SAFE.has(surf(p.x+hx*distance,p.y+hy*distance))){exit={hx,hy};break diag;}
+          }
           cached=p._roadExit={x:p.x,y:p.y,surface:G.surfaceAt,exit};
         }
         const exit=cached.exit;
@@ -618,7 +675,7 @@ export function createPeds(G) {
       const ahead = surf(p.x + p.hx * look, p.y + p.hy * look);
       const ok = (s) => s === "walk" || s === "grass" || s === "pier" || s === "sand" || s === "lot" || s === "dirt";
       if (p.crossing) {
-        if (ok(ahead) && surf(p.x, p.y) !== "road") p.crossing = false;
+        if (ok(ahead) && surf(p.x, p.y) !== "road") {p.crossing = false;if(p.hx*p.hy!==0){if(Math.abs(p.hx)>=Math.abs(p.hy)){p.hx=Math.sign(p.hx);p.hy=0;}else{p.hy=Math.sign(p.hy);p.hx=0;}}}
       } else if (!ok(ahead)) {
         if(ahead==='road'&&G.crossOk){
           if(!G.crossOk(p)){
@@ -643,7 +700,11 @@ export function createPeds(G) {
       const sp = p.crossing ? p.walk * 1.4 : p.walk;
       if(!stepPedestrian(G,p,tr,sp,dt,{road:p.crossing||onRoad})){
         p._blockedWalk=(p._blockedWalk||0)+dt;
-        if(p._blockedWalk>.6){p.hx=-p.hx;p.hy=-p.hy;p._turning=true;p.crossing=false;p._blockedWalk=0;}
+        // Sidestep around another walker or a bollard before giving up and
+        // turning back; head-on pairs used to bounce off each other.
+        if(p._blockedWalk>.25){const side=(p.id||0)%2?1:-1;
+          if(stepPedestrian(G,p,tr+side*.75,sp*.6,dt,{road:p.crossing||onRoad})||stepPedestrian(G,p,tr-side*.75,sp*.6,dt,{road:p.crossing||onRoad})){p._blockedWalk=Math.max(0,p._blockedWalk-dt*.5);p.onRoad=surf(p.x,p.y)==='road';return;}}
+        if(p._blockedWalk>(p.crossing?.6:1.4)){p.hx=-p.hx;p.hy=-p.hy;p._turning=true;p.crossing=false;p._blockedWalk=0;}
       }else p._blockedWalk=0;
       p.onRoad = surf(p.x,p.y)==='road';
     },

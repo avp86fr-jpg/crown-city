@@ -13,7 +13,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  const text=(s,x,y,size,color='#ece5d4',weight=700)=>{c.textAlign='left';c.font=font(size*d,weight);c.fillStyle=color;c.fillText(s,x,y);};
  // Health and stamina sit under the map; weapon information no longer stacks tall cards.
  panel(L,T+mm+5*d,mm,37*d);
- c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+13*d,mm-14*d,4*d);c.fillStyle=G.health<30?'#e99580':'#b1d2ac';c.fillRect(L+7*d,T+mm+13*d,(mm-14*d)*G.health/100,4*d);
+ c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+13*d,mm-14*d,4*d);c.fillStyle=G.health<30?'#e99580':'#b1d2ac';c.fillRect(L+7*d,T+mm+13*d,(mm-14*d)*G.health/100,4*d);if(A.armor>0){c.fillStyle='#8fc4ff';c.fillRect(L+7*d,T+mm+10.5*d,(mm-14*d)*A.armor/100,2*d);}
  c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+21*d,mm-14*d,2*d);c.fillStyle=A.exhausted?'#e99580':'#9fc8c2';c.fillRect(L+7*d,T+mm+21*d,(mm-14*d)*A.stamina/100,2*d);
  text(A.reloadT>0?'RELOADING':WEAPONS[A.weapon].name+' / '+A.ammo[A.weapon]+(A.reserve?.[A.weapon]==null?'':'+'+A.reserve[A.weapon]),L+7*d,T+mm+34*d,8);
  const cashW=Math.min(150*d,R-(L+mm+10*d));

@@ -98,7 +98,7 @@ function* paintCircuit(c,view,pats={}){
  c.fillStyle='#b6bdb2';c.fillRect(1840,7728,2960,16);c.fillStyle='#34444a';c.fillRect(1840,7736,2960,4);
  for(let yy=7792;yy<8008;yy+=12)for(let xx=1592;xx<1616;xx+=12){c.fillStyle=((yy-7792)/12+(xx-1592)/12)%2?'#252b30':'#e3dfcd';c.fillRect(xx,yy,12,12);}
  for(let i=1;i<=7;i++){const p=trackPoint(length*i/8);c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.strokeStyle='#a7c8bc';c.lineWidth=2;c.setLineDash([8,8]);c.beginPath();c.moveTo(-half,0);c.lineTo(half,0);c.stroke();yield;c.setLineDash([]);c.fillStyle='#dedac0';c.font='bold 15px sans-serif';c.fillText('S'+i,half+30,0);c.restore();}
- c.fillStyle='#e2d6ad';c.font='bold 23px sans-serif';c.textAlign='center';c.fillText('BUGATTI / CROWN MOTORSPORT PARK',3400,7092);c.font='bold 14px sans-serif';c.fillText('PADDOCK / TRANSPORT & SCRUTINEERING',2820,7296);c.fillText('40 / PIT SPEED',4980,7650);c.fillText('PUBLIC ENTRY',6010,7580);c.fillText('PIT IN',1300,7830);c.fillText('PIT EXIT / YIELD',5430,7670);
+ c.fillStyle='#e2d6ad';c.font='bold 23px sans-serif';c.textAlign='center';c.fillText('CROWN MOTORSPORT PARK',3400,7092);c.font='bold 14px sans-serif';c.fillText('PADDOCK / TRANSPORT & SCRUTINEERING',2820,7296);c.fillText('40 / PIT SPEED',4980,7650);c.fillText('PUBLIC ENTRY',6010,7580);c.fillText('PIT IN',1300,7830);c.fillText('PIT EXIT / YIELD',5430,7670);
  for(const xx of [1350,4700,5850]){c.fillStyle='#bda46d';c.fillRect(xx,7180,110,64);c.fillStyle='#285563';c.fillRect(xx+5,7185,100,52);}
  c.strokeStyle='#afb9b5';c.lineWidth=8;c.strokeRect(x+8,y+8,w-16,h-16);c.fillStyle='#515b5b';c.fillRect(6268,7472,24,192);c.restore();
 }

@@ -38,19 +38,23 @@ import { loadImage as loadImg } from "./assets.js";
 import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, resetInput } from "./session.js";
 import { createAudio } from "./audio.js";
 import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
+import { HEIST_VN } from "./street_heists.js";
+import { sceneWind } from "./wind.js";
+Object.assign(VN, HEIST_VN);
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
 import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
 import {releaseBakedWorld} from './baked_world.js';
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
 import { createLighting, ambientAt, darkness, weatherSun, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
-import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
+import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message, CONTRACTS, absorbDamage } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
 import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from './controls.js';
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld } from './open_world.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
@@ -135,6 +139,8 @@ export async function boot() {
   const vehNames = ["gulf", "fare_wreck", "metro_wreck"];
   const charNames = ["chaos", "hunter", "fire"];
   const propNames = ["hydrant", "bin", "cone", "newsstand", "planter", "mailbox", "palm"];
+  // Wardrobe variants stream in after the core atlases; civilians use the base crowd until then.
+  loadImg(`assets/premium/crowd-looks${mobileArt?'-mobile':''}.webp`).then(i => (sprites.crowd_looks = i)).catch(() => {});
   await Promise.all([
     ...vehNames.map((n) => loadImg(`assets/sprites/veh_${n}.png`).then((i) => (sprites["veh_" + n] = i))),
     ...charNames.map((n) => loadImg(n === 'chaos' ? `assets/premium/chaos${mobileArt?'-mobile':''}.webp` : `assets/sprites/char_${n}.png`).then((i) => (sprites["char_" + n] = i))),
@@ -198,7 +204,7 @@ export async function boot() {
     action: actionState(),
     director: directorState(),
   };
-  G.makeVeh = makeVeh;
+  G.makeVeh = makeVeh;G.absorbDamage=absorbDamage;
   G.circuitHooks={tickDrive,enterVeh,save};
   G.ground = makeGround(world, tex, codeAt);
   G.bld = makeBuildings(world, tex, layers.roofs);
@@ -578,7 +584,7 @@ function canvasMouse(G) {
 
 function setupTouch(G) {
   const touch = document.getElementById("touch");
-  const coarse = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+  const coarse = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 || "ontouchstart" in window;
   G.touch = coarse;
   const joy = document.getElementById("joy"), knob = document.getElementById("knob"), zone = document.getElementById("joyZone");
   const hintL = document.getElementById("hintL");
@@ -691,7 +697,7 @@ function fit(G) {
   const q = G.settings ? G.settings.quality : "high";
   const maxDpr = q === "low" ? 1 : q === "med" ? 1.35 : 2;
   let dpr = Math.min(2,window.devicePixelRatio||1);
-  G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1));
+  G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1)*(G.nightRes||1));
   const direct=mobileCityRaster(G);
   if(direct){G.worldDpr=Math.max(.75,G.worldDpr);dpr=G.worldDpr;}
   G.worldWidth=Math.round(w*G.worldDpr);G.worldHeight=Math.round(h*G.worldDpr);G.directRaster=direct;
@@ -877,11 +883,18 @@ function tickJack(G, dt) {
   const j = G.jack;
   if (!j) return;
   j.t -= dt;
-  const k = 1 - Math.max(0, j.t) / j.dur;
-  if (G.player.type === "foot") {
-    G.player.x = j.fromX + (j.v.x - j.fromX) * k;
-    G.player.y = j.fromY + (j.v.y - j.fromY) * k;
-    G.player.rot = Math.atan2(j.v.x - G.player.x, -(j.v.y - G.player.y));
+  const el = j.dur - Math.max(0, j.t), P = G.player;
+  if (P.type === "foot") {
+    if (j.walk && el < j.walk) {
+      const k = el / j.walk, nx = j.fromX + ((j.doorX ?? j.v.x) - j.fromX) * k, ny = j.fromY + ((j.doorY ?? j.v.y) - j.fromY) * k;
+      const step = Math.hypot(nx - P.x, ny - P.y);
+      if (step > .01) P.rot = Math.atan2(nx - P.x, -(ny - P.y));
+      P.x = nx; P.y = ny; P.speed = 240; P.dist = (P.dist || 0) + step;
+    } else {
+      const k = Math.min(1, (el - (j.walk || 0)) / (j.enter || j.dur)), sx = j.doorX ?? j.fromX, sy = j.doorY ?? j.fromY;
+      P.speed = 0; P.x = sx + (j.v.x - sx) * k * .8; P.y = sy + (j.v.y - sy) * k * .8;
+      P.rot = j.v.rot + Math.PI / 2;
+    }
   }
   if (j.t <= 0) {
     finishEnter(G, j.v);
@@ -1006,6 +1019,7 @@ function tickEnd(G) {
 function openVN(G, page) {
   const p = typeof page === "function" ? page() : page;
   if (p === "play") {
+    if (G.vn && String(G.vn.id).startsWith("job_")) { G.scene = "play"; return; }
     if (G.vnQueue && G.vnQueue.length) return openVN(G, G.vnQueue.shift());
     if (G.missionIndex >= MISSIONS.length) { G.scene = "end"; G.ended = true; return; }
     G.scene = "play";
@@ -1241,6 +1255,7 @@ function tickPlay(G, dt) {
   G.ticks++;
   if(G.ticks%30===0)retireStreetActors(G);
   if(G.action.contract?.id!=='airdrop')G.parcel=null;
+  if(!G.jobHooks)G.jobHooks={vn:id=>openVN(G,id),traffic:(n,a,b,k)=>G.traffic?.spawnCar(n,a,b,k),spawn:(k,x,y)=>{const at=findSafe(G,x,y,34,false);const v=makeVeh(k,at.x,at.y,0);G.vehicles.push(v);return v;}};
   tickAction(G,dt,{moveFoot});
   G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);if(G.hitMark){G.hitMark.t-=dt;if(G.hitMark.t<=0)G.hitMark=null;}
   if(G.scene !== 'play') return;
@@ -1289,6 +1304,8 @@ function tickPlay(G, dt) {
   tickProps(G, dt);
   tickParticles(G, dt);
   tickPickups(G, dt);
+  if(!G.ow&&G.graph&&G.meta)initOpenWorld(G,{makeVeh});
+  tickOpenWorld(G, dt);
   tickCamera(G, dt);
   const guidance=tickDirector(G,dt);
   if(guidance)message(G,guidance.name,guidance.text);
@@ -1477,6 +1494,11 @@ function tickDrive(G, v, input, dt, isPlayer) {
   if(v.health>=99&&v.damage){v.damage=null;v.damageStage='GOOD';}
   if(v.health<=0)input={...input,y:0,hand:true,brake:false};
   const surf = v.def.boat ? G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x,v.y) : G.surfaceAt(v.x, v.y);
+  // Only the player's own car can be driven off a pier. AI, traffic and
+  // rammed/stalled cars stop at the water's edge instead of parking in the sea.
+  const wet=!def.boat&&(surf==='water'||surf==='canal');
+  if(!wet&&!def.boat){v.dryX=v.x;v.dryY=v.y;}
+  else if(wet&&!isPlayer&&!v.def.aircraft&&v.dryX!=null&&Math.hypot(v.x-v.dryX,v.y-v.dryY)<120){v.x=v.dryX;v.y=v.dryY;v.vx=v.vy=0;v.sinkT=0;if(v.tr&&v.traffic)v.cruise=Math.min(v.cruise||0,40);return;}
   if (v.dead) {
     const damping=Math.exp(-4*dt);v.vx*=damping;v.vy*=damping;
     const nx=v.x+v.vx*dt,ny=v.y+v.vy*dt;if(!carHit(G,v,nx,ny)){v.x=nx;v.y=ny;}else v.vx=v.vy=0;return;
@@ -1618,13 +1640,16 @@ function damageVeh(G, v, amt, byPlayer=false,point=null) {
   const hit=recordVehicleDamage(v,amt,point);if(!hit)return;
   if(hit.previous!==hit.stage&&v===G.player&&v.health<65)toast(G,hit.stage==='CRITICAL'?'Critical damage — find a workshop.':hit.stage==='ENGINE FIRE'?'Engine fire — stop and get clear!':'Body damaged. Handling and power reduced.');
   if(amt>13&&G.particles){for(let i=0;i<(G.settings.quality==='low'?3:6);i++)G.particles.push({kind:'panel',x:point?.x??v.x,y:point?.y??v.y,vx:(Math.random()-.5)*100,vy:(Math.random()-.5)*100,rot:Math.random()*TAU,spin:(Math.random()-.5)*9,col:i%2?'#9db9b5':'#36434a',life:1.1,maxLife:1.1});}
+  if(amt>18&&G.particles&&!v.def.boat){const n=v.glassOut?2:(G.settings.quality==='low'?4:9);v.glassOut=(v.glassOut||0)+1;for(let i=0;i<n;i++)G.particles.push({kind:'glass',x:(point?.x??v.x)+(Math.random()-.5)*10,y:(point?.y??v.y)+(Math.random()-.5)*10,vx:(Math.random()-.5)*140,vy:(Math.random()-.5)*140,rot:Math.random()*6,life:.5+Math.random()*.5});}
   if (v.health < 35 && !v.wrecked) { v.wrecked = true; }
   if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; v.playerIgnited=byPlayer; }
   if (v.cop && v === G.player) return;
 }
 function tickVehDamage(G, v, dt) {
   if(v.dead)return;v.damagePulse=Math.max(0,(v.damagePulse||0)-dt);
-  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
+  if (v.health >= 45 && v.health < 70 && !v.def.boat && (G.ticks % 9) === 0) G.particles.push({ kind: "steam", x: v.x + (Math.random() - 0.5) * 8, y: v.y + (Math.random() - 0.5) * 8, vx: (Math.random() - 0.5) * 10, vy: -18, life: .8, seed: Math.random()*6 });
+  if (v.health < 22 && !v.burning && (G.ticks % 6) === 0 && Math.random() < .6) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: 0, vy: -22, life: 0.25 });
+  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ seed: Math.random()*6, kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: v.health < 25 ? 1.15 : 0.9, frame: 0, dark: v.health < 25 });
   if (v.burning) {
     v.burnT -= dt;
     if ((G.ticks % 2) === 0) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 16, y: v.y + (Math.random() - 0.5) * 16, vx: 0, vy: -30, life: 0.4 });
@@ -1690,9 +1715,11 @@ function tickCollisions(G) {
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
       if (rv < 0) {
         const imp = resolveVehicleImpulse(a,b,best.nx,best.ny,ma,mb);
+        // AI coherence telemetry: impacts between two non-player vehicles.
+        if(imp>12&&a!==P&&b!==P){const st=G.aiStats||(G.aiStats={vv:0});st.vv++;}
         for (const v of [a, b]) {
           if (v.isVan && imp > 50) v.loose = true;
-          if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
+          if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; v.knocked = true; v.restT = 0; }
           if (imp > 12 && v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
         }
         if(fixedA)a.vx=a.vy=0;if(fixedB)b.vx=b.vy=0;
@@ -1759,7 +1786,11 @@ function enterVeh(G, v, instant) {
     return;
   }
   if (!instant && G.player && G.player.type === "foot") {
-    G.jack = { v, t: 0.38, dur: 0.38, fromX: G.player.x, fromY: G.player.y };
+    // Walk to the driver's door first (legs animate), then the door swings
+    // and Chaos steps in. Bikes and boats are mounted from the side as well.
+    const rv=rightVec(v.rot),hv=headingVec(v.rot),bw=bodySize(v).w,doorX=v.x-rv.x*(bw+9)+hv.x*4,doorY=v.y-rv.y*(bw+9)+hv.y*4;
+    const walk=clamp(Math.hypot(doorX-G.player.x,doorY-G.player.y)/240,0,.5),enter=v.def.bike?.2:.3;
+    G.jack = { v, t: walk+enter, dur: walk+enter, walk, enter, fromX: G.player.x, fromY: G.player.y, doorX, doorY };
     G.audio.enter();
     addShake(G, 3);
     for (let i = 0; i < 8; i++) {
@@ -1862,7 +1893,11 @@ function shoot(G, from, onFoot) {
     // Feel: recoil kick on the camera, heavier for the shotgun.
     addShake(G,weapon.pellets>1?5:weapon.quiet?1.2:2);
   }
-  if(!weapon.rocket)G.particles.push({kind:'casing',x:base.x+ay*9,y:base.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+  if(!weapon.rocket){G.particles.push({kind:'casing',x:base.x+ay*9,y:base.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+   // Painted gunsmoke: a puff at the muzzle; sustained bursts leave a thin haze.
+   const mz=onFoot?23:14,mx=base.x+ax*16,my=base.y+ay*16-mz,heavy=weapon.pellets>1?1.6:weapon.quiet?.55:1;
+   G.particles.push({kind:'gunsmoke',x:mx,y:my,vx:ax*28,vy:ay*28-6,life:.9*heavy,a:.75,seed:Math.random()*6,size:heavy});
+   G.gunHaze=Math.min(8,(G.gunHaze||0)+1);G.gunHazeAt={x:mx,y:my};}
   const fx=block===null?sx:base.x+(sx-base.x)*block,fy=(block===null?sy:base.y+(sy-base.y)*block)-(onFoot?23:14);
   G.particles.push({ kind:block===null?"flash":"spark", x:fx, y:fy, life:block===null?.06:.18, a:1 });
   G.flashes.push({ x: sx, y: sy, r: 150, col: "rgba(255,210,140,0.9)", life: 0.07, max: 0.07 });
@@ -1898,7 +1933,7 @@ function tickBullets(G, dt) {
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8);G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;G.audio.impact?.('flesh',b.x,b.y,.3);
       G.hitMark={x:target.x,y:target.y-22,t:target.hp<=0?.4:.22,kill:target.hp<=0};G.audio.hitmark?.(target.hp<=0);if(target.hp>0){target.flinch=.18;target.flinchX=b.vx/Math.hypot(b.vx,b.vy);target.flinchY=b.vy/Math.hypot(b.vx,b.vy);}
       if(target.gang)gangHit(G,target);else if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
@@ -1999,6 +2034,7 @@ function crime(G, n, x, y, serious, cap) {
   bumpWanted(G, Math.min(n, limit - G.wanted));
 }
 
+export const loseHeatAfter=w=>5+w*2.2;
 function tickWanted(G, dt) {
   G.missionState.scramblerT = Math.max(0, (G.missionState.scramblerT || 0) - dt);
   if (G._endT > 0) G._endT -= dt;
@@ -2007,9 +2043,9 @@ function tickWanted(G, dt) {
   if (G.starFlash > 0) G.starFlash -= dt;
   if (G.wanted <= 0) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
-    for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; }
+    for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; c.knocked = true; c.restT = 0; }
     G.cops = []; G.policeTarget = null; G.heliChase=false;G.evading=false;G.seenT=0;
-    for(const v of G.vehicles)if(v.roadblock){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}
+    for(const v of G.vehicles)if(v.roadblock){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;v.parked=false;v.knocked=true;v.restT=0;}
     // Officers stand down and return to their cruiser in tickCops; they do not
     // vanish in front of the player when the last star clears.
     return;
@@ -2019,9 +2055,12 @@ function tickWanted(G, dt) {
   let seen = false;
   for (const c of G.cops) if (!c.dead && Math.hypot(c.x - P.x, c.y - P.y) < 620 && G.nav.clearLine(c.x, c.y, P.x, P.y)) { seen = true; break; }
   for (const p of G.peds) if (p.copPed && !p.dead && Math.hypot(p.x - P.x, p.y - P.y) < 400 && G.nav.clearLine(p.x, p.y, P.x, P.y)) seen = true;
-  if (seen) { G.seenT = 0; G.policeTarget = { x: P.x, y: P.y }; } else G.seenT = (G.seenT || 0) + dt;
+  // Hiding counts faster once well clear of the last sighting, so real
+  // escapes pay off; low heat clears quickly, five stars still take work.
+  const far=!seen&&G.policeTarget&&Math.hypot(P.x-G.policeTarget.x,P.y-G.policeTarget.y)>900;
+  if (seen) { G.seenT = 0; G.policeTarget = { x: P.x, y: P.y }; } else G.seenT = (G.seenT || 0) + dt*(far?1.5:1);
   G.evading = !seen;
-  const loseAfter = 7 + G.wanted * 2.5;
+  const loseAfter = loseHeatAfter(G.wanted);
   if (G.seenT > loseAfter) {
     G.wanted = Math.max(0, G.wanted - 1);
     G.seenT = 0;
@@ -2066,7 +2105,7 @@ function tickWanted(G, dt) {
       }else G.roadblockT=2;
     }else G.roadblockT=2;
   }
-  for(const v of G.vehicles)if(v.roadblock){v.blockT-=dt;if(v.blockT<=0||G.wanted===0){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}}
+  for(const v of G.vehicles)if(v.roadblock){v.blockT-=dt;if(v.blockT<=0||G.wanted===0){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;v.parked=false;v.knocked=true;v.restT=0;}}
   // heli at 4+
   G.heliChase = G.wanted >= 4;
 }
@@ -2214,7 +2253,7 @@ function tickVehicles(G, dt) {
       v.responseAge=(v.responseAge||0)+dt;
       if(v.traffic&&v.tr){
         const n=Math.hypot(v.target.x-v.x,v.target.y-v.y);
-        if(n<180&&!v.tr.turn&&v.serviceLeft==null)v.serviceLeft=8;
+        if(n<180&&!v.tr.turn&&v.serviceLeft==null&&(!v.tr.e||v.tr.s>110&&v.tr.e.len-v.tr.s>140))v.serviceLeft=8; // never park a response vehicle inside a junction
         if(v.serviceLeft!=null){v.serviceLeft-=dt;v.cruise=0;}
         if(v.serviceLeft!=null&&v.serviceLeft<=0||v.responseAge>75){v.target=null;v.siren=false;v.cruise=v.responseCruise||100;v.serviceLeft=null;}
         if(v.burning||v.health<45)tickVehDamage(G,v,dt);
@@ -2227,7 +2266,15 @@ function tickVehicles(G, dt) {
       // knocked loose / abandoned: coast to a stop with physics
       tickDrive(G, v, { x: 0, y: 0, hand: false, brake: false }, dt, false);
       v.looseT = (v.looseT || 0) + dt;
-      if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;v.loose=false;v.parked=true;}
+      // A crashed ambient car rests a moment, then its driver pulls back into
+      // the correct lane; if no lane fits it is towed once out of view.
+      if(v.knocked&&v.ambient&&!v.burning&&!v.mission&&!v.keep&&v.health>25&&v.vx*v.vx+v.vy*v.vy<400){
+        v.restT=(v.restT||0)+dt;
+        // A cruiser standing down waits for its officers to climb back in.
+        if(v.restT>1.6&&(G.ticks%20)===0&&!(v.cop&&G.peds.some(p=>p.car===v&&!p.dead&&!p.removed))&&G.traffic?.rejoin?.(v))continue;
+        if(v.restT>6&&!G.traffic?.visible?.(v.x,v.y)){const i=G.vehicles.indexOf(v);if(i>=0)G.vehicles.splice(i,1);continue;}
+      }
+      if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;if(!(v.knocked&&v.ambient&&v.health>25)){v.loose=false;v.parked=true;}}
       continue;
     }
     if (v.burning || v.health < 45) tickVehDamage(G, v, dt);
@@ -2438,12 +2485,21 @@ function tickProps(G, dt) {
 function tickParticles(G, dt) {
   tickBlood(G,dt);tickBlastFX(G,dt);
   tickLightEffects(G,dt);
+  // Smoke-like particles drift downwind and slow; haze settles after a burst.
+  const wind=sceneWind(G),wx=wind.x*22,wy=wind.y*22,drag=Math.max(0,1-dt*1.8);
+  if(G.gunHaze>0){G.gunHazeT=(G.gunHazeT||0)+dt;if(G.input&&G.input.fire)G.gunHazeT=0;
+   if(G.gunHazeT>.25&&G.gunHaze>=3&&G.gunHazeAt){const h=G.gunHazeAt;G.particles.push({kind:'haze',x:h.x,y:h.y,vx:0,vy:-4,life:2.6,a:Math.min(1,G.gunHaze/8),seed:Math.random()*6});G.gunHaze=0;}
+   else if(G.gunHazeT>.25)G.gunHaze=0;}
   for (const p of G.particles) {
     if (!p.maxLife) p.maxLife = p.life;
+    const soft=p.kind==='smoke'||p.kind==='gunsmoke'||p.kind==='haze'||p.kind==='steam'||p.kind==='dust';
+    if(soft){p.vx=(p.vx||0)*drag;p.vy=(p.vy||0)*drag;p.x+=wx*dt;p.y+=wy*dt;}
     p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.life -= dt;
     if (p.frame != null) p.frame += dt * 12;
   }
-  const cap=G.settings.quality==='low'?140:500;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
+  // Caps scale with the frame budget: when frames run long, effects thin out first.
+  const slow=(G.fps||60)<(G.touch?48:40);
+  const cap=(G.settings.quality==='low'?140:500)*(slow?.55:1)|0;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
   let live=0;for(const p of G.particles)if(p.life>0)G.particles[live++]=p;G.particles.length=live;
   for (const s of G.skids) s.a -= dt * 0.07;
   live=0;for(const s of G.skids)if(s.a>0)G.skids[live++]=s;G.skids.length=live;
@@ -2630,7 +2686,18 @@ function viewRect(G) {
   return { x0: G.cam.x - ex - 40, y0: G.cam.y - ey - 40, x1: G.cam.x + ex + 40, y1: G.cam.y + ey + 40, S };
 }
 // adaptive resolution: hold ~50+ fps by trading render pixels (never below 0.6 css px)
+// Night frames are dark and soft-lit: on desktop the world layer renders at
+// a lower internal scale there (HUD stays native). Hysteresis on darkness
+// keeps the canvas from reallocating around dusk.
+export function nightResTarget(G){
+  if(G.touch||G.settings?.quality==='low'||G.scene!=='play')return 1;
+  if(G.dbg&&G.dbg.nightRes!=null)return G.dbg.nightRes;
+  const d=darkness(G.time),cur=G.nightRes||1;
+  return cur<1?(d>.32?NIGHT_RES:1):(d>.42?NIGHT_RES:1);
+}
+const NIGHT_RES=.78;
 function adaptRes(G, dt) {
+  {const nr=nightResTarget(G);if(nr!==(G.nightRes||1)){G.nightRes=nr;fit(G);}}
   if (G.scene !== "play" && G.scene !== "title") return;
   const A = G._ar || (G._ar = { t: 0, n: 0, sum: 0 });
   A.t += dt; A.n++; A.sum += dt;
@@ -2665,7 +2732,7 @@ function applyQuality(G) {
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
   // Mobile retains composed tiles; bound duplicate source art to 8 MiB.
-  if (G.ground){G.ground.maxChunks=q==='low'?8:q==='med'?40:64;G.ground.prepareCircuit(q==='low');}
+  if (G.ground){G.ground.maxChunks=q==='low'?8:q==='med'?40:64;if(q==='low'||G.ground.circuitKey)G.ground.prepareCircuit(q==='low');}
 }
 function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
@@ -2931,6 +2998,8 @@ function renderWorldLayer(G) {
   const S = r.S;
   const frame = G.ticks;
   const L = assets.layers;
+  // The 4096 px circuit paint (1.3 MB) streams in only when the camera nears the park.
+  if(G.ground&&!G.ground.circuitKey&&r.x1>CIRCUIT.x-2600&&r.x0<CIRCUIT.x+CIRCUIT.w+2600&&r.y1>CIRCUIT.y-2600&&r.y0<CIRCUIT.y+CIRCUIT.h+2600)G.ground.prepareCircuit(false);
   worldXform(G, ctx, S, 1, ox, oy);
   ctx.imageSmoothingEnabled = true;
   // Opaque fallback while terrain streams. Scrolling full-view water passes
@@ -2967,7 +3036,7 @@ function renderWorldLayer(G) {
     ctx.restore();
   }
   _ph('w_shadow');
-  drawWetReflections(G, r, nightFactor(G));
+  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));
   drawStreetScene(G,r);
   // 5. ground details
   ctx.lineWidth = 3;
@@ -2991,6 +3060,8 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
+  drawOpenWorld(G, r);
+  drawRouteChevrons(G);
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
@@ -3002,7 +3073,7 @@ function renderWorldLayer(G) {
   for (const p of G.peds) if (p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1) actors.push(p);
   if (G.player.type === "foot") actors.push(G.player);
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
-  _ph('a_sort');for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
+  _ph('a_sort');const noVeh=G.dbg&&G.dbg.noVeh;for (const a of actors) { if (a.def) {if(!noVeh)drawVeh(G, a);} else drawChar(G, a); }
   _ph('a_draw');drawWildlife(G,r);drawExpansionPeople(G,r);_ph('a_wild');
   drawParticles(G, r, false);_ph('a_part');
   drawResortOverhead(G,r);
@@ -3021,15 +3092,15 @@ function renderWorldLayer(G) {
     });
     if (hidden) { ctx.save(); ctx.globalAlpha = .38; drawChar(G, G.player); ctx.restore(); }
   }
-  if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
+  if (!(G.dbg&&G.dbg.noHeli) && (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65))) drawHeli(G, nightFactor(G), false);
   drawTransitWorld(G,r,true);drawAirborne(G,r);
   _ph('w_bld');
   // 8. light map
-  if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
-  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);drawResortLights(G,r,nightFactor(G));
+  G._lmBaked=false;if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
+  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);if(!(G.dbg&&G.dbg.noResort))drawResortLights(G,r,nightFactor(G));
   _ph('w_light');
-  drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
-  drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
+  if(!(G.dbg&&G.dbg.noArch))drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
+  if(!(G.dbg&&G.dbg.noAtmo))drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
   drawParticles(G, r, true);_ph('l_top');
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
@@ -3039,10 +3110,19 @@ function renderWorldLayer(G) {
   if (G.fog > 0.05) { ctx.fillStyle = `rgba(160,170,180,${0.28 * G.fog})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
-  _ph('l_misc');drawGrade(G);_ph('l_grade');
+  _ph('l_misc');if(!G._lmBaked)drawGrade(G);_ph('l_grade');
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
+const _vigMul={k:''};
+function vignetteMul(w,h){
+  if(_vigMul.k===w+':'+h)return _vigMul.c;
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  // Same falloff as drawGrade, expressed as a multiply tint (white = no change).
+  const v=x.createRadialGradient(w*.5,h*.44,h*.25,w*.5,h*.5,Math.max(w,h)*.65);
+  v.addColorStop(0,'rgb(255,255,255)');v.addColorStop(.65,'rgb(240,240,241)');v.addColorStop(1,'rgb(177,178,182)');
+  x.fillStyle=v;x.fillRect(0,0,w,h);_vigMul.k=w+':'+h;_vigMul.c=c;return c;
+}
 function drawLighting(G, r, S, ox, oy, low) {
   const { ctx, canvas, cam, assets } = G;
   const amb = ambientAt(G.time);
@@ -3056,9 +3136,13 @@ function drawLighting(G, r, S, ox, oy, low) {
   const needMap = Math.min(ar, ag, ab) < 238;
   // low tier: rebuild the light map every other frame (the multiply still runs every frame)
   G._lmF = (G._lmF || 0) + 1;
-  const reuse = low && (G._lmF & 1) && G._lmValid && !hasFlash;
+  // Reuse the light map on alternate frames (desktop too). It is world-aligned,
+  // so a reused map is shifted by the camera's screen motion since it was built.
+  const LM=G._lmCam,reuse = (G._lmF % 3 !== 0) && G._lmValid && !hasFlash && LM && LM.S===S && LM.rot===cam.rot && LM.ox===ox && LM.oy===oy && Math.hypot(cam.x-LM.x,cam.y-LM.y)*S<40;
   if (needMap) G._lmValid = true;
-  if (needMap && !reuse) {
+  G._lmBaked=needMap&&!(G.dbg&&(G.dbg.noMap||G.dbg.noMul));
+  if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
+    G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
     lx.setTransform(1, 0, 0, 1, 0, 0);
     lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
     lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
@@ -3101,18 +3185,24 @@ function drawLighting(G, r, S, ox, oy, low) {
       const h = heliPos(G);
       lx.globalAlpha = 0.9 * Math.max(dark, 0.4); lx.drawImage(LIGHT.radial("rgba(255,250,225,0.95)"), h.lx - 90, h.ly - 90, 180, 180);
     }
+    // Fold the screen vignette into the multiply map: one full-frame
+    // composite instead of two (the grade pass is skipped while it is baked).
+    lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='multiply';lx.globalAlpha=1;
+    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';
   }
-  if (needMap) {
+  if (needMap && !(G.dbg&&G.dbg.noMul)) {
     // multiply onto the frame
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = 1;
-    ctx.drawImage(lt.cv, 0, 0, canvas.width, canvas.height);
+    const sh=reuse&&G._lmCam?{x:(G._lmCam.x-cam.x)*S,y:(G._lmCam.y-cam.y)*S}:{x:0,y:0};
+    ctx.drawImage(lt.cv, sh.x, sh.y, canvas.width, canvas.height);
+    if(sh.x||sh.y){ctx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;if(sh.x>0)ctx.fillRect(0,0,Math.ceil(sh.x),canvas.height);else if(sh.x<0)ctx.fillRect(canvas.width+Math.floor(sh.x),0,-Math.floor(sh.x),canvas.height);if(sh.y>0)ctx.fillRect(0,0,canvas.width,Math.ceil(sh.y));else if(sh.y<0)ctx.fillRect(0,canvas.height+Math.floor(sh.y),canvas.width,-Math.floor(sh.y));}
     ctx.restore();
   }
   // emissive pass (additive, unaffected by darkness)
   worldXform(G, ctx, S, 1, ox, oy);
   ctx.globalCompositeOperation = "lighter";
-  const lit = clamp(dark * 1.7, 0, 1);
+  const lit = G.dbg&&G.dbg.noEmis?0:clamp(dark * 1.7, 0, 1);
   if (lit > 0.03) {
     if (r.x0 < CORE && r.y0 < CORE) {
       drawCoreGlow(G,ctx,r,G.ticks,lit);
@@ -3127,7 +3217,27 @@ function drawLighting(G, r, S, ox, oy, low) {
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);
   }
-  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);
+  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;G.night=night;
+  if (night > 0.3 && G.codeAt && !G.settings.reducedMotion) {
+    // Lamp light on water: broken, swaying vertical streaks below lights at the water's edge.
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; const t = G.ticks / 60; let n = 0;
+    for (const L of visibleStreetLights(G, r)) {
+      if (n >= (G.touch ? 10 : 24)) break;
+      const bx = L.bulbX, by = L.bulbY, wet = (x, y) => { const c = G.codeAt(x, y); return c === 3 || c === 8; };
+      let dir = null, start = 0;
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) { for (let d = 20; d <= 140; d += 20) if (wet(bx + dx * d, by + dy * d)) { dir = [dx, dy]; start = d; break; } if (dir) break; }
+      if (!dir) continue; n++;
+      for (let k = 0; k < 8; k++) {
+        const d = start + 4 + k * 11, xx = bx + dir[0] * d, yy = by + dir[1] * d;
+        if (!wet(xx, yy)) break;
+        const sway = Math.sin(t * 2.1 + k * 1.7 + bx * .01) * (2 + k * .6), wdt = 10 - k * .9;
+        ctx.globalAlpha = night * (0.36 - k * .04) * (0.7 + 0.3 * Math.sin(t * 3 + k));
+        ctx.fillStyle = "#ffcf86";
+        if (dir[0] === 0) ctx.fillRect(xx + sway - wdt / 2, yy, wdt, 2.2); else ctx.fillRect(xx, yy + sway - wdt / 2, 2.2, wdt);
+      }
+    }
+    ctx.restore();
+  }
   for (const v of G.vehicles) {
     if (v.x < r.x0 || v.x > r.x1 || v.y < r.y0 || v.y > r.y1) continue;
     vehLights(G, ctx, v, night, false);
@@ -3177,7 +3287,9 @@ function vehLights(G, c, v, night, map) {
   if (active) {
     c.globalAlpha = 0.25 + 0.75 * night;
     for (const s of w ? [-1, 1] : [0]) c.drawImage(bulb, v.x + h * len + rt.x * w * s - 7, v.y + k * len + rt.y * w * s - 7, 14, 14);
-    if (night > 0.25) {
+    // Full-resolution additive beams are the costliest light; only the player
+    // and a handful of other cars get one, the rest keep their light-map pool.
+    if (night > 0.25 && (v === G.player || (G._beams = (G._beams || 0) + 1) <= 4)) {
       // additive beam so headlights actually brighten dark asphalt (multiply alone can't)
       c.save(); c.translate(v.x + h * len, v.y + k * len); c.rotate(v.rot);
       c.globalAlpha = (v === G.player ? 0.3 : 0.18) * night; const cn = LIGHT.cone("rgba(255,240,205,0.95)");
@@ -3232,6 +3344,22 @@ function drawParticles(G, r, top) {
   }
 }
 
+// Ground route: soft chevrons along the next ~650 px of the GPS line, flowing toward the goal.
+function drawRouteChevrons(G) {
+  const pts = G.gpsPts, P = G.player; if (!pts || pts.length < 4 || G.scene !== 'play' || P.def?.aircraft) return;
+  const c = G.ctx, step = 46, flow = G.settings.reducedMotion ? 0 : (G.ticks * 0.9) % step; let best = 0, bd = 1e18;
+  for (let i = 0; i < pts.length; i += 2) { const d = (pts[i] - P.x) ** 2 + (pts[i + 1] - P.y) ** 2; if (d < bd) { bd = d; best = i; } }
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round'; const col = G.waypoint && !(G._flow) ? '41,215,255' : '255,214,90';
+  let acc = 0, next = step - flow + 40, i = best;
+  while (i + 2 < pts.length && acc < 650) {
+    const ax = pts[i], ay = pts[i + 1], bx = pts[i + 2], by = pts[i + 3], L = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L;
+    while (next <= acc + L) { const t = next - acc, x = ax + ux * t, y = ay + uy * t, fade = Math.min(1, (next - 40) / 120) * Math.max(0, 1 - next / 650);
+      c.globalAlpha = .55 * fade; c.strokeStyle = 'rgba(10,14,22,.7)'; c.lineWidth = 7; c.beginPath(); c.moveTo(x - ux * 7 - uy * 8, y - uy * 7 + ux * 8); c.lineTo(x, y); c.lineTo(x - ux * 7 + uy * 8, y - uy * 7 - ux * 8); c.stroke();
+      c.strokeStyle = `rgba(${col},1)`; c.lineWidth = 3.4; c.stroke(); next += step; }
+    acc += L; i += 2;
+  }
+  c.restore();
+}
 function drawObjectiveGround(G) {
   const at = currentObjectivePos(G);
   if (!at) return;
@@ -3290,6 +3418,19 @@ function currentObjectivePos(G) {
 
 function drawAirborne(G,r){for(const v of G.vehicles)if(airborne(v)&&v.x>r.x0-160&&v.x<r.x1+160&&v.y>r.y0-160&&v.y<r.y1+160)drawAircraft(G,v);}
 
+// Vehicle atlases are painted at 512 px per cell but drawn near 116 px. A
+// one-time high-quality downscale to <=224 px cells removes per-draw
+// minification, the largest cost when a street holds 150+ cars.
+const _vehAtlas=new WeakMap();
+function vehAtlas(src){
+ if(!src||!src.width)return src;let c=_vehAtlas.get(src);if(c)return c;
+ const k=Math.min(1,224/(src.width/3));if(k>.95){_vehAtlas.set(src,src);return src;}
+ c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+ const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
+ _vehAtlas.set(src,c);
+ if(typeof createImageBitmap==='function')createImageBitmap(c).then(b=>_vehAtlas.set(src,b)).catch(()=>{});
+ return c;
+}
 function drawVeh(G, v) {
   if(v.def.aircraft){if(!airborne(v))drawAircraft(G,v);return;}
   const spr = G.assets.sprites["veh_" + v.def.sprite] || {width:200,height:384};
@@ -3314,8 +3455,10 @@ function drawVeh(G, v) {
   let sprUse = spr;
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); const body=bodySize(v);ctx.ellipse(2,4,body.w,body.l*.86,0,0,TAU);ctx.fill();
+  // Tight contact shadow under the tyres grounds the car on the asphalt.
+  if(!v.def.boat&&G.settings.quality!=='low'){ctx.fillStyle="rgba(0,0,0,0.3)";ctx.beginPath();ctx.ellipse(1,2,body.w*.86,body.l*.8,0,0,TAU);ctx.fill();}
   const fleetSlot={bus:0,ambulance:1,van:2,stitch:3,hog:4,wake:5}[v.kind];
-  const atlas=fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas,slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
+  const atlas=vehAtlas(fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas),slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
   if(atlas && slot!=null) {
     const cw=atlas.width/3,ch=atlas.height/2;
     if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
@@ -3331,7 +3474,7 @@ function drawVeh(G, v) {
   }
   drawVehicleDamage(ctx,v);
   if(v===G.player)drawDriveByArm(G,v,ctx);
-  const opening=G.jack?.v===v ? Math.sin((1-G.jack.t/G.jack.dur)*Math.PI/2) : Math.min(1,(v.doorT||0)*2);
+  const opening=G.jack?.v===v ? (()=>{const j=G.jack,el=j.dur-Math.max(0,j.t);return j.walk!=null?(el<j.walk?clamp((el-j.walk+.12)/.12,0,1):Math.sin(Math.PI*clamp((el-j.walk)/(j.enter||.3),0,1))*.9+.1):Math.sin(el/j.dur*Math.PI/2);})() : Math.min(1,(v.doorT||0)*2);
   if(opening>0&&!v.def.bike&&!v.def.boat){
     ctx.save();ctx.translate(-24,-10);ctx.rotate(-opening*1.15);
     ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(-4,1,6,27);
@@ -3427,7 +3570,40 @@ function charAtlas(src){
  const k=Math.min(1,128/(src.height/8));if(k>.95){_charAtlas.set(src,src);return src;}
  c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
  const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
- _charAtlas.set(src,c);return c;
+ _charAtlas.set(src,c);
+ // A GPU-resident bitmap avoids re-uploading the canvas texture per draw.
+ if(typeof createImageBitmap==='function')createImageBitmap(c).then(b=>{b.__frames=c.__frames;_charAtlas.set(src,b);_bitmapSrc.set(b,c);}).catch(()=>{});
+ return c;
+}
+const _bitmapSrc=new WeakMap();
+const ORIG_CROWD={width:1086,height:1448};
+// Wardrobe looks in crowd-looks.webp: 0-5 men (suit, tracksuit, beach, workwear, elder, casual),
+// 6-11 women (dress, skirt, suit, beachwear, workwear, elder). -1 keeps the base painted crowd.
+const LOOKS_BY_AREA={beach:[2,2,5,1,-1,9,9,7,6,-1],work:[3,3,1,5,-1,10,10,7,8,-1],suit:[0,0,5,-1,1,8,8,6,7,-1],any:[0,1,5,-1,3,7,6,8,-1,9]};
+function assignLook(G,a){
+ const h=(Math.abs(Math.sin(a.x*12.9898+a.y*78.233+(a.id||0))*43758.5453))%1;
+ const d=districtAt(a.x,a.y),area=a.y<760||d==='HARBOUR'||d==='PORT ROYALE'?'beach':d==='IRONSIDE'||d==='HARBOUR'||d==='CROWN AIRFIELD'?'work':d==='DOWNTOWN'||d==='THE STRIP'||d==='PALACE ROW'||d==='MIDTOWN'||d==='METAWIN TERRACE'?'suit':'any';
+ const female=a.sex?a.sex==='f':h<.5,elder=h*7%1<.1;
+ const pool=LOOKS_BY_AREA[area],half=female?pool.slice(5):pool.slice(0,5);
+ a.sex=female?'f':'m';a.elder=elder;
+ a.look=elder?(female?11:4):half[Math.floor(h*13%1*half.length)];
+ a.build=elder?.96:.9+(h*31%1)*.2;
+ if(elder&&a.walk)a.walk*=.7;
+}
+// Silhouette variety on top of the painted wardrobe: backpacks, briefcases
+// and shoulder bags change a pedestrian's outline, not just their colours.
+const ACC_BY_LOOK=[['case','case',''],['pack','',''],['tote','',''],['pack','pack',''],['','',''],['pack','case',''],['bag','',''],['bag','bag',''],['case','bag',''],['tote','bag',''],['pack','',''],['bag','','']];
+const ACC_COL=['#2c3440','#5a3b2c','#3f4a3a','#6b2f36','#27384f','#7a6545'];
+function drawPedAccessory(ctx,a,dx,dy,dw,dh,moving){
+ if(a.acc===undefined){const h=(Math.abs(Math.sin((a.id||0)*91.7+a.x*.013+a.y*.029)*9137.3))%1,opts=ACC_BY_LOOK[a.look]||['','',''];a.acc=h<.55?opts[Math.floor(h/.55*3)%3]:'';a.accCol=ACC_COL[Math.floor(h*977)%ACC_COL.length];a.accSide=h*53%1<.5?-1:1;}
+ if(!a.acc)return;
+ const hx=Math.sin(a.rot||0),hy=-Math.cos(a.rot||0),rx=Math.cos(a.rot||0),ry=Math.sin(a.rot||0),cx=dx+dw/2,torso=dy+dh*.4,swing=moving?Math.sin((a.dist||0)*.31)*2.2:0;
+ ctx.fillStyle=a.accCol;ctx.strokeStyle='rgba(12,14,18,.55)';ctx.lineWidth=.8;
+ if(a.acc==='pack'){if(hy>.35)return;const px=cx-hx*4.2,py=torso-hy*2.6+1;ctx.beginPath();ctx.roundRect(px-4.5,py-5,9,10.5,2.6);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.14)';ctx.fillRect(px-3,py-3.6,6,1.4);}
+ else if(a.acc==='case'){const sx=a.accSide*Math.abs(rx)*6.5+(hy>0?a.accSide*4:0),px=cx+sx+hx*swing,py=dy+dh*.66+hy*swing*.5;ctx.fillRect(px-3.6,py-2.2,7.2,4.6);ctx.strokeRect(px-3.6,py-2.2,7.2,4.6);ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(px-1.3,py-3.4,2.6,1.2);}
+ else{const side=a.accSide,px=cx+side*(4.2+Math.abs(ry)*1.2),py=dy+dh*(a.acc==='tote'?.6:.55)+swing*.3,r=a.acc==='tote'?4.2:3.2;
+  ctx.strokeStyle='rgba(20,20,24,.6)';ctx.beginPath();ctx.moveTo(cx-side*3,torso-dh*.12);ctx.lineTo(px,py-r);ctx.stroke();
+  ctx.fillStyle=a.accCol;ctx.beginPath();ctx.roundRect(px-r,py-r*.8,r*2,r*1.7,1.6);ctx.fill();}
 }
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
@@ -3435,17 +3611,34 @@ function drawChar(G,a){
  const spr=charAtlas(crowd||G.assets.sprites['char_'+(a.sprite||'chaos')]);if(!spr)return;
  const ctx=G.ctx,hero=a===G.player||a.sprite==='chaos',aiming=a===G.player&&G.input.fire&&!(G.action?.reloadT>0);
  const moving=(a.speed||0)>12&&!a.dead,dir=((Math.round((aiming?a.aimRot??a.rot:a.rot)/(Math.PI/4))%8)+8)%8,row=(dir+6)%8;
- let col=moving?Math.floor((a.dist||0)/9)%4:4;
- if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);}
+ // Eight-phase gait from four painted keys (crowds: four from two): even
+ // phases are foot contacts, odd phases the higher, longer passing pose.
+ // Running shortens the phase distance per frame and lifts the body more.
+ const running=(a.speed||0)>150,ph=Math.floor((a.dist||0)/(running?6.6:5))&7,pass=moving&&(ph&1);
+ let col=moving?(ph>>1)&3:4;
+ let lookAtlas=null,look=-1;
+ if(crowd){const cop=a.copPed||a.sprite==='cop';if(!cop&&!a.gang){if(a.look==null)assignLook(G,a);look=a.look;}
+  const type=cop?2:look>=0?(look<6?0:1):a.sex==='f'?1:a.sex==='m'?0:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?(ph>>2)&1:2);
+  if(look>=0&&G.assets.sprites.crowd_looks)lookAtlas=G.assets.sprites.crowd_looks;}
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
- const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
- const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)):1;
+ let frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
+ let img=spr;
+ if(lookAtlas){const o=characterFrame(ORIG_CROWD,true,col,row),k=lookAtlas.height/1448,cw=1086/9,shift=(look*3+(col%3))*cw-col*cw;frame={x:(o.x+shift)*k,y:o.y*k,w:o.w*k,h:o.h*k,anchor:o.anchor*k};img=lookAtlas;}
+ const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)*(a.elder?.95:1)):1;
  const layout=characterLayout(frame,hero?50:48*stature),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
  ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
  if(a.flinch>0&&!a.dead){const k=a.flinch/.18;ctx.translate((a.flinchX||0)*4*k,(a.flinchY||0)*4*k);ctx.rotate(.2*k*(a.fallSide||1));}
- if(a.dead){const t=clamp((a.deadT||0)*2.7,0,1),fall=t*t*(3-2*t);ctx.globalAlpha*=.82;ctx.translate(0,-5*fall);ctx.rotate(fall*1.05*(a.fallSide||1));ctx.scale(1,1-fall*.55);}
- if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
+ if(a.dead){
+  // Death: knees buckle (short squash), the body topples sideways about the
+  // feet with a small bounce, then rests flat as a lying pose.
+  const t=clamp((a.deadT||0)/.55,0,1),side=a.fallSide||1;
+  const buckle=Math.min(1,t/.25),topple=clamp((t-.15)/.7,0,1),ease=topple<1?1-Math.pow(1-topple,3):1,bounce=topple>.85&&t<1?Math.sin((topple-.85)/.15*Math.PI)*.06:0;
+  ctx.fillStyle='rgba(8,21,25,.22)';ctx.beginPath();ctx.ellipse(side*20*ease,-2,8+14*ease,5,0,0,TAU);ctx.fill();
+  ctx.translate(0,-2*buckle);ctx.rotate(side*(ease*1.52-bounce));ctx.scale(1,1-.12*buckle);
+  if(t>=1){ctx.globalAlpha*=.92;}
+ }
+ if(G.jack&&a===G.player){const j=G.jack,el=j.dur-Math.max(0,j.t),k=j.walk!=null?clamp((el-j.walk)/(j.enter||.3),0,1):el/(j.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
  if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
  if(a.cityActivity==='cowering'&&!a.dead){ctx.translate(0,5);ctx.scale(1.04,.76);}
  if(a.dive>0){ctx.rotate((a.rot||0)*.15);ctx.scale(1.12,.45);}
@@ -3454,9 +3647,10 @@ function drawChar(G,a){
   ctx.translate(0,-17);if(!G.settings.reducedMotion&&!G.action.dodgeBlocked)ctx.rotate(side*Math.PI*2*(k*k*(3-2*k)));
   ctx.scale(1-tuck*.18,1-tuck*.45);ctx.translate(0,17);
  }
- const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
+ const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
- ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
+ ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
  if(a.gang)drawGangMark(ctx,a);
@@ -3505,11 +3699,13 @@ function uiFont(px, w = 700, disp = false) { return `${w} ${Math.round(px)}px ${
 function uiPanel(ctx, x, y, w, h, r, opts = {}) {
   ctx.save();
   rounded(ctx, x, y, w, h, r);
-  ctx.fillStyle = opts.fill || "rgba(9,22,28,0.85)";
+  if (opts.fill) ctx.fillStyle = opts.fill;
+  else { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, "rgba(20,38,48,0.9)"); g.addColorStop(1, "rgba(6,15,20,0.9)"); ctx.fillStyle = g; }
   ctx.fill();
   ctx.lineWidth = Math.max(1, r * 0.12);
   ctx.strokeStyle = opts.stroke || "rgba(255,255,255,0.12)";
   ctx.stroke();
+  if (!opts.fill && h > 18) { ctx.save(); rounded(ctx, x, y, w, h, r); ctx.clip(); const hl = ctx.createLinearGradient(x, 0, x + w, 0); hl.addColorStop(0, "rgba(242,193,78,0)"); hl.addColorStop(.5, "rgba(242,193,78,0.55)"); hl.addColorStop(1, "rgba(242,193,78,0)"); ctx.fillStyle = hl; ctx.fillRect(x, y, w, Math.max(1, r * .14)); ctx.restore(); }
   if (opts.accent) { ctx.save(); rounded(ctx, x, y, w, h, r); ctx.clip(); ctx.fillStyle = opts.accent; ctx.fillRect(x, y, Math.max(3, r * 0.3), h); ctx.restore(); }
   ctx.restore();
 }
@@ -3619,6 +3815,7 @@ function drawHUD(G) {
   uiPanel(ctx, L, vy, mm, 30 * u, 8 * u);
   ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(L + 8 * u, vy + 7 * u, mm - 16 * u, 5 * u);
   ctx.fillStyle = G.health > 40 ? "#3ce06a" : "#ff3a48"; ctx.fillRect(L + 8 * u, vy + 7 * u, (mm - 16 * u) * clamp(G.health / 100, 0, 1), 5 * u);
+  if (G.action?.armor > 0) { ctx.fillStyle = "#8fc4ff"; ctx.fillRect(L + 8 * u, vy + 4.5 * u, (mm - 16 * u) * clamp(G.action.armor / 100, 0, 1), 2 * u); }
   const tl = timeLabel(G.time);
   const icon = tl.phase === "NIGHT" ? "☾" : tl.phase === "DAY" ? "☀" : "◐";
   ctx.font = uiFont(10.5 * u, 800); ctx.textAlign = "left"; ctx.fillStyle = "#fff";
@@ -3644,10 +3841,12 @@ function drawHUD(G) {
   const midW = narrow ? R - (L + mm + 10 * u) : Math.min(W * 0.46, 460 * u);
   const midX = narrow ? L + mm + 10 * u + midW / 2 : W / 2;
   let oy = narrow ? T + (G.wanted > 0 ? 78 : 58) * u : T;
-  if (G.hint) {
-    const title = G.freeRoam ? "FREE RIDE" : MISSIONS[G.missionIndex]?.title || "";
+  const _ct = G.action?.contract, _cd = _ct && G.expansionHint ? CONTRACTS.find(c => c.id === _ct.id) : null;
+  if (G.hint || _cd) {
+    // An active crew contract owns the objective banner; the free-ride blurb hid the job's next step.
+    const title = _cd ? `CONTRACT · ${_cd.title}` : G.freeRoam ? "FREE RIDE" : MISSIONS[G.missionIndex]?.title || "";
     ctx.font = uiFont(13 * u, 700);
-    const lines = wrapLines(ctx, hintText(G, G.hint), midW - 28 * u);
+    const lines = wrapLines(ctx, _cd ? G.expansionHint : hintText(G, G.hint), midW - 28 * u);
     const ph = (24 + lines.length * 17) * u;
     uiPanel(ctx, midX - midW / 2, oy, midW, ph, 10 * u, { fill: "rgba(10,7,18,0.72)" });
     ctx.textAlign = "center"; ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(9.5 * u, 900);
@@ -3714,7 +3913,7 @@ function drawHUD(G) {
     }
   }
   if (G.wanted > 0) {
-    const max = 7 + G.wanted * 2.5;
+    const max = loseHeatAfter(G.wanted);
     const label = G.evading ? 'SEARCHING  ' + Math.max(0, max - (G.seenT || 0)).toFixed(0) + 's TO LOSE A STAR' : 'SPOTTED — BREAK LINE OF SIGHT';
     ctx.font = uiFont(10 * u, 800); ctx.textAlign = 'right'; ctx.fillStyle = G.evading ? '#29f0ff' : '#ff8c9c';
     ctx.fillText(label, rr, T + 65 * u);
@@ -3843,12 +4042,24 @@ function drawMap(G) {
   const { ctx, canvas } = G;
   const W = canvas.width, H = canvas.height, u = G.ui, M = G.minimap;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "rgba(4,2,10,0.9)"; ctx.fillRect(0, 0, W, H);
+  { const bg = ctx.createRadialGradient(W / 2, H * .45, H * .1, W / 2, H / 2, Math.max(W, H) * .7); bg.addColorStop(0, "rgba(14,24,40,0.96)"); bg.addColorStop(1, "rgba(3,4,10,0.98)"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
   const k = Math.min((W - 40 * u) / M.c.width, (H - 112 * u) / M.c.height);
   const mw = M.c.width * k, mh = M.c.height * k, mx = W / 2 - mw / 2, my = 52 * u;
   G.mapView = { x: mx, y: my, w: mw, h: mh, k };
+  // Atlas frame: soft drop shadow, the painted map, a faint survey grid, a gilt double rule.
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 24 * u; ctx.shadowOffsetY = 6 * u; ctx.fillStyle = "#0b1622"; ctx.fillRect(mx, my, mw, mh); ctx.restore();
   ctx.drawImage(M.c, mx, my, mw, mh);
-  ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
+  ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip(); ctx.strokeStyle = "rgba(242,193,78,0.07)"; ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i++) { ctx.beginPath(); ctx.moveTo(mx + mw * i / 8, my); ctx.lineTo(mx + mw * i / 8, my + mh); ctx.moveTo(mx, my + mh * i / 8); ctx.lineTo(mx + mw, my + mh * i / 8); ctx.stroke(); }
+  const vg = ctx.createRadialGradient(mx + mw / 2, my + mh / 2, Math.min(mw, mh) * .35, mx + mw / 2, my + mh / 2, Math.max(mw, mh) * .75); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(5,8,20,0.35)"); ctx.fillStyle = vg; ctx.fillRect(mx, my, mw, mh); ctx.restore();
+  ctx.strokeStyle = "#c9a25a"; ctx.lineWidth = 2.5 * u; ctx.strokeRect(mx - 4 * u, my - 4 * u, mw + 8 * u, mh + 8 * u);
+  ctx.strokeStyle = "rgba(201,162,90,0.45)"; ctx.lineWidth = 1; ctx.strokeRect(mx - 8 * u, my - 8 * u, mw + 16 * u, mh + 16 * u);
+  for (const [cx, cy] of [[mx - 4 * u, my - 4 * u], [mx + mw + 4 * u, my - 4 * u], [mx - 4 * u, my + mh + 4 * u], [mx + mw + 4 * u, my + mh + 4 * u]]) { ctx.fillStyle = "#c9a25a"; ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-4 * u, -4 * u, 8 * u, 8 * u); ctx.restore(); }
+  // Compass rose and scale bar.
+  { const cx = mx + mw - 30 * u, cy = my + 32 * u, R = 16 * u; ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = "rgba(8,14,24,.7)"; ctx.beginPath(); ctx.arc(0, 0, R + 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "rgba(201,162,90,.8)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(4 * u, 0); ctx.lineTo(-4 * u, 0); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#6c7c8c"; ctx.beginPath(); ctx.moveTo(0, R); ctx.lineTo(4 * u, 0); ctx.lineTo(-4 * u, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff3d6"; ctx.font = uiFont(9 * u, 900); ctx.textAlign = "center"; ctx.fillText("N", 0, -R - 1 * u); ctx.restore(); }
+  { const len = 1000 / M.S * k, sx = mx + 14 * u, sy = my + mh - 14 * u; ctx.fillStyle = "rgba(8,14,24,.7)"; ctx.fillRect(sx - 6 * u, sy - 16 * u, len + 12 * u, 24 * u); ctx.fillStyle = "#f2c14e"; ctx.fillRect(sx, sy, len / 2, 3 * u); ctx.fillStyle = "#fff3d6"; ctx.fillRect(sx + len / 2, sy, len / 2, 3 * u); ctx.font = uiFont(8 * u, 800); ctx.textAlign = "left"; ctx.fillText("1 KM", sx, sy - 4 * u); }
   const to = (x, y) => [mx + x / M.S * k, my + (y + (M.oy||0)) / M.S * k];
   drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
@@ -3860,9 +4071,11 @@ function drawMap(G) {
   for(const station of STATIONS){const [x,y]=to(station.x,station.y);badges.push({x:x-8*u,y:y-8*u,w:16*u,h:16*u});}
   G.atlasLabels=drawAtlasLabels(G,to,labels.concat((G.world.expansion?.landmarks||[]).filter(p=>!['CROWN AIRFIELD','METAWIN CASINO'].includes(p.name)).map(p=>[p.name,p.x,p.y]),(G.contacts||[]).map(p=>[p.name,p.x,p.y])),badges);
 
+  if (G.gpsPts) { ctx.save(); ctx.strokeStyle = "rgba(4,8,16,.75)"; ctx.lineWidth = 6 * u; ctx.lineJoin = "round"; ctx.beginPath(); { const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const q = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(q[0], q[1]); } } ctx.stroke(); ctx.restore(); }
   if (G.gpsPts) { ctx.strokeStyle = G.waypoint ? "#29d7ff" : "#ffd65a"; ctx.lineWidth = 2.5 * u; ctx.beginPath(); const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); } ctx.stroke(); }
   const at = currentObjectivePos(G);
-  if (at) { const p = to(at.x, at.y); ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(p[0], p[1], 7 * u, 0, TAU); ctx.fill(); }
+  if (at) { const p = to(at.x, at.y), pulse = G.settings.reducedMotion ? 0 : (G.ticks % 60) / 60; ctx.strokeStyle = `rgba(242,193,78,${1 - pulse})`; ctx.lineWidth = 2 * u; ctx.beginPath(); ctx.arc(p[0], p[1], (8 + pulse * 14) * u, 0, TAU); ctx.stroke();
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(Math.PI / 4); ctx.fillStyle = "#f2c14e"; ctx.strokeStyle = "#2a1a05"; ctx.lineWidth = 2; ctx.fillRect(-6 * u, -6 * u, 12 * u, 12 * u); ctx.strokeRect(-6 * u, -6 * u, 12 * u, 12 * u); ctx.restore(); }
   if (G.waypoint) {
     const wp = to(G.waypoint.x, G.waypoint.y);
     ctx.strokeStyle = '#29d7ff'; ctx.lineWidth = 3 * u;
@@ -3872,8 +4085,10 @@ function drawMap(G) {
   drawMapPlaces(G,to);placeButtons(G,uiButton);
   uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = G.action?.contract?streetJobTarget(G,G.action.contract):null; G.gps = null; updateGPS(G); }, {});
   const pp = to(G.player.x, G.player.y);
-  ctx.fillStyle = "#ff2d9b"; ctx.beginPath(); ctx.arc(pp[0], pp[1], 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(16 * u, 900, true); ctx.textAlign = "left"; ctx.fillText("CROWN CITY", Math.max(mx, 160 * u), 34 * u);
+  { ctx.save(); ctx.translate(pp[0], pp[1]); ctx.rotate(G.player.rot || 0); ctx.fillStyle = "rgba(255,45,155,.25)"; ctx.beginPath(); ctx.arc(0, 0, 13 * u, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#ff2d9b"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -9 * u); ctx.lineTo(6 * u, 6 * u); ctx.lineTo(0, 3 * u); ctx.lineTo(-6 * u, 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  { const tx = Math.max(mx, 160 * u); ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(18 * u, 900, true); ctx.textAlign = "left"; ctx.fillText("CROWN CITY", tx, 32 * u);
+    ctx.fillStyle = "rgba(255,243,214,.7)"; ctx.font = uiFont(9 * u, 800); ctx.fillText(("ATLAS  ·  " + (G.district || "")).toUpperCase(), tx, 45 * u); }
   uiButton(G, W - 130 * u, 12 * u, 112 * u, 34 * u, "CLOSE", () => { G.scene = "play"; }, { primary: true });
 }
 

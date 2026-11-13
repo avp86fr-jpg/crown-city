@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {actionState,actionSave,WEAPONS,requestShot,reload,tickAction,startContract,buyService,applyTune,nearService} from '../src/action.js';
+import {actionState,actionSave,WEAPONS,requestShot,reload,tickAction,startContract,buyService,applyTune,nearService,absorbDamage,tuneCost,MAX_TUNE} from '../src/action.js';
 function game(){return {action:actionState(),input:{x:0,y:0},player:{type:'foot',x:0,y:0,rot:0,dist:0,speed:0},scene:'play',wanted:0,evading:true,chips:3000,cops:[],audio:{},cam:{rot:0},missionIndex:0,objectiveIndex:0,
  meta:{spawns:{garage:[0,0],neural:[600,0],pd:[1000,0]},interactions:{neural:[600,0],pd:[1000,0]}},solidAt:()=>false,findSafeAction:(x,y)=>({x,y})};}
 const hooks={moveFoot:(G,P,x,y)=>{P.x+=x;P.y+=y;}};
@@ -58,4 +58,14 @@ test('saved action state excludes transient motion and validates legacy or malfo
  const A=actionState({weapon:100,ammo:[-4,Infinity,1000],upgrades:40,stamina:NaN});assert.equal(A.weapon,WEAPONS.length-1);assert.equal(A.ammo[0],0);assert.equal(A.ammo[1],28);assert.equal(A.ammo[2],6);
  A.dodgeT=.3;A.reloadT=1;A.reputation=12;const restored=actionState(actionSave(A));assert.equal(restored.reputation,12);assert.equal(restored.dodgeT,0);assert.equal(restored.reloadT,0);
  assert.equal(actionState().weapon,0);
+});
+test('chip sinks: five rising tune stages and armour that soaks then runs out',()=>{
+ const G=game();G.chips=1e5;G.player={type:'veh',x:0,y:0,vx:0,vy:0,health:100,def:{boat:false}};
+ const paid=[];for(let i=0;i<MAX_TUNE;i++){const c=tuneCost(G.action),before=G.chips;assert.ok(buyService(G,'tune'));paid.push(before-G.chips);assert.equal(before-G.chips,c);}
+ assert.equal(G.action.upgrades,MAX_TUNE);assert.equal(buyService(G,'tune'),false);
+ for(let i=1;i<paid.length;i++)assert.ok(paid[i]>paid[i-1]);
+ assert.ok(buyService(G,'armor'));assert.equal(G.action.armor,100);assert.equal(buyService(G,'armor'),false);
+ assert.equal(absorbDamage(G,10),4);assert.equal(G.action.armor,94);
+ G.action.armor=1;assert.equal(absorbDamage(G,10),9);assert.equal(absorbDamage(G,10),10);
+ const r=actionState(actionSave({...G.action,armor:55}));assert.equal(r.armor,55);assert.equal(r.upgrades,MAX_TUNE);
 });

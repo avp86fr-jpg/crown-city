@@ -47,7 +47,7 @@ export const CORE_DISTRICTS = [
 ];
 export function districtAt(x, y) {
   if(y<760){const isle=resortDistrict(x,y);if(isle)return isle;}
-  if(inCircuit(x,y))return 'BUGATTI / CROWN CIRCUIT';
+  if(inCircuit(x,y))return 'CROWN GRAND PRIX';
   const biome=terrainRegion(x,y);if(biome)return biome==='forest'?'PINEWATCH FOREST':biome==='desert'?'RED MESA':'SIERRA CROWN';
   if(x>=6784&&x<=7152&&y>560&&y<6800)return 'CROWN CANAL';
   if(x>=7540&&x<=8960&&y>=2820&&y<=3590)return 'METAWIN TERRACE';
@@ -239,6 +239,7 @@ export function buildWorld(meta, coreMask, coreMS) {
   W.WALLS = WALLS;
   const pick = (arr) => arr[(rnd() * arr.length) | 0];
   let civicSquare = 0;
+  const roofs4=["terra","terra2","gravel","terra"],walls4=["brick","cream","tan","white"];
   for (const b of W.blocks) {
     const d = dOf(b.x + b.w / 2, b.y + b.h / 2);
     b.d = d;
@@ -279,6 +280,12 @@ export function buildWorld(meta, coreMask, coreMS) {
         for (let i = 0; i < n; i++) { const x = R(b.x + 20, b.x + b.w - 20), y = R(b.y + 20, b.y + b.h - 20); if (Math.abs(x - b.x - b.w / 2) > 30 && Math.abs(y - b.y - b.h / 2) > 30) tree(x, y); }
         continue;
       }
+      // Old Town typologies are chosen by position hash and built with a local
+      // RNG *after* the classic block, so the city-wide random stream (and every
+      // other block, fountain and tree) stays exactly as before.
+      const vh=((Math.imul(b.x|0,73856093)^Math.imul(b.y|0,19349663))>>>0)/4294967296;
+      const typ=d==="oldtown"?(b.w>=200&&b.h>=200&&vh<.16?'market':b.w>=200&&b.h>=200&&vh<.28?'civic':vh>=.28&&vh<.42?'terrace':null):null;
+      const nb0=W.buildings.length,nt0=W.trees.length;
       // perimeter block: rows along each edge, courtyard inside
       const dep = Math.min(d === "eastside" ? 104 : 76,b.w*.28,b.h*.28);
       const hg = d === "eastside" ? [38, 72] : [20, 34];
@@ -293,8 +300,9 @@ export function buildWorld(meta, coreMask, coreMS) {
           if (len - s - wlen < 40) wlen = len - s;
           const gap=6,hgt=R(hg[0],hg[1]);
           const opening=side===gate&&s<len/2+56&&s+wlen>len/2-56;
-          if(!opening){if(horiz)addB(x0+s,y0,wlen-gap,dep,hgt,blockRoof,blockWall,d==='eastside'?'apt':'house');
-          else addB(x0,y0+s,dep,wlen-gap,hgt,blockRoof,blockWall,d==='eastside'?'apt':'house');}
+          const rf=d==='oldtown'&&((s*7+x0+y0)|0)%3===0?roofs[((s+x0)|0)%roofs.length]:blockRoof,wl2=d==='oldtown'&&((s+y0)|0)%4===0?walls[((s+y0)|0)%walls.length]:blockWall;
+          if(!opening){if(horiz)addB(x0+s,y0,wlen-gap,dep,hgt,rf,wl2,d==='eastside'?'apt':'house');
+          else addB(x0,y0+s,dep,wlen-gap,hgt,rf,wl2,d==='eastside'?'apt':'house');}
           s += wlen;
         }
       };
@@ -308,6 +316,18 @@ export function buildWorld(meta, coreMask, coreMS) {
       if (iw > 40 && ih > 40) {
         if (d === "oldtown") { for (let i = 0; i < Math.floor(iw * ih / 7000); i++) tree(R(ix + 10, ix + iw - 10), R(iy + 10, iy + ih - 10)); }
         else {const entry=gate==='B'?{x:b.x+b.w/2,y:b.y+b.h+SW+10}:gate==='T'?{x:b.x+b.w/2,y:b.y-SW-10}:gate==='R'?{x:b.x+b.w+SW+10,y:b.y+b.h/2}:{x:b.x-SW-10,y:b.y+b.h/2};W.lots.push({x:ix,y:iy,w:iw,h:ih,k:'parking',entry});}
+      }
+      if(typ){
+        W.buildings.length=nb0;W.trees.length=nt0;const lr=mulberry((vh*1e9)|0),LR=(a,c)=>a+(c-a)*lr(),lp=a=>a[(lr()*a.length)|0],lt=(x,y,r)=>W.trees.push({x,y,r,t:(lr()*3)|0});
+        if(typ==='market'){fill(b.x,b.y,b.w,b.h,CODE.walk);W.features.push({k:'plaza',x:b.x,y:b.y,w:b.w,h:b.h});const dp=Math.min(70,b.w*.22);
+          addB(b.x,b.y,b.w,dp,LR(22,32),'terra2','cream','house');addB(b.x,b.y+dp+8,dp,b.h-dp-8,LR(20,30),'terra','brick','house');
+          for(const px of [.42,.62,.82])for(const py of [.45,.7,.9])lt(b.x+b.w*px,b.y+b.h*py,13);}
+        else if(typ==='civic'){fill(b.x,b.y,b.w,b.h,CODE.grass);W.features.push({k:'park',x:b.x,y:b.y,w:b.w,h:b.h});const hw=Math.min(220,b.w*.5),hh=Math.min(170,b.h*.42);
+          fill(b.x+b.w/2-14,b.y+b.h/2,28,b.h/2,CODE.walk);addB(b.x+(b.w-hw)/2,b.y+(b.h-hh)/2-20,hw,hh,LR(46,60),'gravel','white','house');
+          for(const px of [.12,.88])for(const py of [.15,.5,.85])lt(b.x+b.w*px,b.y+b.h*py,17);}
+        else{fill(b.x,b.y,b.w,b.h,CODE.grass);const dp=Math.min(64,b.h*.26);let q=0;
+          while(q<b.w-30){const wl=Math.min(b.w-q,LR(46,70));addB(b.x+q,b.y,wl-4,dp,LR(18,30),lp(roofs4),lp(walls4),'house');addB(b.x+q,b.y+b.h-dp,wl-4,dp,LR(18,30),lp(roofs4),lp(walls4),'house');q+=wl;}
+          for(let x=b.x+30;x<b.x+b.w-20;x+=58)lt(x,b.y+b.h/2+LR(-14,14),11);}
       }
     } else if (d === "industrial" || d === "port") {
       fill(b.x, b.y, b.w, b.h, CODE.lot);
