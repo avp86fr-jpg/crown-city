@@ -8,3 +8,6 @@
 - [x] Map sweep + animation strips + mission bot run (all 6 complete)
 - [x] Tests green (424 unit, browser suites), published preview d6043fe, live check OK (desktop 46 fps, mobile 60 fps, 0 errors, 0 SW)
 - [x] Bridge pylons moved to deck edge (map audit was failing on outer lane since 029f0b8); promoted to root
+
+# Pass 3 (from main 7b80db0)
+- [x] 8-phase gait (4 painted keys + passing poses), crowds 4-phase, topple death + lying pose, walk-to-door + door swing on enter; light map 1/3 res on desktop

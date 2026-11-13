@@ -189,7 +189,7 @@ export function createLighting() {
   return {
     cv, lx, sh, sx,
     resize(w, h, q) {
-      const d = q === "low" ? 3 : 2;
+      const d = 3; // soft light pools read the same at third resolution; halves desktop fill cost
       const W = Math.max(64, Math.ceil(w / d)), H = Math.max(64, Math.ceil(h / d));
       if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; sh.width = W; sh.height = H; }
       this.div = d;

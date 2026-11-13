@@ -877,11 +877,18 @@ function tickJack(G, dt) {
   const j = G.jack;
   if (!j) return;
   j.t -= dt;
-  const k = 1 - Math.max(0, j.t) / j.dur;
-  if (G.player.type === "foot") {
-    G.player.x = j.fromX + (j.v.x - j.fromX) * k;
-    G.player.y = j.fromY + (j.v.y - j.fromY) * k;
-    G.player.rot = Math.atan2(j.v.x - G.player.x, -(j.v.y - G.player.y));
+  const el = j.dur - Math.max(0, j.t), P = G.player;
+  if (P.type === "foot") {
+    if (j.walk && el < j.walk) {
+      const k = el / j.walk, nx = j.fromX + ((j.doorX ?? j.v.x) - j.fromX) * k, ny = j.fromY + ((j.doorY ?? j.v.y) - j.fromY) * k;
+      const step = Math.hypot(nx - P.x, ny - P.y);
+      if (step > .01) P.rot = Math.atan2(nx - P.x, -(ny - P.y));
+      P.x = nx; P.y = ny; P.speed = 240; P.dist = (P.dist || 0) + step;
+    } else {
+      const k = Math.min(1, (el - (j.walk || 0)) / (j.enter || j.dur)), sx = j.doorX ?? j.fromX, sy = j.doorY ?? j.fromY;
+      P.speed = 0; P.x = sx + (j.v.x - sx) * k * .8; P.y = sy + (j.v.y - sy) * k * .8;
+      P.rot = j.v.rot + Math.PI / 2;
+    }
   }
   if (j.t <= 0) {
     finishEnter(G, j.v);
@@ -1759,7 +1766,11 @@ function enterVeh(G, v, instant) {
     return;
   }
   if (!instant && G.player && G.player.type === "foot") {
-    G.jack = { v, t: 0.38, dur: 0.38, fromX: G.player.x, fromY: G.player.y };
+    // Walk to the driver's door first (legs animate), then the door swings
+    // and Chaos steps in. Bikes and boats are mounted from the side as well.
+    const rv=rightVec(v.rot),hv=headingVec(v.rot),bw=bodySize(v).w,doorX=v.x-rv.x*(bw+9)+hv.x*4,doorY=v.y-rv.y*(bw+9)+hv.y*4;
+    const walk=clamp(Math.hypot(doorX-G.player.x,doorY-G.player.y)/240,0,.5),enter=v.def.bike?.2:.3;
+    G.jack = { v, t: walk+enter, dur: walk+enter, walk, enter, fromX: G.player.x, fromY: G.player.y, doorX, doorY };
     G.audio.enter();
     addShake(G, 3);
     for (let i = 0; i < 8; i++) {
@@ -3058,7 +3069,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   G._lmF = (G._lmF || 0) + 1;
   const reuse = low && (G._lmF & 1) && G._lmValid && !hasFlash;
   if (needMap) G._lmValid = true;
-  if (needMap && !reuse) {
+  if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
     lx.setTransform(1, 0, 0, 1, 0, 0);
     lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
     lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
@@ -3102,7 +3113,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       lx.globalAlpha = 0.9 * Math.max(dark, 0.4); lx.drawImage(LIGHT.radial("rgba(255,250,225,0.95)"), h.lx - 90, h.ly - 90, 180, 180);
     }
   }
-  if (needMap) {
+  if (needMap && !(G.dbg&&G.dbg.noMul)) {
     // multiply onto the frame
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = 1;
@@ -3112,7 +3123,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   // emissive pass (additive, unaffected by darkness)
   worldXform(G, ctx, S, 1, ox, oy);
   ctx.globalCompositeOperation = "lighter";
-  const lit = clamp(dark * 1.7, 0, 1);
+  const lit = G.dbg&&G.dbg.noEmis?0:clamp(dark * 1.7, 0, 1);
   if (lit > 0.03) {
     if (r.x0 < CORE && r.y0 < CORE) {
       drawCoreGlow(G,ctx,r,G.ticks,lit);
@@ -3331,7 +3342,7 @@ function drawVeh(G, v) {
   }
   drawVehicleDamage(ctx,v);
   if(v===G.player)drawDriveByArm(G,v,ctx);
-  const opening=G.jack?.v===v ? Math.sin((1-G.jack.t/G.jack.dur)*Math.PI/2) : Math.min(1,(v.doorT||0)*2);
+  const opening=G.jack?.v===v ? (()=>{const j=G.jack,el=j.dur-Math.max(0,j.t);return j.walk!=null?(el<j.walk?clamp((el-j.walk+.12)/.12,0,1):Math.sin(Math.PI*clamp((el-j.walk)/(j.enter||.3),0,1))*.9+.1):Math.sin(el/j.dur*Math.PI/2);})() : Math.min(1,(v.doorT||0)*2);
   if(opening>0&&!v.def.bike&&!v.def.boat){
     ctx.save();ctx.translate(-24,-10);ctx.rotate(-opening*1.15);
     ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(-4,1,6,27);
@@ -3427,16 +3438,24 @@ function charAtlas(src){
  const k=Math.min(1,128/(src.height/8));if(k>.95){_charAtlas.set(src,src);return src;}
  c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
  const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
- _charAtlas.set(src,c);return c;
+ _charAtlas.set(src,c);
+ // A GPU-resident bitmap avoids re-uploading the canvas texture per draw.
+ if(typeof createImageBitmap==='function')createImageBitmap(c).then(b=>{b.__frames=c.__frames;_charAtlas.set(src,b);_bitmapSrc.set(b,c);}).catch(()=>{});
+ return c;
 }
+const _bitmapSrc=new WeakMap();
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
  const spr=charAtlas(crowd||G.assets.sprites['char_'+(a.sprite||'chaos')]);if(!spr)return;
  const ctx=G.ctx,hero=a===G.player||a.sprite==='chaos',aiming=a===G.player&&G.input.fire&&!(G.action?.reloadT>0);
  const moving=(a.speed||0)>12&&!a.dead,dir=((Math.round((aiming?a.aimRot??a.rot:a.rot)/(Math.PI/4))%8)+8)%8,row=(dir+6)%8;
- let col=moving?Math.floor((a.dist||0)/9)%4:4;
- if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?Math.floor((a.dist||0)/10)%2:2);}
+ // Eight-phase gait from four painted keys (crowds: four from two): even
+ // phases are foot contacts, odd phases the higher, longer passing pose.
+ // Running shortens the phase distance per frame and lifts the body more.
+ const running=(a.speed||0)>150,ph=Math.floor((a.dist||0)/(running?6.6:5))&7,pass=moving&&(ph&1);
+ let col=moving?(ph>>1)&3:4;
+ if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?(ph>>2)&1:2);}
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
  const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
  const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)):1;
@@ -3444,8 +3463,16 @@ function drawChar(G,a){
  ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
  if(a.flinch>0&&!a.dead){const k=a.flinch/.18;ctx.translate((a.flinchX||0)*4*k,(a.flinchY||0)*4*k);ctx.rotate(.2*k*(a.fallSide||1));}
- if(a.dead){const t=clamp((a.deadT||0)*2.7,0,1),fall=t*t*(3-2*t);ctx.globalAlpha*=.82;ctx.translate(0,-5*fall);ctx.rotate(fall*1.05*(a.fallSide||1));ctx.scale(1,1-fall*.55);}
- if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
+ if(a.dead){
+  // Death: knees buckle (short squash), the body topples sideways about the
+  // feet with a small bounce, then rests flat as a lying pose.
+  const t=clamp((a.deadT||0)/.55,0,1),side=a.fallSide||1;
+  const buckle=Math.min(1,t/.25),topple=clamp((t-.15)/.7,0,1),ease=topple<1?1-Math.pow(1-topple,3):1,bounce=topple>.85&&t<1?Math.sin((topple-.85)/.15*Math.PI)*.06:0;
+  ctx.fillStyle='rgba(8,21,25,.22)';ctx.beginPath();ctx.ellipse(side*20*ease,-2,8+14*ease,5,0,0,TAU);ctx.fill();
+  ctx.translate(0,-2*buckle);ctx.rotate(side*(ease*1.52-bounce));ctx.scale(1,1-.12*buckle);
+  if(t>=1){ctx.globalAlpha*=.92;}
+ }
+ if(G.jack&&a===G.player){const j=G.jack,el=j.dur-Math.max(0,j.t),k=j.walk!=null?clamp((el-j.walk)/(j.enter||.3),0,1):el/(j.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
  if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
  if(a.cityActivity==='cowering'&&!a.dead){ctx.translate(0,5);ctx.scale(1.04,.76);}
  if(a.dive>0){ctx.rotate((a.rot||0)*.15);ctx.scale(1.12,.45);}
@@ -3454,7 +3481,7 @@ function drawChar(G,a){
   ctx.translate(0,-17);if(!G.settings.reducedMotion&&!G.action.dodgeBlocked)ctx.rotate(side*Math.PI*2*(k*k*(3-2*k)));
   ctx.scale(1-tuck*.18,1-tuck*.45);ctx.translate(0,17);
  }
- const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
+ const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
  ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
