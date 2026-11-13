@@ -25,3 +25,7 @@
 - [x] Old Town: market squares, civic halls on greens, terraced rows, mixed roofs; built with a local RNG so the rest of the city is unchanged.
 - [x] Response vehicles no longer park inside junctions (gridlock seen in the hand-driven run).
 - [x] Driving measured (tools/drive-metrics.mjs): top speed 226 (taxi) to 457 (Nyx); 0–300 in 1.03 s (Nyx), 1.47 s (Dart), 2.03 s (Riot); braking from top speed in about 1 s. Left unchanged.
+
+### Pass 3b wrap-up (Nov 13 20:20 CET)
+- f706ceb: sign-face cache, cheaper wet reflections/drain steam, gradient HUD panels with gilt rule, contract objective banner, SHADOW WORK pin-to-stall, persistent job markers, rebake. Tests 424/424 green, audit:map clean.
+- Bot runs: m4 (vault→marina→boat→island) completed by driving in 85 s; SHADOW WORK reached stage 2 by driving, then stuck (sedan could not be stalled by a bike) → fixed; NINETY SECONDS stage 0 marker loss → fixed, reached stage 1 in 41 s.
