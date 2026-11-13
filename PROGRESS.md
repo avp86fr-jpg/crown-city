@@ -6,4 +6,4 @@
 - [x] Hotels redesign, industrial yard dressing, mobile night grade, continuous skid marks
 - [x] Vehicle speed table, balance (wanted-scaled damage, mission rewards)
 - [x] Map sweep + animation strips + mission bot run (all 6 complete)
-- [ ] browser.cjs chips expectation (updating), publish preview, live check
+- [x] Tests green (424 unit, browser suites), published preview d6043fe, live check OK (desktop 46 fps, mobile 60 fps, 0 errors, 0 SW)
