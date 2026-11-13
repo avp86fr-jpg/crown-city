@@ -54,3 +54,24 @@ export function drawHeldWeapon(G,a,rot){
  if(id!=='sidearm'){c.beginPath();c.ellipse((id==='shotgun'||id==='rocket'?22:18)-recoil,-.5,1.7,1.5,0,0,Math.PI*2);c.fill();}
  c.restore();
 }
+// Drive-by: purple sleeve from the driver's shoulder out through the side
+// window, a one-handed grip and the weapon pointing along the shot. Drawn in
+// the vehicle's local frame (forward = -y, right = +x).
+export function drawDriveByArm(G,v,c){
+ if(!(v.driveByT>0)||v.dead)return;
+ const id=WEAPONS[G.action.weapon]?.id||'sidearm',spec=WEAPON_ART[id]||WEAPON_ART.sidearm,side=v.driveBySide||-1,bike=!!v.def?.bike;
+ const rel=(v.driveByRot??v.rot)-v.rot,w=bike?6:(v.kind==='bus'?26:v.kind==='van'||v.kind==='ambulance'?23:21),out=bike?8:9;
+ const recoil=Math.max(0,1-(G.ticks-(v.shotTick??-100))/6)*2.5,ext=Math.min(1,v.driveByT/.12);
+ const sx=side*(w-9),sy=bike?2:5,ax=Math.sin(rel),ay=-Math.cos(rel);
+ const hx=side*(w+out*ext)+ax*4*ext-ax*recoil,hy=(bike?-4:0)+ay*4*ext-ay*recoil;
+ c.save();c.lineCap='round';
+ c.strokeStyle='rgba(0,0,0,.35)';c.lineWidth=5;c.beginPath();c.moveTo(sx+2,sy+3);c.lineTo(hx+2,hy+3);c.stroke();
+ c.strokeStyle='#241a30';c.lineWidth=4.6;c.beginPath();c.moveTo(sx,sy);c.quadraticCurveTo(side*(w+1),sy-3,hx,hy);c.stroke();
+ c.strokeStyle='#5d3f73';c.lineWidth=3.2;c.stroke();
+ c.fillStyle='#d9c3a8';c.beginPath();c.arc(hx,hy,1.9,0,Math.PI*2);c.fill();
+ c.translate(hx,hy);c.rotate(rel-Math.PI/2);
+ const L=Math.min(spec.length,id==='sidearm'?13:20);c.drawImage(sprite(id),-3,-4,L*32/spec.length*.95,8);
+ if(G.ticks-(v.shotTick??-100)<3){c.globalCompositeOperation='lighter';c.fillStyle='rgba(255,214,140,.95)';c.beginPath();c.moveTo(L+1,0);c.lineTo(L+11,-3.2);c.lineTo(L+15,0);c.lineTo(L+11,3.2);c.closePath();c.fill();
+  c.fillStyle='rgba(255,250,220,.9)';c.beginPath();c.arc(L+3,0,2.6,0,Math.PI*2);c.fill();}
+ c.restore();
+}

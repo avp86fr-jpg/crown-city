@@ -504,8 +504,26 @@ function drawCourtyard(x,l){
     x.fillStyle='rgba(196,232,142,.35)';x.beginPath();x.arc(tx-r*.35,ty-r*.35,r*.42,0,TAU);x.fill();}
   if(w>60&&h>60)for(const [bx,by] of [[X+m+6,Y+m+4],[X+w-m-26,Y+h-m-10]]){x.fillStyle='rgba(0,0,0,.25)';x.fillRect(bx+2,by+3,20,6);x.fillStyle='#8a6440';x.fillRect(bx,by,20,6);x.fillStyle='#b48a5a';x.fillRect(bx,by,20,2);}
 }
+// Industrial blocks with no parking plan used to be blank concrete. They now
+// read as working yards: slab joints, oil and rust stains, painted safety
+// lanes, pallet stacks, skips and cable drums, all flat-baked into terrain.
+function drawIndustrialYard(x,l){
+  const {x:X,y:Y,w,h}=l;let k=((X*19349663)^(Y*83492791))>>>0;const rn=()=>((k=(k*1103515245+12345)>>>0)/4294967296);
+  x.fillStyle='rgba(60,58,52,.10)';for(let yy=Y+40;yy<Y+h;yy+=80)x.fillRect(X,yy,w,2);for(let xx=X+60;xx<X+w;xx+=120)x.fillRect(xx,Y,2,h);
+  for(let i=0;i<w*h/9000;i++){const sx=X+rn()*w,sy=Y+rn()*h,r=8+rn()*22;x.fillStyle=rn()<.5?'rgba(20,18,14,.16)':'rgba(120,70,30,.12)';x.beginPath();x.ellipse(sx,sy,r,r*.6,rn()*3,0,TAU);x.fill();}
+  x.fillStyle='rgba(236,196,48,.55)';if(w>h){x.fillRect(X+12,Y+h/2-12,w-24,3);x.fillRect(X+12,Y+h/2+9,w-24,3);}else{x.fillRect(X+w/2-12,Y+12,3,h-24);x.fillRect(X+w/2+9,Y+12,3,h-24);}
+  const n=Math.max(3,Math.min(24,Math.round(w*h/7000)));
+  for(let i=0;i<n;i++){const px=X+18+rn()*Math.max(1,w-70),py=Y+18+rn()*Math.max(1,h-70),t=rn();
+    x.fillStyle='rgba(0,0,0,.28)';
+    if(t<.45){x.fillRect(px+4,py+5,34,26);for(let a=0;a<2;a++)for(let b=0;b<2;b++){const qx=px+a*18,qy=py+b*14;x.fillStyle='#9a7448';x.fillRect(qx,qy,16,12);x.fillStyle='#b98f5c';x.fillRect(qx,qy,16,3);x.fillStyle='rgba(60,40,20,.5)';x.fillRect(qx+7,qy,2,12);}}
+    else if(t<.7){x.fillRect(px+4,py+5,46,24);const col=['#3d6f8c','#a04a2a','#58703a'][i%3];x.fillStyle=col;x.fillRect(px,py,46,24);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(px,py,46,4);x.fillStyle='rgba(0,0,0,.3)';x.fillRect(px+4,py+7,38,13);x.fillStyle='rgba(120,110,90,.8)';for(let q=0;q<4;q++)x.fillRect(px+6+q*9,py+9,6,8);}
+    else if(t<.88){for(let q=0;q<3;q++){const cx=px+q*15,cy=py+8;x.fillStyle='rgba(0,0,0,.25)';x.beginPath();x.arc(cx+3,cy+3,7,0,TAU);x.fill();x.fillStyle='#7b5a36';x.beginPath();x.arc(cx,cy,7,0,TAU);x.fill();x.fillStyle='#3c3a36';x.beginPath();x.arc(cx,cy,3,0,TAU);x.fill();}}
+    else{x.fillRect(px+5,py+6,40,30);x.fillStyle='#8b9297';x.fillRect(px,py,40,30);x.fillStyle='#6d757a';for(let q=0;q<40;q+=6)x.fillRect(px+q,py,2,30);x.fillStyle='#d8b03a';x.fillRect(px,py+26,40,4);}
+  }
+}
 export function drawLot(x,l){
   if(l.k==='parking'&&Array.isArray(l.bays)&&!l.bays.length){drawCourtyard(x,l);return;}
+  if(l.k==='industrial'&&Array.isArray(l.bays)&&!l.bays.length){drawIndustrialYard(x,l);return;}
   if(Array.isArray(l.bays)){
     // Paint the exact plan used by vehicle placement. Bay width/depth includes
     // door space and bumper clearance; entrances face the shared driving aisle.

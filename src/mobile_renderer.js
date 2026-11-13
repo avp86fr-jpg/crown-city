@@ -20,6 +20,7 @@ import {drawTransitWorld} from './transit.js';
 import {drawCasinoWorld} from './casino.js';
 import {drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
+import {drawGangWorld} from './gangs.js';
 import {drawResortGround,drawResortOverhead,drawResortLights} from './resort.js';
 const CORE=4096,TILE=1024,OUTER=512;
 function retire(e){e.retired=true;e.job?.return();e.bitmap?.close();if(e.canvas)e.canvas.width=1;if(e.working)e.working.width=1;}
@@ -119,9 +120,9 @@ export function drawMobileWorld(G,H) {
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
-  drawCasinoWorld(G,r);
+  drawCasinoWorld(G,r);drawGangWorld(G,r);
   drawTrafficSignals(G,r);
-  c.fillStyle='#17201f';for(const s of G.skids){if(s.x<r.x0||s.x>r.x1||s.y<r.y0||s.y>r.y1)continue;c.globalAlpha=s.a*.4;c.fillRect(s.x-7,s.y-3,3,6);c.fillRect(s.x+5,s.y-3,3,6);}c.globalAlpha=1;
+  c.strokeStyle='#17201f';c.lineWidth=3.5;for(const s of G.skids){if(s.x<r.x0||s.x>r.x1||s.y<r.y0||s.y>r.y1)continue;c.globalAlpha=Math.min(1,s.a)*.42;c.beginPath();const c1=Math.cos(s.rot||0),s1=Math.sin(s.rot||0),c0=Math.cos(s.prot??s.rot??0),s0=Math.sin(s.prot??s.rot??0);for(const o of s.w?[0]:[-7,7]){c.moveTo((s.px??s.x)+c0*o,(s.py??s.y)+s0*o);c.lineTo(s.x+c1*o+.01,s.y+s1*o);}c.stroke();}c.globalAlpha=1;
   for(const p of G.props){
     if(p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;
     const image=G.assets.sprites['prop_'+p.kind];if(!image)continue;
@@ -137,11 +138,17 @@ export function drawMobileWorld(G,H) {
   drawWildlife(G,r);drawExpansionPeople(G,r);drawResortOverhead(G,r);drawTransitWorld(G,r,true);H.drawAirborne?.(G,r);
   H.drawParticles(G,r,false);
   // One restrained ambient tint, with a small set of additive lights. No full-screen light-map passes.
-  c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(7,15,32,${tint.alpha})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
+  c.setTransform(1,0,0,1,0,0);
+  // Night grade: one multiply fill toward the desktop ambient (slightly lifted for
+  // small screens), so phone nights are actually dark, then cheap additive lights.
+  if(night>.02){const a=tint.amb,k=night*.86,lift=.12;c.globalCompositeOperation='multiply';
+   c.fillStyle=`rgb(${(255+(a[0]+(255-a[0])*lift-255)*k)|0},${(255+(a[1]+(255-a[1])*lift-255)*k)|0},${(255+(a[2]+(255-a[2])*lift-255)*k)|0})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);c.globalCompositeOperation='source-over';}
+  c.fillStyle=`rgba(7,15,32,${tint.alpha*(1-night*.7)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
   if(G.fog>.02||G.sand>.02){c.fillStyle=G.sand>G.fog?`rgba(176,142,98,${G.sand*.16})`:`rgba(151,167,181,${G.fog*.2})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   if(tint.warm>.002){c.fillStyle=`rgba(246,149,82,${tint.warm})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   H.worldXform(G,c,r.S);c.globalCompositeOperation='lighter';
-  if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.2*night;for(const lamp of visibleStreetLights(G,r,16))c.drawImage(glow,lamp.x-42,lamp.y-42,84,84);}
+  if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.5*night;for(const lamp of visibleStreetLights(G,r,22))c.drawImage(glow,lamp.x-70,lamp.y-70,140,140);
+   const rim=LIGHT.radial('rgba(200,220,255,0.6)',64);c.globalAlpha=.35*night;c.drawImage(rim,G.player.x-70,G.player.y-70,140,140);}
   drawMobileVehicleLights(G,actors,night);
   drawResortLights(G,r,night);
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}

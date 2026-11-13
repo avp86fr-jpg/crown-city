@@ -231,7 +231,7 @@ export function missionFlow(id, flags) {
         ],
         winVN: "m3_win",
 
-        onWin: { chips: 400, unlock: ["metro"], flags: { scrambler: true } },
+        onWin: { chips: 900, unlock: ["metro"], flags: { scrambler: true } },
       };
     case "the_tell":
       return {
@@ -242,6 +242,8 @@ export function missionFlow(id, flags) {
           { id: "exit", kind: "goto", at: "marina", r: 100, hint: "Trace the getaway to the marina." },
         ],
         winVN: "m4_win",
+        // Scouting pays a little: before this, the only unrewarded mission.
+        onWin: { chips: 700 },
       };
     case "house_odds":
       return {

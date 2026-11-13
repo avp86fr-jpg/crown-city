@@ -280,7 +280,9 @@ export function createTraffic(G) {
     if(tr.turn||tr.merge||tr.backoff!=null||tr.reserved!=null||e.lanes<2||gap>240||tr.s<180||e.len-tr.s<300)return;
     if((tr.passCheck||0)>G.ticks)return;tr.passCheck=G.ticks+30;
     const hx=tr.fwd?e.dx:-e.dx,hy=tr.fwd?e.dy:-e.dy;
-    const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&(o.dead||!o.traffic&&!o.ai&&!o.cop)&&Math.hypot(o.vx||0,o.vy||0)<3&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
+    // Overtake parked/stalled cars and slow heavy traffic (buses, vans) cruising well under our speed.
+    const slowHeavy=o=>o.traffic&&o.tr&&o.tr.waitSince==null&&o.tr.reserved==null&&(o.kind==='bus'||o.kind==='van'||o.kind==='gulf')&&Math.hypot(o.vx||0,o.vy||0)<Math.max(20,tr.spd*.6);
+    const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&((o.dead||!o.traffic&&!o.ai&&!o.cop)&&Math.hypot(o.vx||0,o.vy||0)<3||slowHeavy(o))&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
     if(!parked)return;
     for(const lane of [tr.lane-1,tr.lane+1]){
       if(lane<0||lane>=e.lanes)continue;
@@ -447,6 +449,8 @@ export function createTraffic(G) {
         if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
         if (v.blockedT < 0.5) v.honked = false;
         want = G.cityAI?.trafficSpeed(v, want) ?? want;
+        // Gunfire nearby: drivers floor it away and lean on the horn once.
+        if(v.panicT>0){v.panicT-=dt;if(want>=cruise*.85&&gap>=200)want=cruise*1.45;if(!v.panicHonk&&Math.random()<.5){v.panicHonk=true;G.audio.horn?.();}}else v.panicHonk=false;
         const e = tr.e;
         if (!tr.turn) {
           const end = tr.fwd ? e.B : e.A;

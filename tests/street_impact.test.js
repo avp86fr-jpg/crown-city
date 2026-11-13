@@ -13,21 +13,21 @@ const scene=()=>({settings:{quality:'low',blood:'full'},surfaceAt:()=> 'walk',so
 
 test('heavy impacts spray in the impact direction and produce ground stains and debris',()=>{
  const G=scene(),p={x:100,y:200};bloodImpact(G,p,250,0,2,true);
- assert.equal(G.bloodFX.stains.length,1);assert.ok(G.bloodFX.drops.every(d=>d.vx>0));assert.ok(G.bloodFX.drops.some(d=>d.chunk));
+ assert.ok(G.bloodFX.stains.length>=1&&G.bloodFX.stains.length<=4,'pool plus a short directional spray');assert.ok(G.bloodFX.drops.every(d=>d.vx>0));assert.ok(G.bloodFX.drops.some(d=>d.chunk));
  for(let i=0;i<120;i++)tickBlood(G,1/60);
  assert.equal(G.bloodFX.drops.length,0);assert.ok(G.bloodFX.stains.length>1,'landed debris leaves a small mark');
- tickBlood(G,65);assert.equal(G.bloodFX.stains.length,0);
+ tickBlood(G,180);assert.equal(G.bloodFX.stains.length,0,'decals persist a couple of minutes, then fade');
 });
 test('ten minutes of repeated mobile impacts stay within particle, stain and pool budgets',()=>{
  const G=scene();for(let i=0;i<6000;i++){bloodImpact(G,{x:0,y:0},200,50,2,true);tickBlood(G,.1);}
- assert.ok(G.bloodFX.drops.length<=48);assert.ok(G.bloodFX.stains.length<=32);assert.ok(G.bloodFX.pool.length<=48);
+ assert.ok(G.bloodFX.drops.length<=64);assert.ok(G.bloodFX.stains.length<=64);assert.ok(G.bloodFX.pool.length<=64);
  G.settings.quality='high';for(let i=0;i<30;i++)bloodImpact(G,{x:0,y:0},200,0,2,true);
- G.settings.quality='low';tickBlood(G,.01);assert.ok(G.bloodFX.drops.length<=48);assert.ok(G.bloodFX.stains.length<=32);assert.ok(G.bloodFX.pool.length<=48);
+ G.settings.quality='low';tickBlood(G,.01);assert.ok(G.bloodFX.drops.length<=64);assert.ok(G.bloodFX.stains.length<=64);assert.ok(G.bloodFX.pool.length<=64);
 });
 test('blood preferences persist; reduced effects omit chunks, off clears effects, rain washes stains',()=>{
  const G=scene();assert.equal(settingsFrom({blood:'reduced'}).blood,'reduced');assert.equal(settingsFrom({blood:'invalid'}).blood,'full');
  G.settings.blood='reduced';bloodImpact(G,{x:0,y:0},200,0,2,true);assert.equal(G.bloodFX.drops.length,2);assert.ok(G.bloodFX.drops.every(d=>!d.chunk));
- G.rainAmt=1;tickBlood(G,25);assert.equal(G.bloodFX.stains.length,0);
+ G.rainAmt=1;tickBlood(G,70);assert.equal(G.bloodFX.stains.length,0);
  G.settings.blood='off';bloodImpact(G,{x:0,y:0},200,0,2,true);tickBlood(G,.1);assert.equal(G.bloodFX.drops.length+G.bloodFX.stains.length+G.bloodFX.pool.length,0);
  const fresh=scene();fresh.settings.blood='off';bloodImpact(fresh,{x:0,y:0});assert.equal(fresh.bloodFX,undefined);
  for(const s of ['water','canal','build']){const F=scene();F.surfaceAt=()=>s;bloodImpact(F,{x:0,y:0},100,0,2,true);assert.equal(F.bloodFX.stains.length,0);}

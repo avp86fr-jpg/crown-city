@@ -3,7 +3,7 @@ import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
 import {drawBikeRider} from './rider_art.js';
-import {bloodImpact,runoverBlood,tickBlood,drawBlood} from './blood_fx.js';
+import {gibs as gibsFX,bloodImpact,runoverBlood,tickBlood,drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {CIRCUIT,trackPoint,nearestTrack} from './circuit_world.js';
 import {drawAtlasLabels} from './map_labels.js';
@@ -19,8 +19,9 @@ import {initCasino,casinoSave,nearCasino,tickCasino,interactCasino,leaveCasino,d
 import {boatPilot,safeCrossing,escapeHeading} from './navigation_ai.js';
 import {slideFoot} from './foot_motion.js';
 import {characterFrame,characterLayout} from './sprite_frames.js';
-import {WEAPON_ART,drawHeldWeapon} from './weapons.js';
-import {playerAim,firstSolid,shotSpread,projectileDamage} from './combat.js';
+import {WEAPON_ART,drawHeldWeapon,drawDriveByArm} from './weapons.js';
+import {tickGangs,drawGangWorld,drawGangMark,provokeGang,gangHit,gangDrop} from './gangs.js';
+import {playerAim,firstSolid,shotSpread,projectileDamage,windowPoint} from './combat.js';
 import {STATIONS,initTransit,tickTransit,interactTransit,drawTransitWorld,drawTransitMap,drawTransitMenu,drawJourney,tickJourney,cancelTransit,nearStation} from './transit.js';
 import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
@@ -69,19 +70,19 @@ const angNorm = (a) => {
 const now = () => performance.now() / 1000;
 
 const VEH_DEFS = {
-  nyx: { name: "Nyx Sixteen", kind: "hyper", sprite: "nyx", accel: 360, max: 430, steer: 2.4, grip: 0.94, brake: 390, mass: 1.4, r: 28 },
-  riot: { name: "Riot V8", kind: "muscle", sprite: "riot", accel: 280, max: 305, steer: 2.1, grip: 0.74, brake: 270, mass: 1.3, r: 26 },
-  dart: { name: "Neon Dart", kind: "sports", sprite: "dart", accel: 300, max: 350, steer: 2.5, grip: 0.88, brake: 345, mass: 1.0, r: 24 },
-  fare: { name: "Fare Lane", kind: "sedan", sprite: "fare", accel: 170, max: 230, steer: 2.2, grip: 0.8, brake: 230, mass: 1.15, r: 24 },
-  metro: { name: "Metro PD", kind: "police", sprite: "metro", accel: 260, max: 295, steer: 2.25, grip: 0.84, brake: 310, mass: 1.2, r: 25, cop: true },
-  stitch: { name: "Stitch S", kind: "bike", sprite: "stitch", accel: 330, max: 340, steer: 3.15, grip: 0.72, brake: 300, mass: 0.55, r: 14, bike: true },
-  hog: { name: "Iron Hog", kind: "bike", sprite: "hog", accel: 215, max: 245, steer: 2.4, grip: 0.74, brake: 245, mass: 0.7, r: 15, bike: true },
-  wake: { name: "Wake 39", kind: "boat", sprite: "wake", accel: 205, max: 265, steer: 2.0, grip: 0.58, brake: 95, mass: 1.1, r: 26, boat: true },
-  gulf: { name: "Gulf Queen", kind: "boat", sprite: "gulf", accel: 130, max: 180, steer: 1.6, grip: 0.5, brake: 70, mass: 1.6, r: 30, boat: true },
-  van: { name: "Seed Van", kind: "sedan", sprite: "fare", accel: 90, max: 140, steer: 1.6, grip: 0.85, brake: 170, mass: 1.8, r: 28, van: true },
-  taxi: { name: "Crown Cab", kind: "sedan", sprite: "taxi", accel: 155, max: 215, steer: 2.1, grip: 0.8, brake: 215, mass: 1.15, r: 24 },
-  ambulance: { name: "Mercy Unit", kind: "sedan", sprite: "ambulance", accel: 210, max: 255, steer: 1.95, grip: 0.8, brake: 255, mass: 1.65, r: 26 },
-  bus: { name: "Line 7", kind: "sedan", sprite: "bus", accel: 82, max: 125, steer: 1.3, grip: 0.85, brake: 175, mass: 2.4, r: 36 },
+  nyx: { name: "Nyx Sixteen", kind: "hyper", sprite: "nyx", accel: 380, max: 460, steer: 2.4, grip: 0.94, brake: 390, mass: 1.4, r: 28 },
+  riot: { name: "Riot V8", kind: "muscle", sprite: "riot", accel: 290, max: 315, steer: 2.1, grip: 0.74, brake: 270, mass: 1.3, r: 26 },
+  dart: { name: "Neon Dart", kind: "sports", sprite: "dart", accel: 315, max: 365, steer: 2.5, grip: 0.88, brake: 345, mass: 1.0, r: 24 },
+  fare: { name: "Fare Lane", kind: "sedan", sprite: "fare", accel: 185, max: 240, steer: 2.2, grip: 0.8, brake: 230, mass: 1.15, r: 24 },
+  metro: { name: "Metro PD", kind: "police", sprite: "metro", accel: 285, max: 330, steer: 2.25, grip: 0.84, brake: 310, mass: 1.2, r: 25, cop: true },
+  stitch: { name: "Stitch S", kind: "bike", sprite: "stitch", accel: 360, max: 350, steer: 3.15, grip: 0.72, brake: 300, mass: 0.55, r: 14, bike: true },
+  hog: { name: "Iron Hog", kind: "bike", sprite: "hog", accel: 230, max: 265, steer: 2.4, grip: 0.74, brake: 245, mass: 0.7, r: 15, bike: true },
+  wake: { name: "Wake 39", kind: "boat", sprite: "wake", accel: 215, max: 280, steer: 2.0, grip: 0.58, brake: 95, mass: 1.1, r: 26, boat: true },
+  gulf: { name: "Gulf Queen", kind: "boat", sprite: "gulf", accel: 135, max: 185, steer: 1.6, grip: 0.5, brake: 70, mass: 1.6, r: 30, boat: true },
+  van: { name: "Seed Van", kind: "sedan", sprite: "fare", accel: 115, max: 160, steer: 1.6, grip: 0.85, brake: 170, mass: 1.8, r: 28, van: true },
+  taxi: { name: "Crown Cab", kind: "sedan", sprite: "taxi", accel: 170, max: 228, steer: 2.1, grip: 0.8, brake: 215, mass: 1.15, r: 24 },
+  ambulance: { name: "Mercy Unit", kind: "sedan", sprite: "ambulance", accel: 220, max: 265, steer: 1.95, grip: 0.8, brake: 255, mass: 1.65, r: 26 },
+  bus: { name: "Line 7", kind: "sedan", sprite: "bus", accel: 90, max: 132, steer: 1.3, grip: 0.85, brake: 175, mass: 2.4, r: 36 },
 };
 
 Object.assign(VEH_DEFS, AIRCRAFT_DEFS);
@@ -1241,7 +1242,7 @@ function tickPlay(G, dt) {
   if(G.ticks%30===0)retireStreetActors(G);
   if(G.action.contract?.id!=='airdrop')G.parcel=null;
   tickAction(G,dt,{moveFoot});
-  G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);
+  G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);if(G.hitMark){G.hitMark.t-=dt;if(G.hitMark.t<=0)G.hitMark=null;}
   if(G.scene !== 'play') return;
   const speed = [0, 1, 0.5, 0.25][G.settings.timeSpeed ?? 1] ?? 1;
   G.time = (G.time + dt * (24 / 480) * speed) % 24; // 8 real minutes per day at normal speed
@@ -1278,6 +1279,7 @@ function tickPlay(G, dt) {
   if(G.wanted>0||G.cops.length)G.nav.update(search.x, search.y);
   tickWanted(G, dt);
   tickCops(G, dt);
+  tickGangs(G,dt,{findSafe,toast});
   if(recovery!==(G.recoverySerial||0))return;
   tickLife(G, dt);
   tickBullets(G, dt);
@@ -1557,11 +1559,16 @@ function tickDrive(G, v, input, dt, isPlayer) {
   v.visualAccel = lerp(v.visualAccel || 0, clamp((fwd - (v.fwd || 0)) / Math.max(.01, dt) / 250, -1, 1), Math.min(1, dt * 9));
   v.visualTravel = (v.visualTravel || 0) + speed * dt;
   v.fwd = fwd;
-  if (v.drifting) {
-    G.skids.push({ x: v.x - h.x * 14, y: v.y - h.y * 14, a: 0.8, rot: v.rot });
-    if (G.skids.length > 600) G.skids.splice(0, 100);
+  // Tyre marks are continuous rubber strokes: each mark links back to the
+  // previous one from the same car, so fast slides no longer leave dotted dabs.
+  const hardStop=!def.boat&&!def.aircraft&&v.braking&&speed>210&&Math.abs(fwd)>180;
+  if (v.drifting||hardStop) {
+    const sx=v.x - h.x * 14, sy=v.y - h.y * 14, L=v._skid, link=L&&G.ticks-L.t<=3&&Math.hypot(sx-L.x,sy-L.y)<70;
+    const mark={ x: sx, y: sy, px: link?L.x:sx, py: link?L.y:sy, prot: link?L.rot:v.rot, a: v.drifting?0.85:0.6, rot: v.rot, w: def.bike?1:0 };
+    G.skids.push(mark);v._skid={x:sx,y:sy,rot:v.rot,t:G.ticks};
+    if (G.skids.length > 700) G.skids.splice(0, 100);
     if (isPlayer && Math.random() < 0.5) G.particles.push({ kind: "smoke", x: v.x - h.x * 18, y: v.y - h.y * 18, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20, life: 0.6, frame: 0 });
-    if (isPlayer && G.audio.skid && (G.ticks % 9) === 0) G.audio.skid();
+    if (isPlayer && v.drifting && G.audio.skid && (G.ticks % 9) === 0) G.audio.skid();
   }
   if (isNyx && Math.abs(fwd) > 190) {
     const bk = headingVec(v.rot), rt = rightVec(v.rot);
@@ -1599,7 +1606,8 @@ function tickDrive(G, v, input, dt, isPlayer) {
   if (isPlayer && (surf === "sand" || surf === "dirt" || surf === "grass") && spdNow > 40 && (G.ticks % 2) === 0) G.particles.push({ kind: "dust", x: v.x - nh.x * 14, y: v.y - nh.y * 14, vx: -nh.x * 10, vy: -nh.y * 10, life: 0.5, a: 0.5 });
   tickVehDamage(G, v, dt);
   if (isPlayer && input.enterP) exitVeh(G);
-  if (isPlayer && input.fire) shoot(G, v, false);
+  if(v.driveByT>0)v.driveByT=Math.max(0,v.driveByT-dt);
+  if (isPlayer && input.fire){if(!v.def.aircraft&&!WEAPONS[G.action?.weapon]?.rocket){const a=playerAim(G,v,false);v.driveByRot=a.rot;v.driveBySide=a.side;v.driveByT=Math.max(v.driveByT||0,.35);}shoot(G, v, false);}
 }
 
 function carHit(G, v, x, y) {
@@ -1828,9 +1836,13 @@ function shoot(G, from, onFoot) {
   from.shotTick = G.ticks;
   G.lastShot = now();
   const aim=playerAim(G,from,onFoot),rot=aim.rot,h=headingVec(rot),speed=weapon.speed;
-  const ax=h.x,ay=h.y,muzzle=onFoot?WEAPON_ART[weapon.id].muzzle:muzzleLength(from,rot);
-  const sx = from.x + ax * muzzle, sy = from.y + ay * muzzle;
-  const angle=Math.atan2(ax,-ay),spread=shotSpread(G,weapon,from),block=firstSolid(G,from.x,from.y,sx,sy);
+  const ax=h.x,ay=h.y,drive=!onFoot&&!from.def?.aircraft&&aim.side!=null;
+  // Drive-by shots leave the driver's window: the gun hand sits outside the
+  // body, so the barrel never fires through the car's own windscreen.
+  const base=drive?windowPoint(from,aim.side):from,muzzle=onFoot?WEAPON_ART[weapon.id].muzzle:drive?(from.def.bike?16:18):muzzleLength(from,rot);
+  if(drive){from.driveByT=.55;from.driveByRot=rot;from.driveBySide=aim.side;}
+  const sx = base.x + ax * muzzle, sy = base.y + ay * muzzle;
+  const angle=Math.atan2(ax,-ay),spread=shotSpread(G,weapon,from)*(drive?1.35:1),block=firstSolid(G,base.x,base.y,sx,sy);
   from.aimRot=angle;G.action.bloom=Math.min(1,(G.action.bloom||0)+(weapon.kick||.1));
   for(let i=0;!weapon.rocket&&block===null&&i<weapon.pellets;i++) {
     const spreadUnit=weapon.pellets>1?(i+.25+Math.random()*.5)/weapon.pellets-.5:Math.random()-.5;
@@ -1842,9 +1854,16 @@ function shoot(G, from, onFoot) {
     // An obstructed barrel detonates in front of the wall, never through it.
     if(block===null)launchRocket(G,sx,sy,ax*speed,ay*speed,weapon);
     else {const d=Math.max(0,muzzle*block-2);detonate(G,{x:from.x+ax*d,y:from.y+ay*d,radius:145,damage:weapon.damage,carDamage:weapon.carDamage,attributed:true},blastHooks);return;}
-  }else G.audio.shot(0,weapon.quiet?.65:0,weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg');
-  if(!weapon.rocket)G.particles.push({kind:'casing',x:from.x+ay*9,y:from.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
-  const fx=block===null?sx:from.x+(sx-from.x)*block,fy=(block===null?sy:from.y+(sy-from.y)*block)-(onFoot?23:14);
+  }else{
+    const kind=weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg';
+    G.audio.gunfire?G.audio.gunfire(kind,sx,sy,G.player.y<-700?.35:.7):G.audio.shot(0,weapon.quiet?.65:0,kind);
+    if(G.audio.casing&&(weapon.pellets>1||(G.shotsFired||0)%3===0))setTimeout(()=>G.audio.casing(),160+Math.random()*90);
+    if(G.action&&!G.action.ammo[G.action.weapon])G.audio.dryfire?.();
+    // Feel: recoil kick on the camera, heavier for the shotgun.
+    addShake(G,weapon.pellets>1?5:weapon.quiet?1.2:2);
+  }
+  if(!weapon.rocket)G.particles.push({kind:'casing',x:base.x+ay*9,y:base.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+  const fx=block===null?sx:base.x+(sx-base.x)*block,fy=(block===null?sy:base.y+(sy-base.y)*block)-(onFoot?23:14);
   G.particles.push({ kind:block===null?"flash":"spark", x:fx, y:fy, life:block===null?.06:.18, a:1 });
   G.flashes.push({ x: sx, y: sy, r: 150, col: "rgba(255,210,140,0.9)", life: 0.07, max: 0.07 });
   // gunfire is only a crime if someone sees it
@@ -1877,11 +1896,12 @@ function tickBullets(G, dt) {
     }
     const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;b.travel=(b.travel||0)+Math.hypot(b.x-x0,b.y-y0);
     if(first>1)continue;b.life=0;
-    if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});continue;}
-    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:0,vy:0,life:.15});if(b.friend&&!target.dead){G.hitConfirmT=.14;if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:7;G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
-    if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;
-      if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
+    if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
+    if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8);G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
+    if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;G.audio.impact?.('flesh',b.x,b.y,.3);
+      G.hitMark={x:target.x,y:target.y-22,t:target.hp<=0?.4:.22,kill:target.hp<=0};G.audio.hitmark?.(target.hp<=0);if(target.hp>0){target.flinch=.18;target.flinchX=b.vx/Math.hypot(b.vx,b.vy);target.flinchY=b.vy/Math.hypot(b.vx,b.vy);}
+      if(target.gang)gangHit(G,target);else if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
       if(target.hp<=0){target.vx=b.vx*.035;target.vy=b.vy*.035;killPed(G,target,true);}else bloodImpact(G,target,b.vx,b.vy,projectileDamage(b)/24);
     }
   }
@@ -1892,6 +1912,7 @@ function respawn(G) { wasted(G); }
 function killPed(G, p, byGun, attributed=true) {
   if (p.dead) return;
   p.dead = true; p.deadT = 0; p.speed = 0;
+  if(p.gang||p.copPed){gangDrop(G,p);if(p.gang)gangHit(G,p);}
   bloodImpact(G,p,p.vx||0,p.vy||0,byGun?1.1:Math.max(1.3,Math.hypot(p.vx||0,p.vy||0)/70),true);
   G.audio.hit();
   if(attributed){if (p.copPed) crime(G, 2, p.x, p.y, true); else crime(G, 1, p.x, p.y, false);}
@@ -1988,6 +2009,7 @@ function tickWanted(G, dt) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
     for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; }
     G.cops = []; G.policeTarget = null; G.heliChase=false;G.evading=false;G.seenT=0;
+    for(const v of G.vehicles)if(v.roadblock){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}
     // Officers stand down and return to their cruiser in tickCops; they do not
     // vanish in front of the player when the last star clears.
     return;
@@ -2014,10 +2036,37 @@ function tickWanted(G, dt) {
     const S = G.cam.scale * worldZoom(G);
     const viewR = Math.hypot(G.canvas.width, G.canvas.height) / 2 / S;
     let v = null;
-    for (let k = 0; k < 4 && !v; k++) v = G.traffic.spawnCar(P, viewR + 40, viewR + 380 + k * 250, "metro");
+    // While the suspect is out of sight, reinforcements search from the last
+    // known position instead of spawning around the player's true location;
+    // otherwise every fresh unit re-acquired a player who had already escaped.
+    const searching=G.evading&&G.policeTarget&&Math.hypot(G.policeTarget.x-P.x,G.policeTarget.y-P.y)>viewR;
+    for (let k = 0; k < 4 && !v; k++) v = searching?G.traffic.spawnCar(G.policeTarget, 60, 520 + k * 200, "metro"):G.traffic.spawnCar(P, viewR + 40, viewR + 380 + k * 250, "metro");
+    if (v && searching && Math.hypot(v.x-P.x,v.y-P.y) < 700) { G.vehicles.splice(G.vehicles.indexOf(v), 1); v = null; }
     if (v && G.nav.next(v.x, v.y, 1) == null) { G.vehicles.splice(G.vehicles.indexOf(v), 1); v = null; }
     if (v) { v.traffic = false; v.tr = null; v.ai = true; v.cop = true; v.chasing = true; v.siren = true; v.ambient = false; v.keep = true; v.parked = false; G.cops.push(v); }
   }
+  // Roadblocks from three stars: two cruisers parked across the road ahead of
+  // the suspect's travel direction, out of view, with officers beside them.
+  G.roadblockT=(G.roadblockT??8)-dt;
+  if(G.wanted>=3&&G.roadblockT<=0&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&!(G.missionState.scramblerT>0)){
+    G.roadblockT=Math.max(12,26-G.wanted*3);
+    const sp=Math.hypot(P.vx||0,P.vy||0);
+    if(sp>90&&G.graph?.nodes){
+      const hx=P.vx/sp,hy=P.vy/sp;let best=null,bs=-1;
+      for(const n of G.graph.nodes){const dx=n.x-P.x,dy=n.y-P.y,d=Math.hypot(dx,dy);if(d<620||d>1600)continue;const dot=(dx*hx+dy*hy)/d;if(dot<.86)continue;
+        const S2=G.cam.scale*worldZoom(G);if(Math.abs(n.x-G.cam.x)<G.canvas.width/2/S2+60&&Math.abs(n.y-G.cam.y)<G.canvas.height/2/S2+60)continue;
+        if(dot>bs){bs=dot;best=n;}}
+      if(best){
+        const across=Math.atan2(hx,-hy)+Math.PI/2,rx=Math.cos(across-Math.PI/2),ry=Math.sin(across-Math.PI/2);
+        const back={x:best.x-hx*70,y:best.y-hy*70};let n=0;
+        for(const side of [-1,1]){const x=back.x+(-hy)*side*58,y=back.y+hx*side*58;if(carHit(G,{def:VEH_DEFS.metro,r:25,rot:across,x,y},x,y))continue;
+          const v=makeVeh('metro',x,y,across+(side>0?Math.PI:0),{keep:true,cop:true,siren:true,roadblock:true,parked:true,ambient:false,blockT:30});G.vehicles.push(v);n++;
+          const s2=findSafe(G,x-hx*40,y-hy*40,8);G.peds.push({x:s2.x,y:s2.y,rot:Math.atan2(-hx,hy),vx:0,vy:0,sprite:'cop',speed:0,walk:130,dist:0,flee:0,r:8,hp:50,dead:false,copPed:true,car:v,grabT:0});}
+        if(n){toast(G,'Roadblock ahead!');G.lastRoadblock={x:back.x,y:back.y};}else G.roadblockT=2;
+      }else G.roadblockT=2;
+    }else G.roadblockT=2;
+  }
+  for(const v of G.vehicles)if(v.roadblock){v.blockT-=dt;if(v.blockT<=0||G.wanted===0){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}}
   // heli at 4+
   G.heliChase = G.wanted >= 4;
 }
@@ -2030,7 +2079,12 @@ function tickCops(G, dt) {
     let tx = (G.policeTarget || P).x, ty = (G.policeTarget || P).y;
     const pv = P.type === "veh" ? { x: P.vx, y: P.vy } : { x: 0, y: 0 };
     const los = !airborne(P) && !P.def?.boat && dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
-    if (los) { tx = P.x + pv.x * Math.min(0.8, dist / 400); ty = P.y + pv.y * Math.min(0.8, dist / 400); }
+    if (los) { tx = P.x + pv.x * Math.min(0.8, dist / 400); ty = P.y + pv.y * Math.min(0.8, dist / 400);
+      // From two stars, every other unit flanks: it aims for a point beside and
+      // ahead of the suspect instead of queueing behind the first cruiser.
+      const idx=G.cops.indexOf(c);
+      if(G.wanted>=2&&idx%2===1&&dist>140&&P.type==='veh'){const sp=Math.hypot(pv.x,pv.y);if(sp>60){const hx=pv.x/sp,hy=pv.y/sp,side=idx%4===1?1:-1;tx=P.x+hx*Math.min(260,sp*.9)+(-hy)*110*side;ty=P.y+hy*Math.min(260,sp*.9)+hx*110*side;}}
+    }
     else {const n=G.nav.next(c.x,c.y,4);tx=n?.x??c.x;ty=n?.y??c.y;}
     const targetDistance=Math.hypot(tx-c.x,ty-c.y);
     const ang = Math.atan2(tx - c.x, -(ty - c.y));
@@ -2088,13 +2142,20 @@ function tickCops(G, dt) {
       const h = headingVec(a);
       G.bullets.push({ x: c.x + h.x * 24, y: c.y + h.y * 24, vx: h.x * 520, vy: h.y * 520, life: 0.8, friend: false });
       G.flashes.push({ x: c.x + h.x * 24, y: c.y + h.y * 24, r: 110, col: "rgba(255,210,140,0.8)", life: 0.06, max: 0.06 });
-      G.audio.shot && G.audio.shot();
+      G.audio.gunfire?G.audio.gunfire('smg',c.x,c.y,.6):G.audio.shot&&G.audio.shot();
     }
   }
   // cops on foot: chase, grab (bust) or shoot
   for (const p of G.peds) {
     if (!p.copPed || p.dead) continue;
     const dx = P.x - p.x, dy = P.y - p.y, d = Math.hypot(dx, dy);
+    if(p.car?.roadblock&&P.type==="veh"&&G.wanted>0){
+      // Roadblock officers hold their line and fire on an approaching suspect.
+      p.speed=0;p.rot=Math.atan2(dx,-dy);p.shotWait=Math.max(0,(p.shotWait??.6)-dt);
+      if(d<340&&p.shotWait<=0&&G.nav.clearLine(p.x,p.y,P.x,P.y)){p.shotWait=.7+Math.random()*.5;const a=p.rot+(Math.random()-.5)*.2,hv=headingVec(a);
+        G.bullets.push({x:p.x+hv.x*14,y:p.y+hv.y*14,vx:hv.x*520,vy:hv.y*520,life:.8,friend:false});G.flashes.push({x:p.x+hv.x*14,y:p.y+hv.y*14,r:90,col:"rgba(255,210,140,0.8)",life:.06,max:.06});G.audio.gunfire?.('pistol',p.x,p.y,.6);p.shotTick=G.ticks;}
+      continue;
+    }
     if (P.type === "veh" || G.wanted === 0) {
       // Recycle stranded officers only out of sight, never in the foreground.
       if(Math.abs(p.x-G.cam.x)>1800||Math.abs(p.y-G.cam.y)>1500){p.dead=true;p.removed=true;continue;}
@@ -2117,6 +2178,7 @@ function tickCops(G, dt) {
       const a = Math.atan2(dx, -dy) + (Math.random() - 0.5) * 0.25, hv = headingVec(a);
       G.bullets.push({ x: p.x + hv.x * 14, y: p.y + hv.y * 14, vx: hv.x * 480, vy: hv.y * 480, life: 0.8, friend: false });
       G.flashes.push({ x: p.x + hv.x * 14, y: p.y + hv.y * 14, r: 90, col: "rgba(255,210,140,0.8)", life: 0.06, max: 0.06 });
+      G.audio.gunfire?.('pistol',p.x,p.y,.6);p.shotTick=G.ticks;
     }
   }
   G.peds = G.peds.filter((p) => !p.removed);
@@ -2214,7 +2276,9 @@ function tickLife(G, dt) {
 
 function scarePeds(G, x, y, r) {
   G.cityAI?.emit('gunshot', x, y, {radius:r});
+  if(r>=200)for(const v of G.vehicles)if(v.traffic&&!v.dead&&Math.abs(v.x-x)<r&&Math.abs(v.y-y)<r)v.panicT=4;
   for (const p of G.peds) {
+    if(p.gang&&!p.dead){if(Math.hypot(p.x-x,p.y-y)<r)gangHit(G,p);continue;}
     if (p.dead || p.copPed || p.gather && r < 200) continue;
     if (Math.abs(p.x - x) < r && Math.abs(p.y - y) < r && Math.hypot(p.x - x, p.y - y) < r) {
       if (!(p.flee > 0) && G.audio.yelp && Math.random() < 0.04) G.audio.yelp();
@@ -2265,6 +2329,7 @@ function tickPeds(G, dt, playerImpacts=true) {
   const localView=G.touch&&G.settings.quality==='low'?streetViewport(G):null,co=Math.abs(Math.cos(G.cam.rot||0)),si=Math.abs(Math.sin(G.cam.rot||0));
   const localW=localView?localView.halfW*co+localView.halfH*si+220:1400,localH=localView?localView.halfH*co+localView.halfW*si+220:1200;
   for (const p of G.peds) {
+    if(p.flinch>0)p.flinch-=dt;
     if (p.dead) { p.deadT = (p.deadT || 0) + dt; if(p.deadT<.75){const x=p.x+(p.vx||0)*dt,y=p.y+(p.vy||0)*dt;if(!G.solidAt(x,y)){p.x=x;p.y=y;}p.vx*=Math.exp(-5*dt);p.vy*=Math.exp(-5*dt);}continue; }
     if ((Math.abs(p.x - G.cam.x) > localW || Math.abs(p.y - G.cam.y) > localH)&&!p.mission&&!p.copPed&&Math.hypot(p.x-pl.x,p.y-pl.y)>240&&!p.crossing&&!p.onRoad&&sleepSafeGround(G,p)) {p.speed=p.vx=p.vy=0;continue;}
     const dx = p.x - pl.x, dy = p.y - pl.y;
@@ -2279,11 +2344,11 @@ function tickPeds(G, dt, playerImpacts=true) {
       if(!circleBody(car,p.x,p.y,9)&&segmentBody(car,p.x+(car.x-px),p.y+(car.y-py),p.x,p.y,9)===null)continue;
       const speed=Math.hypot(car.vx,car.vy);p.impactT=.7;p.hp=(p.hp??30)-speed*(car.def.bike?.28:.65);p.vx=car.vx*.55;p.vy=car.vy*.55;p.flee=5;p.dive=0;
       if(p.hp<=0){if(car===pl&&!p.copPed)recordIncident(G,'civilian_harm');killPed(G,p,false,car===pl);}else{bloodImpact(G,p,car.vx,car.vy,speed/140);p.dive=.3;if(car===pl)crime(G,1,p.x,p.y,false,2);}
-      runoverBlood(G,p,car);
+      runoverBlood(G,p,car);if(p.dead)gibsFX(G,p,car);
       if(car===pl){G.audio.hit();G.hitConfirmT=.2;car.vx*=.94;car.vy*=.94;}struck=true;break;
     }
-    if(struck)continue;
-    if(p.copPed)continue;
+    if(struck){if(p.gang)gangHit(G,p);continue;}
+    if(p.copPed||p.gang)continue;
     resolveFootVehicles(G,p);
     // City AI owns predictive avoidance for every nearby vehicle. The old
     // player-only distance check also made safe sidewalk residents dive.
@@ -2380,7 +2445,7 @@ function tickParticles(G, dt) {
   }
   const cap=G.settings.quality==='low'?140:500;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
   let live=0;for(const p of G.particles)if(p.life>0)G.particles[live++]=p;G.particles.length=live;
-  for (const s of G.skids) s.a -= dt * 0.15;
+  for (const s of G.skids) s.a -= dt * 0.07;
   live=0;for(const s of G.skids)if(s.a>0)G.skids[live++]=s;G.skids.length=live;
 }
 
@@ -2908,9 +2973,10 @@ function renderWorldLayer(G) {
   ctx.lineWidth = 3;
   for (const s of G.skids) {
     if (s.x < r.x0 || s.x > r.x1 || s.y < r.y0 || s.y > r.y1) continue;
-    ctx.save(); ctx.globalAlpha = s.a * 0.55; ctx.translate(s.x, s.y); ctx.rotate(s.rot || 0);
-    ctx.fillStyle = "#101012"; ctx.fillRect(-9, -3, 4, 7); ctx.fillRect(5, -3, 4, 7);
-    ctx.restore();
+    ctx.globalAlpha = Math.min(1,s.a) * 0.5; ctx.strokeStyle = "#101012"; ctx.lineWidth = s.w ? 3 : 4; ctx.beginPath();
+    const c1=Math.cos(s.rot||0),s1=Math.sin(s.rot||0),c0=Math.cos(s.prot??s.rot??0),s0=Math.sin(s.prot??s.rot??0);
+    for (const o of s.w ? [0] : [-7, 7]) { ctx.moveTo((s.px??s.x)+c0*o,(s.py??s.y)+s0*o); ctx.lineTo(s.x+c1*o+.01,s.y+s1*o); }
+    ctx.stroke();
   }
   ctx.globalAlpha = 1;
   for (const p of G.props) {
@@ -2928,17 +2994,17 @@ function renderWorldLayer(G) {
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
-  drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);drawExpansionOverhead(G,r);drawTransitWorld(G,r);drawCasinoWorld(G,r);
-  drawBlastFX(G,r,true);drawBlood(G,r,true);
+  drawStreetGateways(G,r);_ph('a_gate');drawUrbanCourts(G,r);_ph('a_courts');drawCityHubs(G,r);_ph('a_hubs');drawCircuitActivity(G,r);drawDropMission(G,r);_ph('a_circ');drawExpansionOverhead(G,r);_ph('a_exp');drawTransitWorld(G,r);_ph('a_transit');drawCasinoWorld(G,r);drawGangWorld(G,r);_ph('a_casino');
+  drawBlastFX(G,r,true);drawBlood(G,r,true);_ph('a_blood');
   // 6. actors
   const actors = G._worldActors||(G._worldActors=[]);actors.length=0;
   for (const v of G.vehicles) if (v.x > r.x0 - 60 && v.x < r.x1 + 60 && v.y > r.y0 - 60 && v.y < r.y1 + 60) actors.push(v);
   for (const p of G.peds) if (p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1) actors.push(p);
   if (G.player.type === "foot") actors.push(G.player);
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
-  for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
-  drawWildlife(G,r);drawExpansionPeople(G,r);
-  drawParticles(G, r, false);
+  _ph('a_sort');for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
+  _ph('a_draw');drawWildlife(G,r);drawExpansionPeople(G,r);_ph('a_wild');
+  drawParticles(G, r, false);_ph('a_part');
   drawResortOverhead(G,r);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
@@ -2960,11 +3026,11 @@ function renderWorldLayer(G) {
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
-  worldXform(G, ctx, S, 1, ox, oy);drawResortLights(G,r,nightFactor(G));
+  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);drawResortLights(G,r,nightFactor(G));
   _ph('w_light');
-  drawArchitectureLights(G, r, nightFactor(G));drawLocalAtmosphere(G,r);
-  drawAtmosphere(G, r, nightFactor(G));
-  drawParticles(G, r, true);
+  drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
+  drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
+  drawParticles(G, r, true);_ph('l_top');
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
   drawStreetWaypoint(G);
@@ -2973,7 +3039,7 @@ function renderWorldLayer(G) {
   if (G.fog > 0.05) { ctx.fillStyle = `rgba(160,170,180,${0.28 * G.fog})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
-  drawGrade(G);
+  _ph('l_misc');drawGrade(G);_ph('l_grade');
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
@@ -2986,7 +3052,8 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lamps=dark>.012?visibleStreetLights(G,r):[];
   const hasFlash = G.flashes.length > 0;
   const lt = G.light, lx = lt.lx;
-  const needMap = Math.min(ar, ag, ab) < 248;
+  // Near-white daylight multiply is invisible but cost a full-frame composite.
+  const needMap = Math.min(ar, ag, ab) < 238;
   // low tier: rebuild the light map every other frame (the multiply still runs every frame)
   G._lmF = (G._lmF || 0) + 1;
   const reuse = low && (G._lmF & 1) && G._lmValid && !hasFlash;
@@ -3263,6 +3330,7 @@ function drawVeh(G, v) {
     drawVehicleFinish(G, v, sprUse.width * sc, sprUse.height * sc, pose);
   }
   drawVehicleDamage(ctx,v);
+  if(v===G.player)drawDriveByArm(G,v,ctx);
   const opening=G.jack?.v===v ? Math.sin((1-G.jack.t/G.jack.dur)*Math.PI/2) : Math.min(1,(v.doorT||0)*2);
   if(opening>0&&!v.def.bike&&!v.def.boat){
     ctx.save();ctx.translate(-24,-10);ctx.rotate(-opening*1.15);
@@ -3350,9 +3418,21 @@ function drawHeadCone(ctx, len, halfW, beam, alpha) {
 
 function drawVehLights() {}
 
+// Character atlases are authored at ~220 px per frame but drawn near 50 px.
+// Downscaling them once (high quality) removes per-draw mipmap work, which
+// profiled as the single largest render cost in crowded streets.
+const _charAtlas=new WeakMap();
+function charAtlas(src){
+ if(!src||!src.width)return src;let c=_charAtlas.get(src);if(c)return c;
+ const k=Math.min(1,128/(src.height/8));if(k>.95){_charAtlas.set(src,src);return src;}
+ c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+ const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
+ _charAtlas.set(src,c);return c;
+}
 function drawChar(G,a){
+ if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
- const spr=crowd||G.assets.sprites['char_'+(a.sprite||'chaos')];if(!spr)return;
+ const spr=charAtlas(crowd||G.assets.sprites['char_'+(a.sprite||'chaos')]);if(!spr)return;
  const ctx=G.ctx,hero=a===G.player||a.sprite==='chaos',aiming=a===G.player&&G.input.fire&&!(G.action?.reloadT>0);
  const moving=(a.speed||0)>12&&!a.dead,dir=((Math.round((aiming?a.aimRot??a.rot:a.rot)/(Math.PI/4))%8)+8)%8,row=(dir+6)%8;
  let col=moving?Math.floor((a.dist||0)/9)%4:4;
@@ -3363,6 +3443,7 @@ function drawChar(G,a){
  const layout=characterLayout(frame,hero?50:48*stature),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
  ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
+ if(a.flinch>0&&!a.dead){const k=a.flinch/.18;ctx.translate((a.flinchX||0)*4*k,(a.flinchY||0)*4*k);ctx.rotate(.2*k*(a.fallSide||1));}
  if(a.dead){const t=clamp((a.deadT||0)*2.7,0,1),fall=t*t*(3-2*t);ctx.globalAlpha*=.82;ctx.translate(0,-5*fall);ctx.rotate(fall*1.05*(a.fallSide||1));ctx.scale(1,1-fall*.55);}
  if(G.jack&&a===G.player){const k=1-Math.max(0,G.jack.t)/(G.jack.dur||.38);ctx.scale(1-k*.22,1-k*.32);}
  if(a.exitT>0){const k=1-Math.min(1,a.exitT);ctx.scale(.85+.15*k,.82+.18*k);}
@@ -3374,16 +3455,24 @@ function drawChar(G,a){
   ctx.scale(1-tuck*.18,1-tuck*.45);ctx.translate(0,17);
  }
  const dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2,dw=layout.w*pose.sx,dh=layout.h*pose.sy;
- ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
  ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
- if(a!==G.player&&G.settings.quality!=='low')drawAmbientGesture(G,a);
+ if(a.gang)drawGangMark(ctx,a);
+ if(a!==G.player&&G.settings.quality!=='low'&&!a.gang)drawAmbientGesture(G,a);
  ctx.restore();
 }
 
 const FONT_D = "'Arial Black', 'Arial Bold', Impact, system-ui, sans-serif";
+function drawHitMark(G){
+  const m=G.hitMark;if(!m||G.scene!=='play')return;const c=G.ctx,k=m.kill?1.4:1,a=Math.min(1,m.t/.12),s=(6+(1-a)*5)*k;
+  c.save();c.translate(m.x,m.y);c.rotate(G.cam.rot||0);c.lineCap='round';c.globalAlpha=a;
+  c.strokeStyle='rgba(0,0,0,.55)';c.lineWidth=4;c.beginPath();for(const [sx,sy] of [[1,1],[1,-1],[-1,1],[-1,-1]]){c.moveTo(sx*s*.45,sy*s*.45);c.lineTo(sx*s,sy*s);}c.stroke();
+  c.strokeStyle=m.kill?'#ff4d5e':'#fff6df';c.lineWidth=2;c.stroke();c.restore();
+}
 function drawAimGuide(G){
+  drawHitMark(G);
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
   const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);
@@ -3453,7 +3542,7 @@ function worldToScreen(G, x, y) {
   const dx = x - G.cam.x, dy = y - G.cam.y, c = Math.cos(-G.cam.rot), s = Math.sin(-G.cam.rot);
   return { x: G.canvas.width / 2 + (dx * c - dy * s) * S, y: G.canvas.height / 2 + (dx * s + dy * c) * S };
 }
-function hintText(G, t) { return G.touch ? t.replace("(E)", "— tap CAR").replace(/press E/gi, "tap TAKE") : t; }
+function hintText(G, t) { return G.touch ? t.replace(/\(E\)/g, "— tap CAR").replace(/press E/gi, "tap TAKE") : t; }
 function updateGPS(G) {
   const at = G.waypoint || currentObjectivePos(G);
   if (!at) { G.gpsPts = null; return; }

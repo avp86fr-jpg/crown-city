@@ -313,7 +313,7 @@ for (const choices of [
   }
   await dialogue(choices);
   assert.equal(G.missionIndex, 6); assert.equal(G.scene, 'end'); assert.equal(G.flags.neuralDebt, 0);
-  assert.equal(G.chips, choices.stash === 'flip' ? 9200 : 7500);
+  assert.equal(G.chips, choices.stash === 'flip' ? 10400 : 8700); // gas_fees 900, the_tell 700;
   assert.equal(VN.m1_win_safe.next, original);
   assert.ok(G.unlocked.includes('nyx'));
   T.loadSave(G); assert.equal(G.scene, 'end');

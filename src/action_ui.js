@@ -9,7 +9,7 @@ export function drawActionHUD(G,L,y,width){
  const yy=y+(G.radioT>0?78:38)*u;
  c.fillStyle='rgba(8,14,20,.86)';c.fillRect(L,yy,width,49*u);c.fillStyle='#d6b379';c.fillRect(L,yy,2*u,49*u);
  c.font=font(9*u,800);c.textAlign='left';c.fillStyle='#d8d1c2';c.fillText(WEAPONS[A.weapon].name,L+9*u,yy+14*u,width-18*u);
- c.font=font(16*u,900);c.fillStyle=A.reloadT>0?'#edc67f':'#fff';c.fillText(A.reloadT>0?'RELOADING':String(A.ammo[A.weapon]).padStart(2,'0')+' / '+WEAPONS[A.weapon].mag,L+9*u,yy+33*u,width-18*u);
+ c.font=font(16*u,900);c.fillStyle=A.reloadT>0?'#edc67f':'#fff';c.fillText(A.reloadT>0?'RELOADING':String(A.ammo[A.weapon]).padStart(2,'0')+' / '+(A.reserve?.[A.weapon]==null?'∞':A.reserve[A.weapon]),L+9*u,yy+33*u,width-18*u);
  c.fillStyle='#28383c';c.fillRect(L+9*u,yy+40*u,width-18*u,3*u);c.fillStyle=A.exhausted?'#d77863':'#91c9ac';c.fillRect(L+9*u,yy+40*u,(width-18*u)*A.stamina/100,3*u);
  if(A.cover&&G.player.type==='foot'){c.font=font(9*u,800);c.fillStyle='#a3e0cf';c.fillText('IN COVER',L+9*u,yy+62*u);}
  if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));const status=operationStatus(G,A.contract);if(status){c.font=font(9*u,700);c.fillStyle='#e5cf98';c.fillText(status,L,yy+(A.cover?94:78)*u,Math.min(W-L*2,390*u));}}

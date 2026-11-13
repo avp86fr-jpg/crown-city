@@ -73,11 +73,44 @@ export function engineMotion(v,input={},out={}){
  out.rpm=v.def?.boat?.22+.68*k+.10*out.load:out.reverse?(.25+.70*Math.min(1,speed/(top*.32)))*(.7+.3*out.load):.25+.75*(gear===0?k*4:.35+.65*inGear)*(.7+.3*out.load);
  return out;
 }
+// Gunfire and impacts, layered per weapon: transient crack, body, low punch,
+// mechanism. Each returns one sample value; null means "not a weapon sound".
+const TWO_PI=Math.PI*2;
+export function weaponSample(kind,t,noise,low,dur,variant=0){
+ const e=(k,d=0)=>t<d?0:Math.exp(-(t-d)*k),sw=(f0,f1,k)=>Math.sin(TWO_PI*(f0*t+(f1-f0)*(1-Math.exp(-t*k))/k));
+ const v=1+variant*.04;
+ switch(kind){
+  // Suppressed .45: slide clack + soft "thup", no supersonic crack.
+  case 'pistol':return (low*1.1*e(55)+sw(150*v,70,30)*.55*e(42)+noise*.22*e(260)+Math.sin(TWO_PI*3100*t)*.16*e(380,.012)+noise*.12*e(300,.012))*.95;
+  // SMG: sharp crack, chesty body, quick mechanical rattle.
+  case 'smg':return noise*.75*e(210)+low*.95*e(30)+sw(140*v,62,40)*.55*e(36)+Math.sin(TWO_PI*2350*t)*.12*e(260,.028)+noise*.18*e(160,.028);
+  // Shotgun: huge transient, low boom, long body, pump shuck late.
+  case 'shotgun':return noise*.95*e(95)+sw(95*v,42,9)*.95*e(8.5)+low*1.25*e(6.5)+noise*.12*e(40)*Math.sin(TWO_PI*7*t)**2+(noise*.3+Math.sin(TWO_PI*1700*t)*.1)*e(70,.42)+(noise*.25)*e(80,.5);
+  // Street slapback: three filtered reflections off buildings.
+  case 'echo':return low*(.55*e(28,.075)+.38*e(24,.19)+.22*e(18,.36)+.1*e(9,.55))*1.4;
+  // A shot several blocks away: no crack, just a rolling low thump.
+  case 'distant':return (low*1.2+sw(80*v,40,6)*.35)*e(9)*Math.min(1,t*90)+low*.35*e(5,.18);
+  case 'dryfire':return (Math.sin(TWO_PI*2900*t)*.5+noise*.4)*e(650)+(Math.sin(TWO_PI*2100*t)*.3+noise*.2)*e(700,.04);
+  case 'ricochet':return noise*.5*e(140)+Math.sin(TWO_PI*(3300*v*t-2300*t*t))*.26*e(8)*Math.min(1,t*60);
+  case 'metalHit':return (Math.sin(TWO_PI*1830*v*t)*.32+Math.sin(TWO_PI*2710*v*t)*.2+Math.sin(TWO_PI*930*t)*.25)*e(26)+noise*.55*e(170);
+  case 'flesh':return (low*1.3+Math.sin(TWO_PI*95*t)*.5)*e(34)+noise*.16*e(90);
+  case 'hitmark':return Math.sin(TWO_PI*2350*t)*.45*e(85);
+  case 'killmark':return Math.sin(TWO_PI*1560*t)*.38*e(26)+Math.sin(TWO_PI*2340*t)*.22*e(22,.05)+low*.5*e(30);
+  case 'casing':return (Math.sin(TWO_PI*5200*v*t)*.2+Math.sin(TWO_PI*7350*t)*.12)*(e(55)+.6*e(70,.085)+.35*e(80,.15));
+  case 'glass':return noise*.45*e(30)*(.5+.5*Math.sin(TWO_PI*37*t)**2)+Math.sin(TWO_PI*4200*t)*.12*e(14);
+  case 'backfire':return (noise*.8*e(120)+low*1.2*e(40)+sw(120*v,60,30)*.4*e(50))*(1+.5*e(200,.05)*(noise>0?1:-1));
+  case 'clank':return (Math.sin(TWO_PI*420*v*t)*.3+Math.sin(TWO_PI*1130*v*t)*.18+Math.sin(TWO_PI*1710*t)*.1)*e(9)+noise*.3*e(80)+(Math.sin(TWO_PI*560*t)*.18)*e(12,.18);
+  case 'foghorn':return (Math.sin(TWO_PI*92*t)*.5+Math.sin(TWO_PI*184*t)*.25+Math.sin(TWO_PI*276*t)*.1+low*.2)*Math.min(1,t*6)*Math.min(1,(dur-t)*2.5);
+  case 'jetFar':return (low*1.1+noise*.08)*Math.sin(Math.PI*t/dur)**2;
+  case 'skidChirp':return (Math.sin(TWO_PI*(1150*t+40*Math.sin(TWO_PI*31*t)))*.3+noise*.2)*Math.sin(Math.PI*t/dur);
+ }
+ return null;
+}
 export function createEffects(ctx,bus){
  const bank=new Map(),variations=new Map();let voices=0;
  const rate=24000,TAU=Math.PI*2;
- const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.18,smg:.22,shotgun:.45,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
- const varied=new Set(['pistol','smg','shotgun','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood']);
+ const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.2,smg:.24,shotgun:.62,echo:.9,distant:.7,dryfire:.09,ricochet:.36,metalHit:.22,flesh:.16,hitmark:.07,killmark:.16,casing:.26,glass:.4,skidChirp:.25,backfire:.2,clank:.5,foghorn:2.2,jetFar:2.6,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
+ const varied=new Set(['pistol','smg','shotgun','ricochet','metalHit','flesh','casing','echo','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood']);
  function sample(kind){
   const varying=varied.has(kind),variant=varying?(variations.get(kind)||0)%3:0,key=kind+variant;
   if(varying)variations.set(kind,variant+1);if(bank.has(key))return bank.get(key);
@@ -85,7 +118,9 @@ export function createEffects(ctx,bus){
   for(let i=0;i<n;i++){
    const t=i/rate;seed=(Math.imul(seed,1664525)+1013904223)>>>0;const noise=seed/2147483648-1;low+=.17*(noise-low);
    let x=0;
-   if(kind==='rocket')x=(low*.6+Math.sin(TAU*(95*t-35*t*t))*.4)*Math.exp(-t*13)+noise*.16*Math.sin(Math.PI*t/dur)**2;
+   const wx=weaponSample(kind,t,noise,low,dur,variant);
+   if(wx!==null)x=wx;
+   else if(kind==='rocket')x=(low*.6+Math.sin(TAU*(95*t-35*t*t))*.4)*Math.exp(-t*13)+noise*.16*Math.sin(Math.PI*t/dur)**2;
    else if(kind==='explosion')x=(low*.85+Math.sin(TAU*(52*t-8*t*t))*.65)*Math.exp(-t*4.3)+noise*.25*Math.exp(-t*26)+low*.16*Math.sin(t*37)**8*Math.exp(-t*2.8);
    else if(kind==='pistol')x=(low*.65+Math.sin(t*2*Math.PI*(140-80*t))*.35)*Math.exp(-t*38)+noise*.12*Math.exp(-t*150);
    else if(kind==='smg')x=(noise*.55+low*.2+Math.sin(t*2*Math.PI*95)*.25)*Math.exp(-t*31);

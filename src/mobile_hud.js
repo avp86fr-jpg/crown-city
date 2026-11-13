@@ -15,7 +15,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  panel(L,T+mm+5*d,mm,37*d);
  c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+13*d,mm-14*d,4*d);c.fillStyle=G.health<30?'#e99580':'#b1d2ac';c.fillRect(L+7*d,T+mm+13*d,(mm-14*d)*G.health/100,4*d);
  c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+21*d,mm-14*d,2*d);c.fillStyle=A.exhausted?'#e99580':'#9fc8c2';c.fillRect(L+7*d,T+mm+21*d,(mm-14*d)*A.stamina/100,2*d);
- text(A.reloadT>0?'RELOADING':WEAPONS[A.weapon].name+' / '+A.ammo[A.weapon],L+7*d,T+mm+34*d,8);
+ text(A.reloadT>0?'RELOADING':WEAPONS[A.weapon].name+' / '+A.ammo[A.weapon]+(A.reserve?.[A.weapon]==null?'':'+'+A.reserve[A.weapon]),L+7*d,T+mm+34*d,8);
  const cashW=Math.min(150*d,R-(L+mm+10*d));
  panel(R-cashW,T,cashW,44*d);text(Math.round(G.chips).toLocaleString('en-US')+'  CHIPS',R-cashW+9*d,T+17*d,12,'#e5c486',800);
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');

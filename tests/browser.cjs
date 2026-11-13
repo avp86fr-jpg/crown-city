@@ -261,7 +261,7 @@ async function dialogue(page, choices) {
         }
         await dialogue(page,choices);
         const state=await page.evaluate(()=>__CC.state());
-        assert.equal(state.scene,'end');assert.equal(state.mission,6);assert.equal(state.chips,choices.stash==='safe'?7500:9200);
+        assert.equal(state.scene,'end');assert.equal(state.mission,6);assert.equal(state.chips,choices.stash==='safe'?8700:9200);
         assert.equal(state.flags.neuralDebt,0);
         await page.screenshot({path:path.join(output,`ending-${choices.stash}.png`)});
         await page.evaluate(()=>{T.loadSave(__CC.G);T.render(__CC.G)});assert.equal(await page.evaluate(()=>__CC.G.scene),'end');

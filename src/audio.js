@@ -128,6 +128,20 @@ export function createAudio() {
   A.exit = () => { noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); tone(140, 0.06, "sine", 0.1, -50); };
   A.hit = () => fx('impact',.4);
   A.shot = (pan=0,far=0,kind='pistol') => {fx(kind,.5*(1-far*.65),pan);};
+  // Spatial gunfire: close shots get the full layered sample plus a street
+  // slapback (stronger between buildings); distant shots roll off to a thump.
+  A.gunfire=(kind='pistol',x,y,urban=.6)=>{
+    if(!ctx||!listener?.player)return A.shot(0,0,kind);
+    soundPosition(listener,x,y,1700,position);const d=position.distance,pan=position.pan;
+    const base=kind==='shotgun'?.62:kind==='smg'?.46:.36,near=Math.max(0,1-d/650);
+    if(near>.02)fx(kind,base*(.35+.65*near),pan);
+    if(d>220&&kind!=='pistol')fx('distant',Math.min(.42,base*.8)*Math.max(0,1-d/1700),pan*.7,kind==='shotgun'?.85:1);
+    if(kind!=='pistol'||d<300)fx('echo',base*(.18+.3*urban)*Math.max(.15,1-d/1500),-pan*.5,kind==='shotgun'?.85:1);
+  };
+  A.impact=(kind,x,y,vol=.3)=>{if(!ctx)return;if(listener?.player&&Number.isFinite(x)){soundPosition(listener,x,y,900,position);if(position.gain<.02)return;fx(kind,vol*(.3+.7*position.gain),position.pan);}else fx(kind,vol,0);};
+  A.dryfire=()=>fx('dryfire',.3);
+  A.hitmark=(kill=false)=>fx(kill?'killmark':'hitmark',kill?.3:.22);
+  A.casing=()=>fx('casing',.09);
   A.contact=(event={})=>{
     if(!contactSound||ctx.state!=='running'||A.sfxVol<=0||A.masterVol<=0)return false;
     const P=listener?.player,x=event.x??event.source?.x,y=event.y??event.source?.y;
@@ -184,9 +198,12 @@ export function createAudio() {
     const blade=ctx.createGain();blade.gain.value=1;
     const bladeOsc=ctx.createOscillator(),bladeDepth=ctx.createGain();bladeOsc.type='sine';bladeOsc.frequency.value=14;bladeDepth.gain.value=0;bladeOsc.connect(bladeDepth);bladeDepth.connect(blade.gain);bladeOsc.start();
     o1.connect(ws); o2.connect(ws); o3.connect(sub); sub.connect(ws); ws.connect(ef); ef.connect(eg);eg.connect(blade);blade.connect(sfx);
+    // Firing-pulse amplitude modulation gives each class a lumpy, mechanical idle.
+    const fire=ctx.createOscillator(),fireDepth=ctx.createGain();fire.type='triangle';fire.frequency.value=20;fireDepth.gain.value=0;fire.connect(fireDepth);fireDepth.connect(eg.gain);fire.start();
     for (const o of [o1, o2, o3]) { o.frequency.value = 40; o.start(); }
     const rumble = loopNoise(brownBuf, "lowpass", 180, 1, sfx, 0);
-    L.engine = { o1, o2, o3, f: ef, g: eg, rumble,blade,bladeOsc,bladeDepth };
+    L.engine = { o1, o2, o3, f: ef, g: eg, rumble,blade,bladeOsc,bladeDepth,fire,fireDepth,lastRpm:0,gear:0,popT:0 };
+    L.district=loopNoise(brownBuf,'bandpass',300,.8,amb,0);
     L.tyre = loopNoise(noiseBuf, "bandpass", 1900, 6, sfx, 0);
     L.road=loopNoise(brownBuf,'bandpass',650,.65,sfx,0);
     L.wake=loopNoise(noiseBuf,'lowpass',1200,.5,sfx,0);
@@ -339,7 +356,7 @@ export function createAudio() {
       set(E.o1.frequency,f,.14);set(E.o2.frequency,f*(heli?1.018:1.009),.14);set(E.o3.frequency,f*.5,.14);
       // Blade modulation runs at audio rate. Sampling a 17–38Hz rotor pulse
       // in this 15Hz control loop produced false, low-frequency flutter.
-      set(E.blade.gain,heli?.74:.86,.2);set(E.bladeDepth.gain,heli?.26:.14,.2);set(E.bladeOsc.frequency,heli?11+rpm*6:25+rpm*13,.25);
+      set(E.blade.gain,heli?.74:.86,.2);set(E.bladeDepth.gain,heli?.26:.14,.12);set(E.bladeOsc.frequency,heli?11+rpm*6:25+rpm*13,.25);
       set(E.f.frequency,heli?520:760+rpm*700,.12);set(E.g.gain,(heli?.075:.065)*rpm,.12);
       set(E.rumble.g.gain,(heli?.15:.095)*rpm,.12);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
     } else if (inCar && A._eng !== false && !P.dead) {
@@ -351,7 +368,14 @@ export function createAudio() {
       set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
       set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
       set(E.g.gain, 0.05 + 0.07 * rpm, 0.08); set(E.rumble.g.gain, 0.12 * c[3], 0.1); set(E.rumble.f.frequency, 120 + 200 * rpm, 0.1);
-    } else {set(E.bladeDepth.gain,0,.15);set(E.g.gain,0,.15);set(E.rumble.g.gain,0,.2);set(L.tyre.g.gain,0,.05);}
+      set(E.fire.frequency,f*(P.def.bike?.5:P.def.kind==='muscle'?.5:.75),.05);set(E.fireDepth.gain,(.015+.03*c[3])*(1-rpm*.6),.1);
+      // Gear changes: a short torque dip on upshift; lift-off crackle on performance cars.
+      const gear=Math.min(3,(Math.min(1,Math.hypot(P.vx||0,P.vy||0)/(P.def.max||300))*4)|0);
+      if(gear>E.gear&&rpm>.5&&!P.def.boat){const t=now(),g=E.g.gain;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(.02,t+.05);g.setTargetAtTime(.05+.07*rpm,t+.11,.06);g._v=undefined;}
+      E.gear=gear;E.popT-=dt;
+      if(['hyper','muscle','sports'].includes(P.def.kind)&&E.lastRpm>.62&&rpm<E.lastRpm-.02&&!(G.input?.y>.1)&&E.popT<=0&&Math.random()<.35){E.popT=.09+Math.random()*.18;fx('backfire',.12+Math.random()*.08,(Math.random()-.5)*.3,.85+Math.random()*.3);}
+      E.lastRpm=rpm;
+    } else {set(E.bladeDepth.gain,0,.15);set(E.fireDepth.gain,0,.1);set(E.g.gain,0,.15);set(E.rumble.g.gain,0,.2);set(L.tyre.g.gain,0,.05);}
     const backwards=inCar&&!P.dead&&!P.def.boat&&!P.def.aircraft&&!P.def.bike?Math.max(0,-((P.vx||0)*Math.sin(P.rot)-(P.vy||0)*Math.cos(P.rot))-4):0,reverseMix=Math.min(1,backwards/90);
     set(L.reverse.g.gain,.023*reverseMix,.12);set(L.reverse.o.frequency,160+reverseMix*160,.12);
     const surface=inCar?(G.surfaceAt?.(P.x,P.y)||'road'):'walk';surfaceMotion(inCar?P:{type:'foot'},surface,G.wet||0,rollingMix);
@@ -402,6 +426,11 @@ export function createAudio() {
     }set(L.surf.f.frequency,canal?470:900,.8);
     set(L.wind.g.gain,play&&audible?(airHeight>10?.06+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.045:dist.includes('FOREST')?.028:.008):0,.6);
     set(L.rain.g.gain,play&&audible?(A._rain||0)*.2:0,.3);
+    // District beds: Ironside machinery hum, Port Royale harbour drone, Midtown
+    // traffic wash, quiet hills. Plus sparse, panned one-shots per district.
+    {const D=/IRONSIDE/.test(dist)?[.07,140,'clank',6]:/PORT|HARBOUR/.test(dist)?[.05,110,'foghorn',22]:/MIDTOWN|DOWNTOWN|EASTSIDE|STRIP|PALACE|LOOP/.test(dist)?[.035,520,'horn',9]:/AIRFIELD/.test(dist)?[.03,240,'jetFar',18]:/SUNSET|OLD TOWN/.test(dist)?[.012,700,'dog',14]:[0,300,null,0];
+     const quiet=night?.7:1;set(L.district.g.gain,play&&audible&&!P.def?.aircraft?D[0]*quiet:0,1.2);set(L.district.f.frequency,D[1],1);
+     if(play&&audible&&D[2]&&(A._distT=(A._distT??9)-dt)<0){A._distT=D[3]*(.6+Math.random()*.8);fx(D[2],D[2]==='horn'?.05:D[2]==='foghorn'?.08:.06,Math.random()*1.6-.8,D[2]==='horn'?.8+Math.random()*.4:1);}}
     if(play&&audible&&water&&(gullT-=dt)<0&&!night){gullT=5+Math.random()*8;fx('gull',.055*water,Math.random()*1.6-.8);}
     if(play&&audible&&strip&&(dingT-=dt)<0){dingT=3+Math.random()*5;fx('casinoPush',.035,Math.random()*1.6-.8);}
     // footsteps
@@ -414,7 +443,7 @@ export function createAudio() {
   // low tier: drop the convolution reverb (the costliest node on weak phones)
   let lite = false;
   A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if(!lite)verbSend.connect(reverb()); };
-  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?17:0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
+  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?19:0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
   // capture tap for recording demos (tests only)
   A.tap = () => { ensure(); const d = ctx.createMediaStreamDestination(); master.connect(d); return d.stream; };
   return A;

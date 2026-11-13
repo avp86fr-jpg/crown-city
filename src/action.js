@@ -7,13 +7,15 @@ import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const number=(v,d,a,b)=>Number.isFinite(v)?clamp(v,a,b):d;
 export const WEAPONS=[
- {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:1100,pellets:1,spread:.009,range:620,falloff:380,kick:.10,quiet:true},
- {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:1250,pellets:1,spread:.045,range:620,falloff:300,kick:.14},
- {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:1050,pellets:6,spread:.23,range:340,falloff:100,kick:.32},
- {id:'rocket',name:'CROWN RPG',mag:1,reload:2.8,interval:1,damage:125,carDamage:115,speed:560,pellets:1,spread:0,range:950,kick:.5,rocket:true},
+ {id:'sidearm',name:'SILENCED .45',mag:12,reload:1.05,interval:.26,damage:34,carDamage:9,speed:1100,pellets:1,spread:.009,range:620,falloff:380,kick:.10,quiet:true,reserveMax:null,start:null},
+ {id:'smg',name:'VULTURE SMG',mag:28,reload:1.5,interval:.085,damage:16,carDamage:5,speed:1250,pellets:1,spread:.045,range:620,falloff:300,kick:.14,reserveMax:224,start:112},
+ {id:'shotgun',name:'BREACHER',mag:6,reload:1.9,interval:.7,damage:19,carDamage:5,speed:1050,pellets:6,spread:.23,range:340,falloff:100,kick:.32,reserveMax:42,start:24},
+ {id:'rocket',name:'CROWN RPG',mag:1,reload:2.8,interval:1,damage:125,carDamage:115,speed:560,pellets:1,spread:0,range:950,kick:.5,rocket:true,reserveMax:5,start:2},
 ];
 export function actionState(s={}) {
  return {weapon:Math.floor(number(s.weapon,0,0,WEAPONS.length-1)),ammo:WEAPONS.map((w,i)=>Math.floor(number(s.ammo?.[i],w.mag,0,w.mag))),
+ // Spare rounds per weapon (the sidearm is unlimited). Old saves start stocked.
+ reserve:WEAPONS.map((w,i)=>w.reserveMax==null?null:Math.floor(number(s.reserve?.[i],w.start,0,w.reserveMax))),
  circuitVersion:CIRCUIT_VERSION,circuitClass:['club','sport','pro'].includes(s.circuitClass)?s.circuitClass:'club',circuitRecords:Object.fromEntries(['club','sport','pro'].map(k=>[k,s.circuitVersion===CIRCUIT_VERSION?number(s.circuitRecords?.[k],0,0,240):0])),
  circuitBest:s.circuitVersion===CIRCUIT_VERSION?number(s.circuitBest,0,0,240):0,circuitLaps:Math.floor(number(s.circuitLaps,0,0,1e6)),
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
@@ -22,7 +24,7 @@ export function actionState(s={}) {
  upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&CONTRACTS.some(c=>c.id===s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,CONTRACTS.find(c=>c.id===s.contract.id).time),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6)),...restoreOperationState(s.contract)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {settleOperationState(A.contract);return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {settleOperationState(A.contract);return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],reserve:[...(A.reserve||[])],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}
@@ -31,12 +33,13 @@ export function message(G,name,text,color='#88dfd8') {
 }
 export function reload(G) {
  const A=G.action,w=WEAPONS[A.weapon];if(A.reloadT>0||A.ammo[A.weapon]===w.mag)return false;
+ if(A.reserve&&A.reserve[A.weapon]!=null&&A.reserve[A.weapon]<=0)return false;
  A.reloadT=w.reload;G.audio?.reload?.();return true;
 }
 export function requestShot(G) {
  const A=G.action;if(!A)return WEAPONS[0];
  if(A.shotT>0||A.reloadT>0||A.dodgeT>0)return null;
- if(A.ammo[A.weapon]<=0){reload(G);return null;}
+ if(A.ammo[A.weapon]<=0){if(!reload(G)&&!(A.dryT>0)){A.dryT=.35;G.audio?.dryfire?.();if(!A.emptyNote){A.emptyNote=true;message(G,'HUNTER',WEAPONS[A.weapon].name+' is dry. Swap weapons or grab an ammo crate.','#edc67f');}}return null;}
  const w=WEAPONS[A.weapon];A.ammo[A.weapon]--;A.shotT=w.interval;
  if(!A.ammo[A.weapon])reload(G);
  return w;
@@ -66,7 +69,7 @@ export function buyService(G,choice) {
  if(choice==='repair'){P.health=100;P.burning=false;P.wrecked=false;P.burnT=0;}
  if(choice==='tune'){A.upgrades++;P.tune=A.upgrades;message(G,'HUNTER','Stage '+A.upgrades+' fitted: more torque, better brakes, sharper turn-in.');}
  if(choice==='respray'){G.wanted=0;G.seenT=0;G.cops.forEach(c=>{c.chasing=false;c.siren=false;c.ai=false;c.loose=true;c.keep=false;c.ambient=true;});G.cops=[];P.paint=(P.paint||0)+1;}
- if(choice==='supply'){G.health=100;A.ammo=WEAPONS.map(w=>w.mag);A.reloadT=0;A.stamina=100;}
+ if(choice==='supply'){G.health=100;A.ammo=WEAPONS.map(w=>w.mag);A.reserve=WEAPONS.map(w=>w.reserveMax);A.emptyNote=false;A.reloadT=0;A.stamina=100;}
  G.audio?.pickup?.();return true;
 }
 export const CONTRACTS=[
@@ -91,7 +94,8 @@ export function startContract(G,id) {
 export function tickAction(G,dt,hooks) {
  const A=G.action,I=G.input,P=G.player;if(!A)return;
  A.shotT=Math.max(0,A.shotT-dt);A.dodgeCool=Math.max(0,A.dodgeCool-dt);A.bloom=Math.max(0,(A.bloom||0)-dt*.85);
- if(A.reloadT>0){A.reloadT=Math.max(0,A.reloadT-dt);if(A.reloadT===0){A.ammo[A.weapon]=WEAPONS[A.weapon].mag;G.audio?.cock?.();}}
+ if(A.reloadT>0){A.reloadT=Math.max(0,A.reloadT-dt);if(A.reloadT===0){const w=WEAPONS[A.weapon],need=w.mag-A.ammo[A.weapon],res=A.reserve?.[A.weapon];const take=res==null?need:Math.min(need,res);A.ammo[A.weapon]+=take;if(res!=null)A.reserve[A.weapon]=res-take;G.audio?.cock?.();}}
+ A.dryT=Math.max(0,(A.dryT||0)-dt);
  if(I.weaponP){A.weapon=(A.weapon+1)%WEAPONS.length;A.reloadT=0;G.audio?.cock?.();}
  if(I.reloadP)reload(G);
  if(I.crewP){G.scene='crew';G.menuSel=0;G.pausedFrom='play';return;}
@@ -134,4 +138,11 @@ export function applyTune(G,v) {
  const level=G.action?.upgrades||0;if(v.def.boat||v.def.aircraft||v.tunedLevel===level)return;
  if(!level){if(v.stockDef)v.def=v.stockDef;v.tunedLevel=0;return;}
  if(!v.stockDef)v.stockDef=v.def;v.def={...v.stockDef,accel:v.stockDef.accel*(1+level*.1),brake:v.stockDef.brake*(1+level*.09),grip:Math.min(1.3,v.stockDef.grip+level*.04),max:v.stockDef.max*(1+level*.035)};v.tunedLevel=level;
+}
+
+// Ammo crates and drops: refill spare rounds for one or all weapons.
+export function addAmmo(G,index=null,amount=null){
+ const A=G.action;if(!A)return 0;A.reserve=A.reserve||WEAPONS.map(w=>w.reserveMax==null?null:0);let got=0;
+ WEAPONS.forEach((w,i)=>{if(w.reserveMax==null||index!=null&&i!==index)return;const add=amount??Math.ceil(w.mag*(w.rocket?1:2));const before=A.reserve[i];A.reserve[i]=Math.min(w.reserveMax,before+add);got+=A.reserve[i]-before;});
+ if(got)A.emptyNote=false;return got;
 }
