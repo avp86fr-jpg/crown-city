@@ -18,7 +18,7 @@ The original city receives a selective surface finish using its collision mask. 
 
 The graphics update preserves collision geometry, missions, NFT portraits, the opening film and the trailer. Texture compression increased the complete set of 26 streamed outer sheets from approximately 6.35 MB to 7.37 MB; only nearby sheets are loaded, and decoded bitmap dimensions/cache budgets are unchanged.
 
-Performance results are recorded after the sustained mobile-emulation review. These measurements cannot establish a frame rate on a physical Redmi Note.
+A six-minute Chromium touch-browser run at 844×390, DPR 2 and 4× CPU throttling averaged **55.4 FPS**. Its 30-second samples ranged from **52.7 to 59.5 FPS**, with **18.6–31.4 MiB** of sampled JavaScript heap and no browser errors. The 80-chunk water-plan limit held throughout the route. These are emulation measurements on this host, not a frame-rate guarantee for a physical Redmi Note. The long run covered water, foliage and streamed terrain; the separate day/night browser checks exercise the smoke sources.
 
 ## Reproduce
 
