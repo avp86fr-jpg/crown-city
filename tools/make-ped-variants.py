@@ -22,6 +22,9 @@ LOOKS=[
  ('f','#d6c13a','#3c4f6e','#8a3a1e',(.85,.78,.7),'hard','pony'),    # workwear
  ('f','#9b8ab0','#55505e','#d8d6d2',(1.12,1.06,1.02),None,'bun'),   # elderly
 ]
+# look index -> (kind, colour, waist y, hem y, flare) as fractions of the frame height
+GARMENT={6:('dress','#a8283a',.46,.74,1.32),7:('skirt','#2c3f6e',.47,.63,1.12),8:('skirt','#4e535c',.47,.66,1.0),
+ 9:('dress','#e08672',.47,.68,1.24),11:('dress','#7b6c90',.46,.8,1.18)}
 def hls(rgb):
  mx=rgb.max(-1);mn=rgb.min(-1);l=(mx+mn)/2;d=mx-mn
  s=np.where(d<1e-6,0,d/np.maximum(1e-6,1-np.abs(2*l-1)))
@@ -58,6 +61,32 @@ def paint(cell,frame,look):
  if style=='bald':tint(hairm,'#c79a7c')
  else:tint(hairm,hair)
  rgb[skinm]=np.clip(rgb[skinm]*np.array(skin,np.float32),0,1)
+ a=a.copy()
+ g=GARMENT.get(LOOKS.index(look))
+ if g:
+  # Silhouette pass: paint the garment as a real shape over the legs. The
+  # hem follows each frame's leg spread so dresses swing with the stride.
+  kind,col,top_y,hem_y,flare=g
+  Hh,Ww=op.shape;rows=np.arange(Hh)
+  def ext(yf):
+   r=int(y0+fh*yf);r=min(max(r,0),Hh-1);xs=np.nonzero(op[r,int(x0):int(x0+fw)])[0]
+   return (x0+xs.min(),x0+xs.max()) if len(xs) else None
+  wa=ext(top_y+.02);hm=ext(hem_y-.02)
+  if wa and hm:
+   cxw=(wa[0]+wa[1])/2;hw=max(3.0,(wa[1]-wa[0])*.5*.46)
+   l0,l1=hm;mid=(l0+l1)/2;half=max(hw*1.05,(l1-l0)/2)*flare
+   ty=y0+fh*top_y;hy=y0+fh*hem_y
+   m=Image.new('L',(Ww,Hh),0);dd=ImageDraw.Draw(m)
+   pts=[(cxw-hw,ty),(cxw+hw,ty)]+[(mid+half*np.cos(t),hy+fh*.018*np.sin(t)) for t in np.linspace(0,np.pi,9)]
+   dd.polygon(pts,fill=255);m=m.filter(ImageFilter.GaussianBlur(.7))
+   mk=np.asarray(m,np.float32)/255
+   xs=(np.arange(Ww)[None,:]-(mid-half))/max(1,2*half);ys=(rows[:,None]-ty)/max(1,hy-ty)
+   shade=np.clip(1.22-.5*xs-.1*ys+.18*np.exp(-((xs-.32)/.09)**2),.55,1.3)
+   fold=1-.16*np.clip((np.abs(np.sin(xs*np.pi*3.2))-.8)*5,0,1)*np.clip(ys*1.4,0,1)
+   hem=np.where(ys>.9,.72,1.0)
+   c=hx(col)[None,None,:]*(shade*fold*hem)[...,None]
+   k=mk[...,None]*.97
+   rgb=rgb*(1-k)+np.clip(c,0,1)*k;a=np.maximum(a,mk*.98)
  out=np.concatenate([rgb,a[...,None]],-1)
  img=Image.fromarray((out*255).astype(np.uint8),'RGBA')
  # head position: centroid of opaque pixels in the top 14% of the frame

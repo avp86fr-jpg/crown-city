@@ -1712,9 +1712,11 @@ function tickCollisions(G) {
       const rv = (b.vx - a.vx) * best.nx + (b.vy - a.vy) * best.ny;
       if (rv < 0) {
         const imp = resolveVehicleImpulse(a,b,best.nx,best.ny,ma,mb);
+        // AI coherence telemetry: impacts between two non-player vehicles.
+        if(imp>12&&a!==P&&b!==P){const st=G.aiStats||(G.aiStats={vv:0});st.vv++;}
         for (const v of [a, b]) {
           if (v.isVan && imp > 50) v.loose = true;
-          if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; }
+          if (imp > 35 && v.traffic && v !== P) { v.traffic = false; v.loose = true; v.tr = null; v.parked = false; v.looseT = 0; v.knocked = true; v.restT = 0; }
           if (imp > 12 && v.parked && v !== P) { v.loose = true; v.parked = false; v.looseT = 0; }
         }
         if(fixedA)a.vx=a.vy=0;if(fixedB)b.vx=b.vy=0;
@@ -2261,7 +2263,14 @@ function tickVehicles(G, dt) {
       // knocked loose / abandoned: coast to a stop with physics
       tickDrive(G, v, { x: 0, y: 0, hand: false, brake: false }, dt, false);
       v.looseT = (v.looseT || 0) + dt;
-      if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;v.loose=false;v.parked=true;}
+      // A crashed ambient car rests a moment, then its driver pulls back into
+      // the correct lane; if no lane fits it is towed once out of view.
+      if(v.knocked&&v.ambient&&!v.burning&&!v.mission&&!v.keep&&v.health>25&&v.vx*v.vx+v.vy*v.vy<400){
+        v.restT=(v.restT||0)+dt;
+        if(v.restT>1.6&&(G.ticks%20)===0&&G.traffic?.rejoin?.(v))continue;
+        if(v.restT>6&&!G.traffic?.visible?.(v.x,v.y)){const i=G.vehicles.indexOf(v);if(i>=0)G.vehicles.splice(i,1);continue;}
+      }
+      if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;if(!(v.knocked&&v.ambient&&v.health>25)){v.loose=false;v.parked=true;}}
       continue;
     }
     if (v.burning || v.health < 45) tickVehDamage(G, v, dt);
@@ -3441,6 +3450,8 @@ function drawVeh(G, v) {
   let sprUse = spr;
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); const body=bodySize(v);ctx.ellipse(2,4,body.w,body.l*.86,0,0,TAU);ctx.fill();
+  // Tight contact shadow under the tyres grounds the car on the asphalt.
+  if(!v.def.boat&&G.settings.quality!=='low'){ctx.fillStyle="rgba(0,0,0,0.3)";ctx.beginPath();ctx.ellipse(1,2,body.w*.86,body.l*.8,0,0,TAU);ctx.fill();}
   const fleetSlot={bus:0,ambulance:1,van:2,stitch:3,hog:4,wake:5}[v.kind];
   const atlas=vehAtlas(fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas),slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
   if(atlas && slot!=null) {

@@ -61,7 +61,17 @@ export function drawVehicleFinish(G, v, w, h, pose) {
       const spin = Math.sin((v.visualTravel || 0) * .23) * 3.5;
       ctx.beginPath(); ctx.moveTo(-1.6, spin); ctx.lineTo(1.6, spin); ctx.stroke(); ctx.restore();
     }
-    if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);}
+    // Painted lenses are always present: pale headlamps, dark-red tail lamps
+    // that flare when braking. Lit cars at night also get a warm lens core.
+    if(!v.dead){
+      const nite=G.night||0;
+      ctx.fillStyle=nite>.3?'#fff4cf':'#e9e4cf';ctx.globalAlpha=.6;
+      ctx.beginPath();ctx.roundRect(-w*.31,-h*.425,w*.16,2.2,1.1);ctx.roundRect(w*.15,-h*.425,w*.16,2.2,1.1);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.8)';ctx.fillRect(-w*.29,-h*.42,1.4,1);ctx.fillRect(w*.17,-h*.42,1.4,1);
+      ctx.globalAlpha=1;
+      if(!v.braking){ctx.fillStyle=nite>.3?'#c8342e':'#7c1f22';ctx.fillRect(-w*.3,h*.385,w*.13,2.2);ctx.fillRect(w*.17,h*.385,w*.13,2.2);}
+    }
+    if(v.braking&&!v.dead){ctx.fillStyle='#ef6153';ctx.fillRect(-w*.29,h*.39,5,3);ctx.fillRect(w*.29-5,h*.39,5,3);ctx.fillStyle='rgba(255,190,170,.8)';ctx.fillRect(-w*.29+1,h*.39+1,2,1);ctx.fillRect(w*.29-4,h*.39+1,2,1);}
     // Reverse lights are distinct from the warm brake lamps.
     if (!v.dead && (v.fwd || 0) < -5) { ctx.fillStyle = '#d3f4ff'; ctx.fillRect(-w * .24, h * .39, 3, 2); ctx.fillRect(w * .24 - 3, h * .39, 3, 2); }
   }

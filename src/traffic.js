@@ -316,7 +316,7 @@ export function createTraffic(G) {
     }
   }
   function trafficPose(v,p,dt){const decay=Math.exp(-dt*4);p.x+=(v.tr.offsetX||0)*decay;p.y+=(v.tr.offsetY||0)*decay;return p;}
-  function commit(v,p,dt){v.x=p.x;v.y=p.y;v.rot=p.rot;v.tr.offsetX=(v.tr.offsetX||0)*Math.exp(-dt*4);v.tr.offsetY=(v.tr.offsetY||0)*Math.exp(-dt*4);}
+  function commit(v,p,dt){v.x=p.x;v.y=p.y;const ro=v.tr.rotOff||0;v.rot=p.rot+ro;if(ro){const k=Math.exp(-dt*3);v.tr.rotOff=Math.abs(ro*k)<.002?0:ro*k;}v.tr.offsetX=(v.tr.offsetX||0)*Math.exp(-dt*4);v.tr.offsetY=(v.tr.offsetY||0)*Math.exp(-dt*4);}
   // An isolated spur with no full-body turnaround is not an ambient route.
   // Keep it playable, but do not dispatch cars into an inescapable corner.
   if(G.surfaceAt)for(const e of graph.edges)for(const end of [e.A,e.B])if(end.edges.length===1){
@@ -330,6 +330,31 @@ export function createTraffic(G) {
   const T = {
     target: 34,
     diagnostics(){return [...junctions].map(([zone,owners])=>({zone,owners:[...owners].map(v=>({kind:v.kind,x:v.x,y:v.y,s:v.tr?.s,releaseAt:v.tr?.releaseAt,turn:!!v.tr?.turn,route:!!v.tr?.route,edge:[v.tr?.e.A.id,v.tr?.e.B.id]}))}));},
+    // Crash recovery: put a knocked-loose car back on the nearest lane that
+    // runs the way it is facing. Position and heading blend back over ~1 s
+    // through the lane controller's offset decay, so nothing snaps or spins.
+    visible(x,y){return visibleSpawn(G,x,y);},
+    rejoin(v){
+      if(!v.def||v.def.boat||v.def.aircraft||v.dead)return false;
+      const hx=Math.sin(v.rot),hy=-Math.cos(v.rot),own=bodySize(v);let best=null,bd=48;
+      for(const e of graph.edges){
+        if(closedCaps.has(e))continue;
+        const minx=Math.min(e.A.x,e.B.x)-e.w,maxx=Math.max(e.A.x,e.B.x)+e.w,miny=Math.min(e.A.y,e.B.y)-e.w,maxy=Math.max(e.A.y,e.B.y)+e.w;
+        if(v.x<minx||v.x>maxx||v.y<miny||v.y>maxy)continue;
+        const t=clamp((v.x-e.A.x)*e.dx+(v.y-e.A.y)*e.dy,0,e.len);
+        for(const fwd of [true,false]){
+          if((fwd?1:-1)*(e.dx*hx+e.dy*hy)<.64)continue;
+          const s=fwd?t:e.len-t,lo=trimAt(fwd?e.A:e.B,e)+own.l+20,hi=e.len-trimAt(fwd?e.B:e.A,e)-own.l-30;if(s<lo||s>hi)continue;
+          for(let lane=0;lane<e.lanes;lane++){const p=edgePoint(e,fwd,s,lane),d=Math.hypot(p.x-v.x,p.y-v.y);if(d<bd&&canDepart(v,e,fwd,lane)&&poseClear(v,p)){bd=d;best={e,fwd,s,lane,p};}}
+        }
+      }
+      if(!best)return false;
+      const dr=Math.atan2(Math.sin(v.rot-best.p.rot),Math.cos(v.rot-best.p.rot));
+      v.traffic=true;v.loose=false;v.parked=false;v.knocked=false;v.vx=v.vy=v.yaw=0;
+      v.tr={e:best.e,fwd:best.fwd,s:best.s,lane:best.lane,spd:0,turn:null,offsetX:v.x-best.p.x,offsetY:v.y-best.p.y,rotOff:dr};
+      v.driverPace??=.82+Math.random()*.26;v.cruise=trafficCruise(v,best.e,G);v.ambient=true;
+      return true;
+    },
     spawnCar(near, minD, maxD, kind) {
       const candidates=spawnEdges(near,maxD);if(!candidates.edges.length)return null;
       for (let tries = 0; tries < 24; tries++) {
@@ -380,6 +405,18 @@ export function createTraffic(G) {
           if (!v.ambient && !v.loose) return true;
           return Math.hypot(v.x - P.x, v.y - P.y) < 2400;
         });
+        // Deadlock relief. A car frozen for 16 s that nobody can see is
+        // quietly retired (and respawned elsewhere by the budget). A frozen
+        // junction owner in view gives up its reservation so the queue moves.
+        for(let i=G.vehicles.length-1;i>=0;i--){const v=G.vehicles[i];if(!v.traffic||!v.tr||v.dead||v===P)continue;
+          if(!((v.stillT||0)>12))continue;
+          const special=v.mission||v.isVan||v.keep||v.siren||v.role||v.pdCar||v.chasing;
+          if(!special&&v.ambient&&!visibleSpawn(G,v.x,v.y)){G.vehicles.splice(i,1);T.retired=(T.retired||0)+1;continue;}
+          // Last resort for an in-view gridlock (e.g. two cars locked mid-turn):
+          // after 24 s the car fades out over two seconds rather than freezing the block.
+          if(!special&&v.ambient&&v.stillT>18){v.retireAt??=G.ticks;if(G.ticks-v.retireAt>=120){G.vehicles.splice(i,1);T.retired=(T.retired||0)+1;continue;}}
+          if(v.tr.reserved!=null&&!v.tr.turn){const o=junctions.get(v.tr.reserved);o?.delete(v);v.tr.reserved=null;v.tr.route=null;v.tr.candidates=null;v.tr.junctionCheck=G.ticks+90;v.stillT=8;}
+        }
         let n=0,blocked=0;for(const v of G.vehicles)if(v.traffic&&v.tr&&!v.dead){n++;if(v.tr.waitSince!=null&&G.ticks-v.tr.waitSince>600||v.blockedT>4)blocked++;}
         const elapsed=Math.min(1,(G.ticks-(T.populationTick??G.ticks-15))/60);T.populationTick=G.ticks;
         const flow=trafficFlowBudget(T,blocked,n,elapsed);
@@ -521,6 +558,7 @@ export function createTraffic(G) {
         }
 
         v.vx = Math.sin(v.rot) * tr.spd; v.vy = -Math.cos(v.rot) * tr.spd;
+        v.stillT=tr.spd<3&&!(tr.waitSince!=null&&!lightGreen(G,tr.fwd?tr.e.B:tr.e.A,tr.e))?(v.stillT||0)+dt:0;
         v.braking = want < tr.spd - 5 || tr.spd < 3;
         v.fwd = tr.spd;
       }
@@ -645,7 +683,7 @@ export function createPeds(G) {
       const sp = p.crossing ? p.walk * 1.4 : p.walk;
       if(!stepPedestrian(G,p,tr,sp,dt,{road:p.crossing||onRoad})){
         p._blockedWalk=(p._blockedWalk||0)+dt;
-        if(p._blockedWalk>.6){p.hx=-p.hx;p.hy=-p.hy;p._turning=true;p.crossing=false;p._blockedWalk=0;}
+        if(p._blockedWalk>(p.crossing?.6:1.4)){p.hx=-p.hx;p.hy=-p.hy;p._turning=true;p.crossing=false;p._blockedWalk=0;}
       }else p._blockedWalk=0;
       p.onRoad = surf(p.x,p.y)==='road';
     },

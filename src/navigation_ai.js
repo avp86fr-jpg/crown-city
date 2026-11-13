@@ -130,7 +130,9 @@ export function safeCrossing(G,p){
  }
  if(geometry.invalid){p._crossRouteInvalid=true;return false;}
  junction=geometry.junction;
- if(!junction)return false;
+ // Mid-block curbs have no crossing: walk on to the corner instead of
+ // queueing at the kerb (this used to gather crowds facing the traffic).
+ if(!junction){p._crossRouteInvalid=true;return false;}
  const walkSpeed=Math.max(36,(p.walk||32)*1.4);
  const crossingTime=((geometry.exitDistance||((Math.abs(hx)>0?junction.hw:junction.hh)*2))+12)/walkSpeed;
  if(junction.sig){const phase=((G.ticks/60)%16+16)%16,ns=Math.abs(hy)>Math.abs(hx);if(ns?phase>6-crossingTime:phase<8||phase>14-crossingTime)return false;}

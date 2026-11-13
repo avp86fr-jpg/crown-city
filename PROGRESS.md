@@ -47,3 +47,9 @@
 - Load: circuit paint (1.3 MB, 4096 px) now streams only when the camera nears the park on desktop. Desktop transfer 9.1 -> 7.8 MB, JS heap 25 -> 22 MB after 10 s play.
 - Pedestrians: backpacks, briefcases, shoulder bags and totes per wardrobe look (55% carry one).
 - Getaway: on-foot arrival at the garage now tells you to take the Riot in the bay.
+
+## Pass 5 — sprites + AI coherence (preview only)
+- Traffic: knocked-loose ambient cars now try to rejoin the nearest same-direction lane (canDepart/poseClear) after 1.6 s, despawn out of view after 6 s instead of turning into parked lane blockers (Hunter Garage pile-up). Deadlock relief: cars still >12 s out of view retire, >18 s in view fade out over 2 s; frozen non-turning junction owners release their reservation. Smooth heading blend (rotOff) on rejoin.
+- Pedestrians: mid-block kerb crossings invalidated so walkers continue to the corner crosswalk instead of crowding; blocked-reversal delay 1.4 s (0.6 s while crossing) to cut jitter.
+- Sprites: painted headlamp/tail lenses with highlights (brighter at night), tighter contact shadow under cars; crowd looks regenerated with dress/skirt silhouettes (5 looks) following walk-frame leg spread.
+- Metrics (40 s × 6 districts, before→after): stuck>20 s 22→13, stuck>12 s 47→37, knocked cars in road at garage 2→0, v-v impacts ~0 both. Downtown light queues still count as stuck (2→7, mostly red-light queues); midtown showed 3.35% ped-on-road samples (crosswalk counting), garage reversals 0.8/min.
