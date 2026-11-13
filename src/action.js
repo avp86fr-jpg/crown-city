@@ -1,3 +1,4 @@
+import {restoreOperationState} from './crew_operations.js';
 import {CIRCUIT,CIRCUIT_VERSION} from './circuit_world.js';
 import {recoverRiot} from './vehicle_recovery.js';
 import {EXPANSION_JOBS,EXPANSION_DEBRIEFS} from './expansion_jobs.js';
@@ -18,7 +19,7 @@ export function actionState(s={}) {
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
  completedJobs:[...new Set((Array.isArray(s.completedJobs)?s.completedJobs:[]).filter(id=>CONTRACTS.some(c=>c.id===id)))],
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&['courier','ghost','drift','rescue','signal','harbour','canal','casino','airlift','ridge','nightline','coldsignal','clockwork','airdrop','circuit'].includes(s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,720),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6))}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&CONTRACTS.some(c=>c.id===s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,CONTRACTS.find(c=>c.id===s.contract.id).time),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6)),...restoreOperationState(s.contract)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
 export function actionSave(A) {return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
@@ -120,9 +121,9 @@ export function tickAction(G,dt,hooks) {
   if(c.id==='ghost'){const a=G.meta.interactions.pd;if(!c.stage&&Math.hypot(P.x-a[0],P.y-a[1])<100){c.stage=1;G.wanted=Math.max(2,G.wanted);G.seenT=0;G.waypoint=null;G.gps=null;message(G,'MASK','Metro noticed. Find an alley. Do not lead them back to me.');}done=c.stage===1&&G.wanted===0;}
   if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
   if(c.id==='rescue'||c.id==='signal'||c.id==='harbour'||EXPANSION_JOBS.some(j=>j.id===c.id))done=tickStreetJob(G,c,dt,message);
-  if(c.t===0)done=false;
+  if(c.t===0||c.failed)done=false;
   if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;if(!A.completedJobs.includes(c.id))A.completedJobs.push(c.id);message(G,def.contact,'+'+def.reward+' chips. '+(EXPANSION_DEBRIEFS[c.id]||STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
-  else if(c.t===0){message(G,def.contact,'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}
+  else if(c.t===0||c.failed){message(G,def.contact,c.failed||'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}
  }
  A.comboT=Math.max(0,A.comboT-dt);if(!A.comboT)A.combo=0;
 

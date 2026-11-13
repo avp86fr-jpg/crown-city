@@ -7,6 +7,7 @@ import {drawCircuitActivity} from './motorsport.js';
 import {drawCityHubs} from './world_hubs.js';
 import {CIRCUIT} from './circuit_world.js';
 import {prepareBakedWorld,drawBakedWorldTile,hasBakedWorldTile} from './baked_world.js';
+import {BAKED_WORLD} from './baked_world_manifest.js';
 /* A bounded painted-city renderer. Static layers are composed once, never per frame. */
 import {mobileTint,drawMobileVehicleLights,LIGHT,visibleStreetLights,drawTrafficSignals} from './lighting.js';
 import {loadScenery} from './assets.js';
@@ -57,7 +58,7 @@ function tile(G,tx,ty,night) {
   if(!e){
     e={image:null,t:G.ticks,pending:false,retryAt:0};cache.set(key,e);
   }
-  if(!e.image&&!e.pending&&G.ticks>=e.retryAt){e.pending=true;loadScenery(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp`,768).then(im=>{if(e.retired)im.close?.();else e.image=im;}).catch(()=>{e.retryAt=G.ticks+600;}).finally(()=>e.pending=false);}
+  if(!e.image&&!e.pending&&G.ticks>=e.retryAt){e.pending=true;loadScenery(`assets/mobile/${night?'night':'day'}/${tx}_${ty}.webp?v=${BAKED_WORLD.version}`,768).then(im=>{if(e.retired)im.close?.();else e.image=im;}).catch(()=>{e.retryAt=G.ticks+600;}).finally(()=>e.pending=false);}
   e.t=G.ticks;e.frame=G._coreFrame;
   // The boot albedo keeps the first frame painted while its finished tile decodes.
   return e.image||G.assets.layers.albedo?.img.get(tx+'_'+ty)||null;

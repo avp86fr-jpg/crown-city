@@ -5,6 +5,7 @@ import {bloodImpact,runoverBlood,tickBlood,drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {CIRCUIT,trackPoint,nearestTrack} from './circuit_world.js';
 import {drawAtlasLabels} from './map_labels.js';
+import {drawMinimapBackdrop} from './minimap_backdrop.js';
 import {stepPedestrian} from './pedestrian_motion.js';
 import {drawMapPlaces,placeButtons,MAP_PLACES} from './map_places.js';
 import {drawStreetGateways} from './world_streets.js';
@@ -23,6 +24,7 @@ import {initWildlife,tickWildlife,drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
 import { bodySize, localPoint, circleBody, segmentBody, segmentCircle, bodyContact, resolveVehicleImpulse, nearbyPairs, worldBodyHit, waterBerth, muzzleLength } from './collision.js';
 import { vehicleCondition, recordVehicleDamage, damageSnapshot, restoreDamage, drawVehicleDamage } from './vehicle_dynamics.js';
+import { vehicleHandling, rollingResistance } from './vehicle_handling.js';
 import { AIRCRAFT_DEFS, airborne, spawnAircraft, tickAircraft, aircraftSnapshot, restoreAircraft, drawAircraft, aviationHint, canExitAircraft } from './aviation.js';
 import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, drawExpansionHUD } from './expansion.js';
 import { drawExpansionOverhead } from './expansion_world.js';
@@ -64,22 +66,20 @@ const angNorm = (a) => {
 const now = () => performance.now() / 1000;
 
 const VEH_DEFS = {
-  nyx: { name: "Nyx Sixteen", kind: "hyper", sprite: "nyx", accel: 280, max: 340, steer: 2.4, grip: 0.9, brake: 340, mass: 1.4, r: 28 },
-  riot: { name: "Riot V8", kind: "muscle", sprite: "riot", accel: 200, max: 240, steer: 2.05, grip: 0.74, brake: 260, mass: 1.3, r: 26 },
-  dart: { name: "Neon Dart", kind: "sports", sprite: "dart", accel: 240, max: 280, steer: 2.5, grip: 0.82, brake: 300, mass: 1.0, r: 24 },
-  fare: { name: "Fare Lane", kind: "sedan", sprite: "fare", accel: 150, max: 190, steer: 2.2, grip: 0.8, brake: 220, mass: 1.15, r: 24 },
-  metro: { name: "Metro PD", kind: "police", sprite: "metro", accel: 190, max: 230, steer: 2.25, grip: 0.8, brake: 260, mass: 1.2, r: 25, cop: true },
-  stitch: { name: "Stitch S", kind: "bike", sprite: "stitch", accel: 230, max: 260, steer: 3.15, grip: 0.62, brake: 260, mass: 0.55, r: 14, bike: true },
-  hog: { name: "Iron Hog", kind: "bike", sprite: "hog", accel: 170, max: 200, steer: 2.4, grip: 0.7, brake: 200, mass: 0.7, r: 15, bike: true },
-  wake: { name: "Wake 39", kind: "boat", sprite: "wake", accel: 160, max: 210, steer: 2.0, grip: 0.45, brake: 80, mass: 1.1, r: 26, boat: true },
-  gulf: { name: "Gulf Queen", kind: "boat", sprite: "gulf", accel: 110, max: 150, steer: 1.6, grip: 0.5, brake: 70, mass: 1.6, r: 30, boat: true },
-  van: { name: "Seed Van", kind: "sedan", sprite: "fare", accel: 80, max: 110, steer: 1.6, grip: 0.85, brake: 160, mass: 1.8, r: 28, van: true },
-  taxi: { name: "Crown Cab", kind: "sedan", sprite: "taxi", accel: 150, max: 180, steer: 2.1, grip: 0.8, brake: 220, mass: 1.15, r: 24 },
-  ambulance: { name: "Mercy Unit", kind: "sedan", sprite: "ambulance", accel: 200, max: 220, steer: 2.15, grip: 0.8, brake: 240, mass: 1.2, r: 26 },
-  bus: { name: "Line 7", kind: "sedan", sprite: "bus", accel: 80, max: 110, steer: 1.3, grip: 0.85, brake: 180, mass: 2.4, r: 36 },
+  nyx: { name: "Nyx Sixteen", kind: "hyper", sprite: "nyx", accel: 360, max: 430, steer: 2.4, grip: 0.94, brake: 390, mass: 1.4, r: 28 },
+  riot: { name: "Riot V8", kind: "muscle", sprite: "riot", accel: 280, max: 305, steer: 2.1, grip: 0.74, brake: 270, mass: 1.3, r: 26 },
+  dart: { name: "Neon Dart", kind: "sports", sprite: "dart", accel: 300, max: 350, steer: 2.5, grip: 0.88, brake: 345, mass: 1.0, r: 24 },
+  fare: { name: "Fare Lane", kind: "sedan", sprite: "fare", accel: 170, max: 230, steer: 2.2, grip: 0.8, brake: 230, mass: 1.15, r: 24 },
+  metro: { name: "Metro PD", kind: "police", sprite: "metro", accel: 260, max: 295, steer: 2.25, grip: 0.84, brake: 310, mass: 1.2, r: 25, cop: true },
+  stitch: { name: "Stitch S", kind: "bike", sprite: "stitch", accel: 330, max: 340, steer: 3.15, grip: 0.72, brake: 300, mass: 0.55, r: 14, bike: true },
+  hog: { name: "Iron Hog", kind: "bike", sprite: "hog", accel: 215, max: 245, steer: 2.4, grip: 0.74, brake: 245, mass: 0.7, r: 15, bike: true },
+  wake: { name: "Wake 39", kind: "boat", sprite: "wake", accel: 205, max: 265, steer: 2.0, grip: 0.58, brake: 95, mass: 1.1, r: 26, boat: true },
+  gulf: { name: "Gulf Queen", kind: "boat", sprite: "gulf", accel: 130, max: 180, steer: 1.6, grip: 0.5, brake: 70, mass: 1.6, r: 30, boat: true },
+  van: { name: "Seed Van", kind: "sedan", sprite: "fare", accel: 90, max: 140, steer: 1.6, grip: 0.85, brake: 170, mass: 1.8, r: 28, van: true },
+  taxi: { name: "Crown Cab", kind: "sedan", sprite: "taxi", accel: 155, max: 215, steer: 2.1, grip: 0.8, brake: 215, mass: 1.15, r: 24 },
+  ambulance: { name: "Mercy Unit", kind: "sedan", sprite: "ambulance", accel: 210, max: 255, steer: 1.95, grip: 0.8, brake: 255, mass: 1.65, r: 26 },
+  bus: { name: "Line 7", kind: "sedan", sprite: "bus", accel: 82, max: 125, steer: 1.3, grip: 0.85, brake: 175, mass: 2.4, r: 36 },
 };
-// the city is ~6x bigger now: everything drivable gets more legs (scripted van/bus stay slow)
-for (const [k, d] of Object.entries(VEH_DEFS)) if (k !== "van" && k !== "bus") { d.max = Math.round(d.max * 1.3); d.accel = Math.round(d.accel * 1.4); }
 
 Object.assign(VEH_DEFS, AIRCRAFT_DEFS);
 
@@ -671,7 +671,7 @@ function watchCanvas(G,canvas){
   if(canvas._ccWatched||!canvas.addEventListener)return;canvas._ccWatched=true;
   canvas.addEventListener('contextlost',e=>{e.preventDefault();G.releaseControls?.();G.frozenWorld=null;G.renderRecovery=(G.renderRecovery||0)+1;});
   canvas.addEventListener('contextrestored',()=>{
-    G.frozenWorld=null;G._waterPat=null;G.aircraftArtCache?.clear();G.regionalPlatformCache?.clear();G.journeyArt?.clear();
+    G.frozenWorld=null;G._waterPat=null;if(G.minimapBackdrop)G.minimapBackdrop.source=null;G.aircraftArtCache?.clear();G.regionalPlatformCache?.clear();G.journeyArt?.clear();
     for(const entry of G.mobileOuter?.values()||[]){entry.retired=true;entry.job?.return();entry.bitmap?.close();if(entry.canvas)entry.canvas.width=1;if(entry.working)entry.working.width=1;}
     G.mobileOuter?.clear();G.ground.cache.clear();G.light=createLighting();fit(G);
   });
@@ -1466,9 +1466,9 @@ function moveFootMap(G,p,dx,dy){
 function tickDrive(G, v, input, dt, isPlayer) {
   v.prevX=v.x;v.prevY=v.y;const oldRot=v.rot;
   if(isPlayer) applyTune(G,v);
-  const def = v.def,condition=vehicleCondition(v);
+  const def = v.def,condition=vehicleCondition(v),handling=vehicleHandling(def);
   if(v.health>=99&&v.damage){v.damage=null;v.damageStage='GOOD';}
-  if(v.health<=0)input={...input,y:0,hand:true};
+  if(v.health<=0)input={...input,y:0,hand:true,brake:false};
   const surf = v.def.boat ? G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x,v.y) : G.surfaceAt(v.x, v.y);
   if (v.dead) {
     const damping=Math.exp(-4*dt);v.vx*=damping;v.vy*=damping;
@@ -1485,7 +1485,9 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  let braking=!!input.brake,throttle=braking?0:Math.max(0,input.y||0),reverse=braking?0:Math.max(0,-(input.y||0));
+  const surfaceGrip=GRIP[surf]??.7,wetGrip=G.wet>.3?.8:1;
+  const brakeForce=def.brake*condition.brake*(def.boat?1:Math.sqrt(surfaceGrip)*wetGrip);
+  let braking=!!input.brake,throttle=braking?0:clamp(input.y||0,0,1),reverse=braking?0:clamp(-(input.y||0),0,1),shiftBraking=false;
   const carPedal=isPlayer&&braking&&!def.boat&&!def.bike&&!def.aircraft;
   if(carPedal){
     if(fwd < -3)v.brakeReverse=true;
@@ -1495,53 +1497,58 @@ function tickDrive(G, v, input, dt, isPlayer) {
     }
     if(v.brakeReverse){braking=false;reverse=.7;}
   }else{v.brakeHold=0;v.brakeReverse=false;}
-  if(braking){fwd=Math.sign(fwd)*Math.max(0,Math.abs(fwd)-def.brake*condition.brake*dt);lat*=Math.exp(-4*dt);}
+  if(braking){fwd=Math.sign(fwd)*Math.max(0,Math.abs(fwd)-brakeForce*dt);lat*=Math.exp(-4*wetGrip*dt);}
   const hand = !!input.hand;
   v.reverseDelay=reverse&&fwd>4?.22:Math.max(0,(v.reverseDelay||0)-dt);
   const isNyx = def.sprite === "nyx" && isPlayer;
   const boosting = isNyx && (input.boost || input.sprint) && throttle > 0;
   v.boost = boosting ? 1 : 0;
   const top = def.max * (boosting ? 1.25 : 1) * condition.top;
-  // power curve: strong low end, tapering near top speed
+  // Model-specific torque curves reach their rated speed. The old shared drag
+  // overwhelmed several engines before that speed and made road cars converge.
   const k = clamp(Math.abs(fwd) / top, 0, 1);
-  const torque = def.accel * condition.power * (1.25 - 0.95 * k * k) * (isNyx ? 1 + 0.35 * Math.max(0, 1 - Math.abs(fwd) / 160) : 1) * (boosting ? 1.5 : 1);
+  const offroad=surf==='grass'||surf==='sand'||surf==='dirt';
+  const baseResistance=rollingResistance(Math.abs(fwd),handling);
+  const resistance=baseResistance+(offroad?Math.abs(fwd)*.34:0)+(onLand?Math.abs(fwd)*3:0);
+  const torque=def.accel*condition.power*Math.max(0,1-Math.pow(k,handling.curve))*(boosting?1.4:1);
   if (throttle > 0) {
-    if (fwd < -5) fwd = Math.min(0,fwd+def.brake * condition.brake * throttle * dt); // braking out of reverse
-    else fwd += torque * throttle * dt;
+    if (fwd < -5){fwd=Math.min(0,fwd+brakeForce*throttle*dt);shiftBraking=true;}
+    else fwd+=(torque+(k<1?baseResistance*.96:0))*throttle*dt;
   }
   if (reverse > 0) {
-    if (fwd > 5) fwd = Math.max(0,fwd-def.brake * condition.brake * reverse * dt); // brake first
-    else if(!v.reverseDelay) fwd -= def.accel * condition.power * 0.55 * reverse * dt;
+    if (fwd > 5){fwd=Math.max(0,fwd-brakeForce*reverse*dt);shiftBraking=true;}
+    else if(!v.reverseDelay){
+      const reverseLoad=clamp(-fwd/(handling.reverse*condition.top),0,1);
+      fwd-=(def.accel*condition.power*.55*(1-reverseLoad)+(fwd<0&&reverseLoad<1?baseResistance*.96:0))*reverse*dt;
+    }
   }
   if (hand) fwd *= Math.exp(-(def.bike ? 1.4 : 0.9) * dt);
-  if(!def.boat){const cornerTop=top/(1+Math.abs(input.x||0)*.78);if(Math.abs(fwd)>cornerTop)fwd*=Math.exp(-Math.abs(input.x||0)*1.8*dt);}
-  // surface grip
+  const coast=!throttle&&!reverse&&!braking?handling.engineBrake:0;
+  fwd-=Math.sign(fwd)*Math.min(Math.abs(fwd),(resistance+coast)*dt);
+  // Tire grip and rudder authority are separate from engine power.
   const speed0 = Math.abs(fwd);
-  let grip = def.grip * condition.grip * (GRIP[surf] || 0.7) * (G.wet > 0.3 ? 0.8 : 1);
-  if (def.boat) grip = onLand ? 0.2 : 0.62 + 0.25 * Math.max(0, 1 - speed0 / 160); // boats carve: more bite at low speed, slide when fast
-  if(def.bike)grip=def.grip*1.45*condition.grip*(GRIP[surf]||.7)*(G.wet>.3?.8:1);
+  let grip=def.grip*condition.grip*surfaceGrip*wetGrip;
+  if(def.boat)grip=onLand?.2:def.grip*condition.grip*(1+.3*Math.max(0,1-speed0/160));
+  if(def.bike)grip*=1.15;
   const speed = Math.abs(fwd);
-  // steering: speed-sensitive, understeer at the top end, more bite on bikes
+  // Heavy bodies build yaw gradually; compact sports cars respond quickly.
   const steerIn = clamp(input.x || 0, -1, 1);
-  const steerAuth = def.steer * Math.min(1, speed / (def.bike ? 28 : def.boat ? 40 : 55)+(def.boat?Math.abs(throttle-reverse)*.2:0)) * (1 - (def.bike ? 0.25 : 0.35) * k) * (hand&&!def.boat ? 1.35 : 1) * (def.boat ? .82 : 1);
+  const steerAuth=def.steer*Math.min(1,speed/handling.lowSpeed+(def.boat?Math.abs(throttle-reverse)*.2:0))*(1-handling.turnFalloff*k)*(hand&&!def.boat?1.25:1)*(def.boat?.82:1);
   const yawRate = steerIn * steerAuth * Math.sign(fwd || 1) * 1.15;
-  v.yaw = lerp(v.yaw || 0, yawRate, Math.min(1, (def.bike ? 12 : 8) * dt));
-  v.rot += v.yaw * dt;
-  // lateral slip: handbrake lets the rear step out
-  const slipGrip = def.boat ? 10 : hand ? 1.1 : (isNyx && Math.abs(steerIn) > 0.6 && speed > 150 ? 4.2 : 7.5);
-  if(def.boat)lat -= fwd*Math.sin(v.yaw*dt)*.35;
-  lat *= Math.exp(-grip * slipGrip * dt * (def.boat ? 0.5 : 1));
-  if (hand && !def.boat && speed > 60) lat += -steerIn * speed * 0.9 * dt; // kick the tail out
+  v.yaw=lerp(v.yaw||0,yawRate,1-Math.exp(-handling.response*dt));
+  const turn=v.yaw*dt,ct=Math.cos(turn),st=Math.sin(turn),nextForward=fwd*ct+lat*st;
+  // Rotate the local frame, not momentum: the velocity initially keeps its
+  // world direction. Tire friction then pulls it into the new heading.
+  lat=lat*ct-fwd*st;fwd=nextForward;v.rot+=turn;
+  lat*=Math.exp(-grip*(hand&&!def.boat?handling.driftTraction:handling.traction)*dt);
+  if(!def.boat)fwd*=Math.exp(-Math.abs(v.yaw)*handling.cornerScrub*dt);
   v.drifting = !def.boat && Math.abs(lat) > 34 && speed > 60;
-  // rolling + aero drag
-  fwd *= Math.exp(-((def.boat&&!throttle?.38:.12) + (onLand ? 3 : 0) + (surf === "grass" || surf === "sand" || surf === "dirt" ? 0.35 : 0)) * dt);
-  fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 0.0009 * fwd * fwd * dt * 60 * 0.02);
   if (def.boat && !onLand) fwd *= Math.exp(-Math.abs(v.yaw || 0) * 0.35 * dt); // turning bleeds speed into the wake
-  const reverseTop=!def.boat&&!def.bike?Math.min(72,def.max*.32):def.max*.42;
-  fwd = clamp(fwd, -reverseTop, top);
-  v.lean = lerp(v.lean || 0, steerIn * Math.min(1, speed / 140) * (def.bike ? 0.55 : def.boat ? 0.3 : 0.16) + (def.boat && !onLand ? Math.sin(G.ticks * 0.07 + v.x * 0.01) * 0.05 : 0), (def.bike ? 10 : 8) * dt);
+  // Rated speed limits engine output, never collision momentum. Do not snap a
+  // fast vehicle to a new cap when it takes damage or exits a boost.
+  v.lean=lerp(v.lean||0,steerIn*Math.min(1,speed/140)*handling.lean+(def.boat&&!onLand?Math.sin(G.ticks*.07+v.x*.01)*.05:0),1-Math.exp(-(def.bike?10:8)*dt));
   v.turnSign = steerIn;
-  v.braking = braking || reverse > 0 && fwd > 5 || hand;
+  v.braking=braking||shiftBraking||hand;
   v.visualAccel = lerp(v.visualAccel || 0, clamp((fwd - (v.fwd || 0)) / Math.max(.01, dt) / 250, -1, 1), Math.min(1, dt * 9));
   v.visualTravel = (v.visualTravel || 0) + speed * dt;
   v.fwd = fwd;
@@ -3475,8 +3482,7 @@ function drawMinimap(G, x, y, size, span) {
   const k = size / span; // screen px per world px
   const cx = x + size / 2, cy = y + size / 2;
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(M.c, (P.x - span / 2) / M.S, (P.y - span / 2) / M.S, span / M.S, span / M.S, x, y, size, size);
-  ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(x, y, size, size);
+  drawMinimapBackdrop(G,x,y,size,span);
   const to = (wx, wy) => [cx + (wx - P.x) * k, cy + (wy - P.y) * k];
   // GPS route
   if (G.gpsPts && G.gpsPts.length > 2) {
@@ -3485,7 +3491,6 @@ function drawMinimap(G, x, y, size, span) {
     for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); }
     ctx.stroke();
   }
-  drawTransitMap(G,to,{x,y,size});
   drawMapPlaces(G,to,true);
   for(const pad of G.world.expansion?.helipads||[]){if(Math.abs(pad.x-P.x)>span/2+50||Math.abs(pad.y-P.y)>span/2+50)continue;const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for (const c of G.cops) { const p = to(c.x, c.y); ctx.fillStyle = ((G.ticks / 8) | 0) % 2 ? "#ff3048" : "#3a6bff"; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5 * u, 0, TAU); ctx.fill(); }

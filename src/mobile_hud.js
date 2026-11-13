@@ -1,3 +1,4 @@
+import {operationStatus} from './crew_operations.js';
 import {circuitHint} from './motorsport.js';
 import {dropReady} from './airdrop.js';
 import { WEAPONS, CONTRACTS } from './action.js';
@@ -19,10 +20,11 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  panel(R-cashW,T,cashW,44*d);text(Math.round(G.chips).toLocaleString('en-US')+'  CHIPS',R-cashW+9*d,T+17*d,12,'#e5c486',800);
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');
  const mx=portrait?L+mm+10*d:Math.max(L+mm+18*d,W*.28),mw=portrait?R-mx:Math.min(W*.42,340*d),my=portrait?T+52*d:T;
+ const activeJob=A.contract&&CONTRACTS.find(j=>j.id===A.contract.id),operationInfo=operationStatus(G,A.contract);
  const hint=circuitHint(G)||G.expansionHint||G.hint||'Explore Crown City. The crew always has work.';
- c.font=font(8*d,700);const flight=G.player.def?.aircraft?wrap(c,`${G.player.flightState||'PARKED'} / ALT ${Math.round(G.player.altitude||0)}${dropReady(G)?' / DROP: 45–220 ALT':''}`,mw-20*d,2):[];
+ c.font=font(8*d,700);const flight=G.player.def?.aircraft?wrap(c,A.contract?.id==='skytrace'&&operationInfo?operationInfo:`${G.player.flightState||'PARKED'} / ALT ${Math.round(G.player.altitude||0)}${dropReady(G)?' / DROP: 45–220 ALT':''}`,mw-20*d,3):[];
  c.font=font(11*d,650);const rows=wrap(c,hint.replace(/\(E\)/g,'').replace(/press E/gi,'tap TAKE'),mw-20*d,5);
- panel(mx,my,mw,(26+rows.length*15+flight.length*12)*d,'#ddba7c');text(missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
+ panel(mx,my,mw,(26+rows.length*15+flight.length*12)*d,'#ddba7c');text(activeJob?.title||missionTitle||'AFTER HOURS',mx+10*d,my+15*d,8,'#ddba7c',800);
  rows.forEach((line,i)=>text(line,mx+10*d,my+(31+i*15)*d,11));
  flight.forEach((line,i)=>text(line,mx+10*d,my+(31+rows.length*15+i*12)*d,8,G.player.stall?'#ffb093':'#9ed5cf'));
  const objectiveAt=G.waypoint||objective(G);
@@ -31,7 +33,7 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  if(G.wanted){text(G.evading?'SEARCHING / STAY OUT OF SIGHT':'SPOTTED / BREAK LINE OF SIGHT',mx+8*d,yy,8,G.evading?'#a2dfd6':'#f2a38c');yy+=16*d;}
  if(G.missionState.holdT){text('HOLD STILL / '+Math.round(G.missionState.holdT*10)/10+'s',mx+8*d,yy,9,'#9bddd4');yy+=17*d;}
  if(G.race){text(G.race.countdown>0?'READY / '+Math.ceil(G.race.countdown):'GATE '+Math.min(G.race.i+1,G.race.pts.length)+' / '+G.race.pts.length+' · '+G.race.t.toFixed(1)+'s',mx+8*d,yy,11,'#d2dfc1');yy+=19*d;}
- if(A.contract){const job=CONTRACTS.find(j=>j.id===A.contract.id);text(job.title+' / '+Math.ceil(A.contract.t)+'s',mx+8*d,yy,8,'#9ed5cf');}
+ if(activeJob){text(activeJob.title+' / '+Math.ceil(A.contract.t)+'s',mx+8*d,yy,8,'#9ed5cf');if(operationInfo&&!G.player.def?.aircraft){yy+=13*d;c.font=font(8*d,700);wrap(c,operationInfo,mw-16*d,2).forEach((line,i)=>text(line,mx+8*d,yy+i*12*d,8,'#e5cf98'));}}
  // Put the current radio message in the space above thumbs, never under the action buttons.
  const message=G.contactTalk&&G.contactNear?null:G.toastT>0?{name:'CROWN CITY',text:G.toast}:A.messageT>0?A.message:null;
  if(message){

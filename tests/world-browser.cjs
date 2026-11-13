@@ -2,7 +2,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=r
 const url=process.env.CC_URL||'http://127.0.0.1:8000/';
 (async()=>{const b=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});try{
  const p=await b.newPage({viewport:{width:844,height:390},deviceScaleFactor:2,hasTouch:true,isMobile:true}),errors=[];p.on('pageerror',e=>errors.push(e.message));
- let tileRequests=0;await p.route('**/assets/mobile/day/3_0.webp',route=>{tileRequests++;return tileRequests===1?route.fulfill({status:503,body:'intentional cache recovery test'}):route.continue();});
+ let tileRequests=0;await p.route('**/assets/mobile/day/3_0.webp*',route=>{tileRequests++;return tileRequests===1?route.fulfill({status:503,body:'intentional cache recovery test'}):route.continue();});
  await p.addInitScript(()=>requestAnimationFrame=()=>0);await p.goto(url);await p.waitForFunction(()=>window.__CC,null,{polling:100});
  await p.evaluate(async()=>{window.T=(await import('./src/game.js')).testing;window.R=await import('./src/transit.js');const G=__CC.G;T.startFreeRide(G);Object.assign(G.settings,{quality:'low',autoFS:false,autoRes:false,timeSpeed:0});G.time=12;G.touch=true;G.hideHUD=true;G.weather='clear';G.weatherT=1e8;G.rainAmt=G.sand=G.fog=G.wet=0;T.applyQuality(G);T.fit(G);});
  const place=async(x,y,scale=1)=>p.evaluate(({x,y,scale})=>{const G=__CC.G,at=T.findSafe(G,x,y,8,true);G.player=T.makeFoot(G,at.x,at.y,0);Object.assign(G.cam,{x,y,scale,rot:0});G.wanted=0;G.contactTalk=null;G.contactNear=null;G.transit.near=null;G._syncTouch();T.render(G);},{x,y,scale});

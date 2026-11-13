@@ -1,3 +1,4 @@
+import {OPERATIONS,OPERATION_STEPS,OPERATION_DEBRIEFS,operationTarget,tickOperation,isOperation} from './crew_operations.js';
 import {CASINO_EVIDENCE} from './casino_details.js';
 import {racePace} from './circuit_rules.js';
 /* Optional location-led stories. No rewards until the final, validated handoff. */
@@ -6,6 +7,7 @@ import {CIRCUIT,TRACK_LENGTH,trackPoint} from './circuit_world.js';
 import {nearCircuit,startCircuit} from './motorsport.js';
 import {FRONTIER} from './expansion_world.js';
 export const EXPANSION_JOBS=[
+ ...OPERATIONS,
  {id:'airdrop',title:'PAPER WINGS',contact:'NEURAL',text:'Collect three evidence drives at the airport. Drop them by plane at Mesa, Pinewatch and Sierra. Land and return the aircraft.',reward:2800,time:720,stages:4},
  {id:'circuit',title:'THE EIGHTH SECTOR',contact:'FIRE',text:'Take Fire’s brief at Bugatti / Crown Circuit. Drive a clean lap within your chosen class target, then stop at the pits to upload the telemetry.',reward:2200,time:480,stages:2},
  {id:'canal',title:'UNDER THE BRIDGES',contact:'HUNTER',text:'Lift a sealed ledger at the north dock. Run three canal gates by boat. Deliver on foot at the south dock.',reward:1500,time:360,stages:4},
@@ -17,6 +19,7 @@ export const EXPANSION_JOBS=[
  {id:'clockwork',title:'BORROWED MINUTES',contact:'STEAMPUNK',text:'Read the station clocks at Midtown and Canal South. Ride the railway and return the timestamps to Steampunk.',reward:1400,time:420,stages:2},
 ];
 export const EXPANSION_STEPS={
+ ...OPERATION_STEPS,
  airdrop:['Collect Neural’s evidence drives on foot at the airport.','Plane: drop the drive into the Red Mesa receiver zone.','Plane: drop the drive into the Pinewatch receiver zone.','Plane: drop the drive into the Sierra receiver zone.','Land the plane and stop at the east end of the runway.'],
  circuit:['Reach the pit desk at Bugatti / Crown Circuit.','Finish eight sectors within the class target shown on the HUD.','Stop at the pit desk to upload the telemetry to Fire.'],
  canal:['On foot: hold still at Hunter’s north dock for two seconds.','Boat: pass the north canal gate.','Boat: pass the MetaWin canal gate.','Boat: pass the Ironside canal gate.','Lose the heat. Deliver on foot at the south dock.'],
@@ -28,6 +31,7 @@ export const EXPANSION_STEPS={
  clockwork:['On foot: read the Midtown station clock.','On foot: read the Canal South clock.','Take a train, then return the timestamps to Steampunk.'],
 };
 export function expansionJobTarget(G,c){
+ if(isOperation(c.id))return operationTarget(G,c);
  if(c.id==='airdrop'){const p=c.stage===0?{x:9840,y:7780}:c.stage===4?{x:9600,y:7500}:DROP_TARGETS[c.stage-1];return p;}
  if(c.id==='circuit')return c.stage===1&&G.circuitSession?.running?trackPoint(G.circuitSession.gate*TRACK_LENGTH/8):CIRCUIT.pit;
  const routes={canal:[[6810,1250],[6968,1900],[6968,3450],[6968,5500],[6818,6150]],casino:[...CASINO_EVIDENCE.map(p=>[p.x,p.y]),[7115,3450]],airlift:[[9840,7780],[11400,4920],[11200,9640],[7000,7780]],ridge:[[5680,9730],[7800,9800],[10880,9200],[11340,4920]]};
@@ -35,6 +39,7 @@ export function expansionJobTarget(G,c){
  const point=routes[c.id]?.[Math.min(c.stage||0,routes[c.id].length-1)];return point?{x:point[0],y:point[1]}:null;
 }
 export function tickExpansionJob(G,c,dt,notify){
+ if(isOperation(c.id))return tickOperation(G,c,dt,notify);
  if(c.id==='airdrop')return tickDropJob(G,c,dt,notify);
  if(c.id==='circuit'){
   if(c.stage===0&&nearCircuit(G)&&startCircuit(G,G.circuitHooks)){c.stage=1;notify(G,'FIRE','Eight sectors. '+racePace(G).target+' seconds in '+racePace(G).label+' class. This telemetry proves the Palace courier could reach the vault before the alarm.');}
@@ -44,12 +49,12 @@ export function tickExpansionJob(G,c,dt,notify){
   return false;
  }
  const target=expansionJobTarget(G,c);if(!target)return false;const P=G.player,stage=c.stage||0,speed=P.type==='veh'?Math.hypot(P.vx||0,P.vy||0):P.speed||0;
- const dist=Math.hypot(P.x-target.x,P.y-target.y),quiet=G.wanted===0&&!G.input.fire;
+ const dist=Math.hypot(P.x-target.x,P.y-target.y),quiet=G.wanted===0&&!G.input.fire,liveVehicle=P.type==='veh'&&!P.dead&&(P.health??100)>0;
  let valid=false,hold=2;
- if(c.id==='canal'){valid=stage>0&&stage<4?P.type==='veh'&&P.def.boat&&dist<95:P.type==='foot'&&dist<60&&speed<8&&quiet;hold=stage>0&&stage<4?.05:2;}
+ if(c.id==='canal'){valid=stage>0&&stage<4?liveVehicle&&P.def.boat&&dist<95:P.type==='foot'&&dist<60&&speed<8&&quiet;hold=stage>0&&stage<4?.05:2;}
  if(c.id==='casino'){valid=P.type==='foot'&&dist<54&&speed<8&&quiet;hold=stage===2?3:2;}
- if(c.id==='airlift'){valid=stage===0?P.type==='foot'&&dist<65&&speed<8&&quiet:P.kind==='heli'&&(P.altitude||0)<3&&speed<12&&dist<72&&quiet;hold=stage===0?2:3;}
- if(c.id==='ridge'){valid=stage===1||stage===2?P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&dist<105:P.type==='foot'&&dist<65&&speed<8&&quiet;hold=stage===1||stage===2?.05:2;}
+ if(c.id==='airlift'){valid=stage===0?P.type==='foot'&&dist<65&&speed<8&&quiet:liveVehicle&&P.kind==='heli'&&(P.altitude||0)<3&&speed<12&&dist<72&&quiet;hold=stage===0?2:3;}
+ if(c.id==='ridge'){valid=stage===1||stage===2?liveVehicle&&!P.def.boat&&!P.def.aircraft&&dist<105:P.type==='foot'&&dist<65&&speed<8&&quiet;hold=stage===1||stage===2?.05:2;}
  if(['nightline','coldsignal','clockwork'].includes(c.id)){
   valid=P.type==='foot'&&dist<55&&speed<8&&quiet;hold=2.5;
   if(c.id==='nightline'&&stage===1||c.id==='clockwork'&&stage===2)valid=valid&&(G.transit?.completed||0)>(c.trainStart||0);
@@ -65,4 +70,4 @@ export function tickExpansionJob(G,c,dt,notify){
  else notify(G,def.contact,EXPANSION_STEPS[c.id][c.stage]);
  G.waypoint=expansionJobTarget(G,c);G.gps=null;return false;
 }
-export const EXPANSION_DEBRIEFS={airdrop:'Three drives, three receivers. The evidence is outside the Palace network. Neural has the receipt from every drop.',circuit:'Fire has the telemetry. The missing minutes were enough: the Palace courier could make the vault before the alarm.',canal:'Three bridges, one ledger. Hunter has the dock records; the Palace cannot erase a river.',casino:'The house paid twice for the same silence. Vera has both receipts. Gold Mage knows you kept a copy.',airlift:'Pinewatch and Sierra are broadcasting. Crown City can finally hear itself above the Palace signal.',nightline:'The witness and the duplicate are safe. Chief has a timetable the Palace cannot rewrite.',coldsignal:'Neural has the uncut recording. Ice’s mountain channel is back on the air.',clockwork:'Steampunk found the missing nine minutes. The station logs put a Palace courier at the vault before the alarm.',ridge:'Mask has Fire’s drive. No camera saw the handoff. The desert still keeps a few secrets.'};
+export const EXPANSION_DEBRIEFS={...OPERATION_DEBRIEFS,airdrop:'Three drives, three receivers. The evidence is outside the Palace network. Neural has the receipt from every drop.',circuit:'Fire has the telemetry. The missing minutes were enough: the Palace courier could make the vault before the alarm.',canal:'Three bridges, one ledger. Hunter has the dock records; the Palace cannot erase a river.',casino:'The house paid twice for the same silence. Vera has both receipts. Gold Mage knows you kept a copy.',airlift:'Pinewatch and Sierra are broadcasting. Crown City can finally hear itself above the Palace signal.',nightline:'The witness and the duplicate are safe. Chief has a timetable the Palace cannot rewrite.',coldsignal:'Neural has the uncut recording. Ice’s mountain channel is back on the air.',clockwork:'Steampunk found the missing nine minutes. The station logs put a Palace courier at the vault before the alarm.',ridge:'Mask has Fire’s drive. No camera saw the handoff. The desert still keeps a few secrets.'};

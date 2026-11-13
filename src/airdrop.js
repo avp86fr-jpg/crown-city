@@ -1,11 +1,11 @@
 import {onRunway} from './aviation.js';
 export const DROP_TARGETS=[{x:5590,y:9580,name:'RED MESA'},{x:11080,y:3900,name:'PINEWATCH'},{x:10960,y:8940,name:'SIERRA'}];
 export function dropPrediction(p){const t=Math.sqrt(2*Math.max(0,p.altitude||0)/38);return {x:p.x+(p.vx||0)*t,y:p.y+(p.vy||0)*t,t};}
-export function dropReady(G){const c=G.action?.contract;return c?.id==='airdrop'&&c.stage>=1&&c.stage<=3&&G.player.kind==='plane';}
+export function dropReady(G){const c=G.action?.contract;return c?.id==='airdrop'&&c.stage>=1&&c.stage<=3&&G.player.kind==='plane'&&!G.player.dead&&(G.player.health??100)>0;}
 export function tickDropJob(G,c,dt,notify){
  const p=G.player,speed=Math.hypot(p.vx||0,p.vy||0);
  if(c.stage===0||c.stage===4){
-  const valid=c.stage===0?p.type==='foot'&&(p.speed||0)<8&&!G.input.fire&&Math.hypot(p.x-9840,p.y-7780)<65&&G.wanted===0:p.kind==='plane'&&(p.altitude||0)<3&&speed<10&&onRunway(G,p)&&Math.hypot(p.x-9600,p.y-7500)<260;
+  const valid=c.stage===0?p.type==='foot'&&(p.speed||0)<8&&!G.input.fire&&Math.hypot(p.x-9840,p.y-7780)<65&&G.wanted===0:p.kind==='plane'&&!p.dead&&(p.health??100)>0&&(p.altitude||0)<3&&speed<10&&onRunway(G,p)&&Math.hypot(p.x-9600,p.y-7500)<260;
   c.progress=valid?(c.progress||0)+dt:0;if(c.progress<2)return false;
   if(c.stage===4)return true;c.stage=1;c.progress=0;notify(G,'NEURAL','Three receivers. Fly level at 45–220 altitude. The blue reticle predicts the landing point. Release over each gold zone, then bring the plane back.');
  }

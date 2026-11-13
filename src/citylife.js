@@ -1,28 +1,19 @@
-import {inCityHub} from './world_hubs.js';
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
 import {loadScenery} from './assets.js';
 import {projectedRoofBounds} from './render_world.js';
+import {roofDetailPlan} from './architecture_art.js';
+import {buildStreetDesign,indexStreetItems,streetItemsInView,frontageSprite,FIXTURE_SIZES} from './street_design.js';
 const TAU=Math.PI*2;
 const colors=['#ac4540','#2c6663','#d0b47b','#304f68','#736047'];
 const within=(p,r,m=120)=>p.x>r.x0-m&&p.x<r.x1+m&&p.y>r.y0-m&&p.y<r.y1+m;
 function oval(c,x,y,w,h,col){c.fillStyle=col;c.beginPath();c.ellipse(x,y,w,h,0,0,TAU);c.fill();}
 function panel(c,x,y,w,h,col){c.fillStyle='rgba(0,0,0,.3)';c.fillRect(x+3,y+5,w,h);c.fillStyle=col;c.fillRect(x,y,w,h);c.fillStyle='rgba(255,255,255,.14)';c.fillRect(x,y,w,2);}
 export function buildStreetScene(G){
- const fixtures=[];let i=0;
- for(const b of [...G.meta.buildings,...G.world.buildings]){
-  const seed=hash(b.x*13+b.y*7);const kind=Math.floor(seed*6);
-  if(b.w<50||b.h<45||b.kind==='pavilion'||b.kind==='outpost')continue;
-  const candidates=[{x:b.x+b.w*.3,y:b.y+b.h+25,rot:0},{x:b.x-27,y:b.y+b.h*.6,rot:Math.PI/2}];
-  for(const p of candidates){
-   if(!inCityHub(p.x,p.y,80)&&['walk','lot','pier'].includes(G.surfaceAt(p.x,p.y))&&!G.solidAt(p.x-18,p.y)&&!G.solidAt(p.x+18,p.y)){
-    fixtures.push({...p,kind,seed,id:i++,name:b.name||''});break;
-   }
-  }
- }
+ const design=buildStreetDesign(G),fixtures=design.fixtures;let i=fixtures.length;
  // The casino's actual tables and canal benches are social destinations.
  for(const p of G.world.expansion?.decor||[])if(['roulette','blackjack','canal'].includes(p.kind))fixtures.push({x:p.x,y:p.y,rot:0,kind:p.kind==='canal'?3:0,seed:hash(p.x+p.y),id:i++,hidden:true});
- G.street={fixtures,cache:new Map(),roadCache:new Map(),revision:0};
+ G.street={...design,fixtures,fixtureBins:indexStreetItems(fixtures),cache:new Map(),frontageCache:new Map(),roadCache:new Map(),revision:0};
  loadStreetArt(G);
  const origin=G.meta.spawns.player;
  for(const p of fixtures.filter(p=>Math.hypot(p.x-origin[0],p.y-origin[1])<1250).slice(0,24)){
@@ -45,13 +36,15 @@ function fixtureArt(G,kind,seed){
  const key=kind+':'+Math.floor(seed*4);let canvas=G.street.cache.get(key);if(canvas)return canvas;
  canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d',{willReadFrequently:true});c.translate(80,80);
  const col=colors[Math.floor(seed*colors.length)];
- // Concrete base, worn edge, warm contact shadows.
- oval(c,4,11,51,32,'rgba(0,0,0,.18)');
+ const [width,height]=FIXTURE_SIZES[kind];
+ // Tight contact shadow stays inside the validated footprint.
+ oval(c,1,3,width*.42,height*.32,'rgba(0,0,0,.14)');
  if(G.street.atlas){
-  const im=G.street.atlas,w=kind===0?112:kind===2?112:kind===3?108:86,h=kind===0?96:kind===2?78:kind===3?80:90;
-  c.drawImage(im,(kind%3)*im.width/3,Math.floor(kind/3)*im.height/2,im.width/3,im.height/2,-w/2,20-h,w,h);
+  const im=G.street.atlas;
+  c.drawImage(im,(kind%3)*im.width/3,Math.floor(kind/3)*im.height/2,im.width/3,im.height/2,-width/2,-height/2,width,height);
   G.street.cache.set(key,canvas);return canvas;
  }
+ c.scale(width/112,height/96);
  if(kind===0){ // pavement cafe
   for(const x of [-27,27]){
    for(const side of [-1,1]){panel(c,x-6,side*19-5,12,11,'#584c3e');c.fillStyle='#ae9876';c.fillRect(x-6,side*19-5,12,2);}
@@ -109,42 +102,25 @@ export function* streetSceneSteps(G,r,c=G.ctx){
  if(!G.street)buildStreetScene(G);
  if(!G.street.atlas)loadStreetArt(G);
  for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++){const art=yield* roadArtSteps(G,ix,iy);c.drawImage(art,ix*512,iy*512,512,512);}
- for(const p of G.street.fixtures){if(p.hidden||!within(p,r))continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
+ for(const p of streetItemsInView(G.street,r,'frontageBins')){yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(frontageSprite(G.street,p),-32,-16,64,32);c.restore();}
+ for(const p of streetItemsInView(G.street,r)){if(p.hidden)continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
 }
 export function drawStreetScene(G,r){for(const step of streetSceneSteps(G,r)){} }
 export function drawRoofDetail(G,r){
- if(G.settings.quality==='low')return;
- const c=G.ctx,roof={},t=G.settings.reducedMotion?0:G.ticks/60;
+ // Roof furnishings are baked with their actual building. The painted core
+ // retains its authored rooftops; only visible fan rotors animate on Ultra.
+ if(G.settings.quality!=='high'||G.settings.reducedMotion)return;
+ const c=G.ctx,roof={},t=G.ticks/60;let budget=18;
  for(const b of G.bld.inView(r)){
-  if(b.w<80||b.h<70||b.core&&b.kind==='casino')continue; // Preserve painted pools, signs and helipads.
-  const seed=hash(b.x*.13+b.y);
+  if(b.core||b.helipad)continue;const plan=roofDetailPlan(b);if(!plan.fans.length)continue;
   projectedRoofBounds(b,G.cam,roof);const {x,y,w,h}=roof;
-  c.save();
-  if(!b.core&&G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;
-  c.translate(x,y);c.scale(w/b.w,h/b.h);
-  // Parapet with inset lighting and weathered edge.
-  c.strokeStyle='rgba(218,204,174,.22)';c.lineWidth=2;c.strokeRect(5,5,b.w-10,b.h-10);
-  if(seed>.35&&b.w>120){
-   for(let i=0;i<Math.min(4,Math.floor(b.w/120));i++){
-    const xx=25+i*51,yy=28+seed*25;
-    panel(c,xx,yy,33,25,'#777c79');panel(c,xx+2,yy-2,29,22,'#9a9f9a');
-    oval(c,xx+16,yy+8,8,7,'#303a3a');c.save();c.translate(xx+16,yy+8);c.rotate(t*2+seed*6);c.fillStyle='#899b9b';for(let f=0;f<3;f++){c.rotate(TAU/3);c.fillRect(-1,-7,3,6);}c.restore();
-    c.strokeStyle='#474f4e';c.lineWidth=3;c.beginPath();c.moveTo(xx+30,yy+12);c.lineTo(xx+43,yy+12);c.lineTo(xx+43,yy+37);c.stroke();
-   }
-  }
-  if(seed<.35&&b.w>160&&b.h>100){
-   for(let i=0;i<3;i++){panel(c,22+i*38,24,32,24,'#223c4b');c.strokeStyle='#6d9ab0';c.lineWidth=.5;for(let j=1;j<4;j++){c.beginPath();c.moveTo(22+i*38+j*8,24);c.lineTo(22+i*38+j*8,48);c.stroke();}c.beginPath();c.moveTo(22+i*38,36);c.lineTo(54+i*38,36);c.stroke();}
-  }
-  // Rooftop gardens and utility cables make skyline silhouettes less uniform.
-  if(seed>.7){panel(c,b.w-39,18,24,24,'#726e5c');for(let j=0;j<7;j++)oval(c,b.w-26+Math.cos(j*2)*8,30+Math.sin(j*2)*6,5,4,['#39533f','#4a6a49','#6b7b4e'][j%3]);}
-  if(b.kind==='casino'||b.kind==='shop'){
-   const ww=Math.min(130,b.w*.6),yy=b.h-12;
-   c.fillStyle='rgba(0,0,0,.45)';c.fillRect(16,yy-13,ww+6,20);
-   c.fillStyle=seed>.5?'#b8e5db':'#f4d5a1';c.font='bold 9px sans-serif';c.textAlign='left';c.fillText(b.name||['MIDNIGHT / SOCIAL','CROWN / RECORDS','ROOMS · OPEN LATE'][Math.floor(seed*3)],19,yy,ww);
-  }
-  c.restore();
+  c.save();if(G.scene!=='title'&&G.player.type==='foot'&&G.player.x>x-12&&G.player.x<x+w+12&&G.player.y-22>y&&G.player.y-22<y+h)c.globalAlpha*=.24;
+  c.translate(x,y);c.scale(w/b.w,h/b.h);c.strokeStyle='#a9b7af';c.lineWidth=.9;
+  for(const f of plan.fans){if(budget--<=0)break;const a=t*2+(b.seed||0),cx=f.x+f.w/2,cy=f.y+f.h/2;
+   c.beginPath();c.moveTo(cx-Math.cos(a)*4,cy-Math.sin(a)*4);c.lineTo(cx+Math.cos(a)*4,cy+Math.sin(a)*4);c.moveTo(cx+Math.sin(a)*4,cy-Math.cos(a)*4);c.lineTo(cx-Math.sin(a)*4,cy+Math.cos(a)*4);c.stroke();
+  }c.restore();if(budget<=0)break;
  }
 }
 export function drawAmbientGesture(G,p){

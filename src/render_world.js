@@ -2,6 +2,7 @@
 import {drawCircuitGround,circuitGroundSteps,loadCircuitArt,CIRCUIT} from './circuit_world.js';
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
 import {drawWorldDetails} from './world_details.js';
+import {drawRoofArtwork} from './architecture_art.js';
 import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
 
 const TAU = Math.PI * 2;
@@ -694,7 +695,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     }
     x.strokeStyle = "rgba(0,0,0,0.4)"; x.lineWidth = 3; x.strokeRect(1.5, 1.5, b.w - 3, b.h - 3);
     x.strokeStyle = "rgba(255,255,255,0.2)"; x.lineWidth = 1.5; x.strokeRect(4, 4, b.w - 8, b.h - 8);
-    roofDetails(x, b, 0, 0, b.w, b.h);
+    drawRoofArtwork(x,b);
     entry={c,bytes:W*H*4};roofCache.set(b,entry);roofBytes+=entry.bytes;
     while(roofCache.size>160||roofBytes>roofBudget){const key=roofCache.keys().next().value,old=roofCache.get(key);roofCache.delete(key);roofBytes-=old.bytes;old.c.width=old.c.height=1;}
     queryStats.roofBytes=roofBytes;queryStats.roofEntries=roofCache.size;queryStats.roofBudget=roofBudget;
@@ -838,37 +839,4 @@ function shadowHull(ctx, x, y, w, h, dx, dy) {
   else if(dy<0){ctx.moveTo(x+dx,y+dy);ctx.lineTo(x1+dx,y+dy);ctx.lineTo(x1,y);ctx.lineTo(x1,y1);ctx.lineTo(x,y1);ctx.lineTo(x+dx,y1+dy);}
   else{ctx.moveTo(x,y);ctx.lineTo(x1,y);ctx.lineTo(x1,y1);ctx.lineTo(x1+dx,y1+dy);ctx.lineTo(x+dx,y1+dy);ctx.lineTo(x+dx,y+dy);}
   ctx.closePath(); ctx.fill();
-}
-function roofDetails(ctx, b, rx, ry, rw, rh) {
-  const s = b.seed;
-  const kx = rw / b.w;
-  if (b.helipad) {
-    const r = Math.min(rw, rh) * 0.3;
-    ctx.fillStyle = "#3a3d44"; ctx.beginPath(); ctx.arc(rx + rw / 2, ry + rh / 2, r, 0, TAU); ctx.fill();
-    ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = "#eee"; ctx.font = `800 ${Math.round(r)}px system-ui`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("H", rx + rw / 2, ry + rh / 2 + 1); ctx.textBaseline = "alphabetic";
-    return;
-  }
-  if (b.roof === "terra" || b.roof === "terra2") {
-    // ridge line
-    ctx.strokeStyle = "rgba(60,20,10,0.45)"; ctx.lineWidth = 3;
-    ctx.beginPath();
-    if (rw > rh) { ctx.moveTo(rx + rh * 0.4, ry + rh / 2); ctx.lineTo(rx + rw - rh * 0.4, ry + rh / 2); }
-    else { ctx.moveTo(rx + rw / 2, ry + rw * 0.4); ctx.lineTo(rx + rw / 2, ry + rh - rw * 0.4); }
-    ctx.stroke();
-    ctx.fillStyle = "rgba(0,0,0,0.16)";
-    if (rw > rh) ctx.fillRect(rx, ry + rh / 2, rw, rh / 2); else ctx.fillRect(rx + rw / 2, ry, rw / 2, rh);
-    return;
-  }
-  const n = Math.min(5, Math.floor((b.w * b.h) / 9000) + 1);
-  for (let i = 0; i < n; i++) {
-    const u = ((s * (i + 3) * 37) % 100) / 100, v = ((s * (i + 7) * 53) % 100) / 100;
-    const w = (14 + (s + i * 5) % 14) * kx, h = (12 + (s + i * 3) % 10) * kx;
-    const x = rx + 8 + u * Math.max(1, rw - w - 16), y = ry + 8 + v * Math.max(1, rh - h - 16);
-    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(x + 3, y + 3, w, h);
-    ctx.fillStyle = "#9aa0a8"; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "#6e737b"; ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-    ctx.fillStyle = "#3a3d42"; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) * 0.3, 0, TAU); ctx.fill();
-  }
 }

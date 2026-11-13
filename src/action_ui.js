@@ -1,3 +1,4 @@
+import {operationStatus} from './crew_operations.js';
 import {racePace,cycleRacePace} from './circuit_rules.js';
 import {WEAPONS,CONTRACTS,nearService,buyService,startContract,servicePoints} from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px Inter, system-ui, sans-serif`;
@@ -11,7 +12,7 @@ export function drawActionHUD(G,L,y,width){
  c.font=font(16*u,900);c.fillStyle=A.reloadT>0?'#edc67f':'#fff';c.fillText(A.reloadT>0?'RELOADING':String(A.ammo[A.weapon]).padStart(2,'0')+' / '+WEAPONS[A.weapon].mag,L+9*u,yy+33*u,width-18*u);
  c.fillStyle='#28383c';c.fillRect(L+9*u,yy+40*u,width-18*u,3*u);c.fillStyle=A.exhausted?'#d77863':'#91c9ac';c.fillRect(L+9*u,yy+40*u,(width-18*u)*A.stamina/100,3*u);
  if(A.cover&&G.player.type==='foot'){c.font=font(9*u,800);c.fillStyle='#a3e0cf';c.fillText('IN COVER',L+9*u,yy+62*u);}
- if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));}
+ if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));const status=operationStatus(G,A.contract);if(status){c.font=font(9*u,700);c.fillStyle='#e5cf98';c.fillText(status,L,yy+(A.cover?94:78)*u,Math.min(W-L*2,390*u));}}
  const service=nearService(G);
  if(service&&!G.race&&!G.input.touchJoy.active){c.font=font(11*u,800);c.textAlign='center';c.fillStyle='#edd3a1';c.fillText(service.name+' / '+(G.touch?'CREW → WORKSHOP':'C WORKSHOP'),W*.5,H-(G.touch?222:82)*u,W-32*u);}
  if(A.message&&A.messageT>0&&G.scene==='play'&&!(G.contactTalk&&G.contactNear)){
