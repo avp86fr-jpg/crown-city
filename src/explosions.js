@@ -35,7 +35,7 @@ export function detonate(G,b,H){
   if(b.attributed&&!p.copPed)H.incident?.(G,'civilian_harm');
   if(p.hp<=0)H.killPed(G,p,false,!!b.attributed);else H.blood?.(G,p,p.vx,p.vy,strength);
  }
- if(G.player.type==='foot'&&!(G._endT>0)){const strength=blastExposure(G,b,G.player);if(strength){G.health-=b.damage*strength;G.hurtT=.4;if(G.health<=0)H.wasted(G);}}
+ if(G.player.type==='foot'&&!(G._endT>0)){const strength=blastExposure(G,b,G.player);if(strength){G.health-=G.absorbDamage?G.absorbDamage(G,b.damage*strength):b.damage*strength;G.hurtT=.4;if(G.health<=0)H.wasted(G);}}
 }
 export function launchRocket(G,x,y,vx,vy,weapon,waterLevel=false){
  const list=G.rockets||(G.rockets=[]);if(list.length>=8)list.shift();

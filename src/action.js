@@ -21,10 +21,10 @@ export function actionState(s={}) {
  stamina:number(s.stamina,100,0,100),reloadT:0,shotT:0,dodgeT:0,dodgeCool:0,bloom:0,
  completedJobs:[...new Set((Array.isArray(s.completedJobs)?s.completedJobs:[]).filter(id=>CONTRACTS.some(c=>c.id===id)))],
  reputation:Math.floor(number(s.reputation,0,0,999)),completed:Math.floor(number(s.completed,0,0,999)),
- upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&CONTRACTS.some(c=>c.id===s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,CONTRACTS.find(c=>c.id===s.contract.id).time),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6)),...restoreOperationState(s.contract)}:null,
+ upgrades:Math.floor(number(s.upgrades,0,0,MAX_TUNE)),armor:Math.floor(number(s.armor,0,0,100)),contract:s.contract&&CONTRACTS.some(c=>c.id===s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,CONTRACTS.find(c=>c.id===s.contract.id).time),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6)),...restoreOperationState(s.contract)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {settleOperationState(A.contract);return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],reserve:[...(A.reserve||[])],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {settleOperationState(A.contract);return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],reserve:[...(A.reserve||[])],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,armor:Math.round(A.armor||0),contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}
@@ -56,19 +56,26 @@ export function nearService(G) {
  if(G.player.type==='veh'&&Math.hypot(G.player.vx,G.player.vy)>35)return null;
  return servicePoints(G).find(s=>Math.hypot(s.x-G.player.x,s.y-G.player.y)<85)||null;
 }
+// Chips sink: five street-tune stages at rising prices, plus body armour.
+export const MAX_TUNE=5,TUNE_COSTS=[500,800,1200,1700,2400],ARMOR_COST=400;
+export const tuneCost=A=>TUNE_COSTS[Math.min(TUNE_COSTS.length-1,A?.upgrades||0)];
+// Armour soaks 60% of incoming damage until it is spent.
+export function absorbDamage(G,dmg){const A=G.action;if(!A||!(A.armor>0)||!(dmg>0))return dmg;const soak=Math.min(A.armor,dmg*.6);A.armor-=soak;return dmg-soak;}
 export function buyService(G,choice) {
  const A=G.action,P=G.player;
  if(choice==='recover')return recoverRiot(G);
- const offers={repair:{cost:120},tune:{cost:500},supply:{cost:90},respray:{cost:250}};
+ const offers={repair:{cost:120},tune:{cost:tuneCost(A)},supply:{cost:90},respray:{cost:250},armor:{cost:ARMOR_COST}};
  const offer=offers[choice];if(!offer)return false;
  if(G.wanted>0&&!G.evading){message(G,'HUNTER','Break their line of sight first. I am a mechanic, not a magician.');return false;}
  if(['repair','tune','respray'].includes(choice)&&(P.type!=='veh'||P.def.boat||P.def.aircraft)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
- if(choice==='tune'&&A.upgrades>=3){message(G,'HUNTER','Every street upgrade is fitted. Go make them regret it.');return false;}
+ if(choice==='armor'&&(A.armor||0)>=100){message(G,'MERCY','Your vest is already fresh. Go get it scratched.');return false;}
+ if(choice==='tune'&&A.upgrades>=MAX_TUNE){message(G,'HUNTER','Every street upgrade is fitted. Go make them regret it.');return false;}
  if(G.chips<offer.cost){message(G,'HUNTER','Not enough chips. Crew contracts pay.');return false;}
  G.chips-=offer.cost;
  if(choice==='repair'){P.health=100;P.burning=false;P.wrecked=false;P.burnT=0;}
  if(choice==='tune'){A.upgrades++;P.tune=A.upgrades;message(G,'HUNTER','Stage '+A.upgrades+' fitted: more torque, better brakes, sharper turn-in.');}
  if(choice==='respray'){G.wanted=0;G.seenT=0;G.cops.forEach(c=>{c.chasing=false;c.siren=false;c.ai=false;c.loose=true;c.keep=false;c.ambient=true;});G.cops=[];P.paint=(P.paint||0)+1;}
+ if(choice==='armor'){A.armor=100;message(G,'MERCY','Plated vest fitted. It soaks most of a firefight, not a bus.');}
  if(choice==='supply'){G.health=100;A.ammo=WEAPONS.map(w=>w.mag);A.reserve=WEAPONS.map(w=>w.reserveMax);A.emptyNote=false;A.reloadT=0;A.stamina=100;}
  G.audio?.pickup?.();return true;
 }
@@ -137,7 +144,7 @@ export function tickAction(G,dt,hooks) {
 export function applyTune(G,v) {
  const level=G.action?.upgrades||0;if(v.def.boat||v.def.aircraft||v.tunedLevel===level)return;
  if(!level){if(v.stockDef)v.def=v.stockDef;v.tunedLevel=0;return;}
- if(!v.stockDef)v.stockDef=v.def;v.def={...v.stockDef,accel:v.stockDef.accel*(1+level*.1),brake:v.stockDef.brake*(1+level*.09),grip:Math.min(1.3,v.stockDef.grip+level*.04),max:v.stockDef.max*(1+level*.035)};v.tunedLevel=level;
+ if(!v.stockDef)v.stockDef=v.def;v.def={...v.stockDef,accel:v.stockDef.accel*(1+level*.1),brake:v.stockDef.brake*(1+level*.09),grip:Math.min(1.3,v.stockDef.grip+level*.04),max:v.stockDef.max*(1+Math.min(level,3)*.035+Math.max(0,level-3)*.02)};v.tunedLevel=level;
 }
 
 // Ammo crates and drops: refill spare rounds for one or all weapons.

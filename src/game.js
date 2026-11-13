@@ -47,7 +47,7 @@ import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
 import {releaseBakedWorld} from './baked_world.js';
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
 import { createLighting, ambientAt, darkness, weatherSun, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
-import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message, CONTRACTS } from './action.js';
+import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message, CONTRACTS, absorbDamage } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
 import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from './controls.js';
@@ -203,7 +203,7 @@ export async function boot() {
     action: actionState(),
     director: directorState(),
   };
-  G.makeVeh = makeVeh;
+  G.makeVeh = makeVeh;G.absorbDamage=absorbDamage;
   G.circuitHooks={tickDrive,enterVeh,save};
   G.ground = makeGround(world, tex, codeAt);
   G.bld = makeBuildings(world, tex, layers.roofs);
@@ -696,7 +696,7 @@ function fit(G) {
   const q = G.settings ? G.settings.quality : "high";
   const maxDpr = q === "low" ? 1 : q === "med" ? 1.35 : 2;
   let dpr = Math.min(2,window.devicePixelRatio||1);
-  G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1));
+  G.worldDpr=Math.max(G.dprFloor||.6,Math.min(maxDpr,window.devicePixelRatio||1)*(G.resScale||1)*(G.nightRes||1));
   const direct=mobileCityRaster(G);
   if(direct){G.worldDpr=Math.max(.75,G.worldDpr);dpr=G.worldDpr;}
   G.worldWidth=Math.round(w*G.worldDpr);G.worldHeight=Math.round(h*G.worldDpr);G.directRaster=direct;
@@ -1491,6 +1491,11 @@ function tickDrive(G, v, input, dt, isPlayer) {
   if(v.health>=99&&v.damage){v.damage=null;v.damageStage='GOOD';}
   if(v.health<=0)input={...input,y:0,hand:true,brake:false};
   const surf = v.def.boat ? G.world?.boatSurfaceAt?.(v.x,v.y)||G.surfaceAt(v.x,v.y) : G.surfaceAt(v.x, v.y);
+  // Only the player's own car can be driven off a pier. AI, traffic and
+  // rammed/stalled cars stop at the water's edge instead of parking in the sea.
+  const wet=!def.boat&&(surf==='water'||surf==='canal');
+  if(!wet&&!def.boat){v.dryX=v.x;v.dryY=v.y;}
+  else if(wet&&!isPlayer&&!v.def.aircraft&&v.dryX!=null&&Math.hypot(v.x-v.dryX,v.y-v.dryY)<120){v.x=v.dryX;v.y=v.dryY;v.vx=v.vy=0;v.sinkT=0;if(v.tr&&v.traffic)v.cruise=Math.min(v.cruise||0,40);return;}
   if (v.dead) {
     const damping=Math.exp(-4*dt);v.vx*=damping;v.vy*=damping;
     const nx=v.x+v.vx*dt,ny=v.y+v.vy*dt;if(!carHit(G,v,nx,ny)){v.x=nx;v.y=ny;}else v.vx=v.vy=0;return;
@@ -1923,7 +1928,7 @@ function tickBullets(G, dt) {
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8);G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;G.audio.impact?.('flesh',b.x,b.y,.3);
       G.hitMark={x:target.x,y:target.y-22,t:target.hp<=0?.4:.22,kill:target.hp<=0};G.audio.hitmark?.(target.hp<=0);if(target.hp>0){target.flinch=.18;target.flinchX=b.vx/Math.hypot(b.vx,b.vy);target.flinchY=b.vy/Math.hypot(b.vx,b.vy);}
       if(target.gang)gangHit(G,target);else if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
@@ -2024,6 +2029,7 @@ function crime(G, n, x, y, serious, cap) {
   bumpWanted(G, Math.min(n, limit - G.wanted));
 }
 
+export const loseHeatAfter=w=>5+w*2.2;
 function tickWanted(G, dt) {
   G.missionState.scramblerT = Math.max(0, (G.missionState.scramblerT || 0) - dt);
   if (G._endT > 0) G._endT -= dt;
@@ -2044,9 +2050,12 @@ function tickWanted(G, dt) {
   let seen = false;
   for (const c of G.cops) if (!c.dead && Math.hypot(c.x - P.x, c.y - P.y) < 620 && G.nav.clearLine(c.x, c.y, P.x, P.y)) { seen = true; break; }
   for (const p of G.peds) if (p.copPed && !p.dead && Math.hypot(p.x - P.x, p.y - P.y) < 400 && G.nav.clearLine(p.x, p.y, P.x, P.y)) seen = true;
-  if (seen) { G.seenT = 0; G.policeTarget = { x: P.x, y: P.y }; } else G.seenT = (G.seenT || 0) + dt;
+  // Hiding counts faster once well clear of the last sighting, so real
+  // escapes pay off; low heat clears quickly, five stars still take work.
+  const far=!seen&&G.policeTarget&&Math.hypot(P.x-G.policeTarget.x,P.y-G.policeTarget.y)>900;
+  if (seen) { G.seenT = 0; G.policeTarget = { x: P.x, y: P.y }; } else G.seenT = (G.seenT || 0) + dt*(far?1.5:1);
   G.evading = !seen;
-  const loseAfter = 7 + G.wanted * 2.5;
+  const loseAfter = loseHeatAfter(G.wanted);
   if (G.seenT > loseAfter) {
     G.wanted = Math.max(0, G.wanted - 1);
     G.seenT = 0;
@@ -2664,7 +2673,18 @@ function viewRect(G) {
   return { x0: G.cam.x - ex - 40, y0: G.cam.y - ey - 40, x1: G.cam.x + ex + 40, y1: G.cam.y + ey + 40, S };
 }
 // adaptive resolution: hold ~50+ fps by trading render pixels (never below 0.6 css px)
+// Night frames are dark and soft-lit: on desktop the world layer renders at
+// a lower internal scale there (HUD stays native). Hysteresis on darkness
+// keeps the canvas from reallocating around dusk.
+export function nightResTarget(G){
+  if(G.touch||G.settings?.quality==='low'||G.scene!=='play')return 1;
+  if(G.dbg&&G.dbg.nightRes!=null)return G.dbg.nightRes;
+  const d=darkness(G.time),cur=G.nightRes||1;
+  return cur<1?(d>.32?NIGHT_RES:1):(d>.42?NIGHT_RES:1);
+}
+const NIGHT_RES=.78;
 function adaptRes(G, dt) {
+  {const nr=nightResTarget(G);if(nr!==(G.nightRes||1)){G.nightRes=nr;fit(G);}}
   if (G.scene !== "play" && G.scene !== "title") return;
   const A = G._ar || (G._ar = { t: 0, n: 0, sum: 0 });
   A.t += dt; A.n++; A.sum += dt;
@@ -3060,7 +3080,7 @@ function renderWorldLayer(G) {
   drawTransitWorld(G,r,true);drawAirborne(G,r);
   _ph('w_bld');
   // 8. light map
-  if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
+  G._lmBaked=false;if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
   _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);if(!(G.dbg&&G.dbg.noResort))drawResortLights(G,r,nightFactor(G));
   _ph('w_light');
   if(!(G.dbg&&G.dbg.noArch))drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
@@ -3074,10 +3094,19 @@ function renderWorldLayer(G) {
   if (G.fog > 0.05) { ctx.fillStyle = `rgba(160,170,180,${0.28 * G.fog})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
-  _ph('l_misc');drawGrade(G);_ph('l_grade');
+  _ph('l_misc');if(!G._lmBaked)drawGrade(G);_ph('l_grade');
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
+const _vigMul={k:''};
+function vignetteMul(w,h){
+  if(_vigMul.k===w+':'+h)return _vigMul.c;
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  // Same falloff as drawGrade, expressed as a multiply tint (white = no change).
+  const v=x.createRadialGradient(w*.5,h*.44,h*.25,w*.5,h*.5,Math.max(w,h)*.65);
+  v.addColorStop(0,'rgb(255,255,255)');v.addColorStop(.65,'rgb(240,240,241)');v.addColorStop(1,'rgb(177,178,182)');
+  x.fillStyle=v;x.fillRect(0,0,w,h);_vigMul.k=w+':'+h;_vigMul.c=c;return c;
+}
 function drawLighting(G, r, S, ox, oy, low) {
   const { ctx, canvas, cam, assets } = G;
   const amb = ambientAt(G.time);
@@ -3095,6 +3124,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   // so a reused map is shifted by the camera's screen motion since it was built.
   const LM=G._lmCam,reuse = (G._lmF % 3 !== 0) && G._lmValid && !hasFlash && LM && LM.S===S && LM.rot===cam.rot && LM.ox===ox && LM.oy===oy && Math.hypot(cam.x-LM.x,cam.y-LM.y)*S<40;
   if (needMap) G._lmValid = true;
+  G._lmBaked=needMap&&!(G.dbg&&(G.dbg.noMap||G.dbg.noMul));
   if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
     G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
     lx.setTransform(1, 0, 0, 1, 0, 0);
@@ -3139,6 +3169,10 @@ function drawLighting(G, r, S, ox, oy, low) {
       const h = heliPos(G);
       lx.globalAlpha = 0.9 * Math.max(dark, 0.4); lx.drawImage(LIGHT.radial("rgba(255,250,225,0.95)"), h.lx - 90, h.ly - 90, 180, 180);
     }
+    // Fold the screen vignette into the multiply map: one full-frame
+    // composite instead of two (the grade pass is skipped while it is baked).
+    lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='multiply';lx.globalAlpha=1;
+    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';
   }
   if (needMap && !(G.dbg&&G.dbg.noMul)) {
     // multiply onto the frame
@@ -3368,6 +3402,19 @@ function currentObjectivePos(G) {
 
 function drawAirborne(G,r){for(const v of G.vehicles)if(airborne(v)&&v.x>r.x0-160&&v.x<r.x1+160&&v.y>r.y0-160&&v.y<r.y1+160)drawAircraft(G,v);}
 
+// Vehicle atlases are painted at 512 px per cell but drawn near 116 px. A
+// one-time high-quality downscale to <=224 px cells removes per-draw
+// minification, the largest cost when a street holds 150+ cars.
+const _vehAtlas=new WeakMap();
+function vehAtlas(src){
+ if(!src||!src.width)return src;let c=_vehAtlas.get(src);if(c)return c;
+ const k=Math.min(1,224/(src.width/3));if(k>.95){_vehAtlas.set(src,src);return src;}
+ c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+ const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,0,0,c.width,c.height);
+ _vehAtlas.set(src,c);
+ if(typeof createImageBitmap==='function')createImageBitmap(c).then(b=>_vehAtlas.set(src,b)).catch(()=>{});
+ return c;
+}
 function drawVeh(G, v) {
   if(v.def.aircraft){if(!airborne(v))drawAircraft(G,v);return;}
   const spr = G.assets.sprites["veh_" + v.def.sprite] || {width:200,height:384};
@@ -3393,7 +3440,7 @@ function drawVeh(G, v) {
   ctx.fillStyle = "rgba(0,0,0,0.38)";
   ctx.beginPath(); const body=bodySize(v);ctx.ellipse(2,4,body.w,body.l*.86,0,0,TAU);ctx.fill();
   const fleetSlot={bus:0,ambulance:1,van:2,stitch:3,hog:4,wake:5}[v.kind];
-  const atlas=fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas,slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
+  const atlas=vehAtlas(fleetSlot!=null?G.assets.sprites.city_fleet:G.assets.sprites.vehicle_atlas),slot=fleetSlot??{riot:0,nyx:1,dart:2,metro:3,taxi:4,fare:5}[v.kind];
   if(atlas && slot!=null) {
     const cw=atlas.width/3,ch=atlas.height/2;
     if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
@@ -3734,6 +3781,7 @@ function drawHUD(G) {
   uiPanel(ctx, L, vy, mm, 30 * u, 8 * u);
   ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(L + 8 * u, vy + 7 * u, mm - 16 * u, 5 * u);
   ctx.fillStyle = G.health > 40 ? "#3ce06a" : "#ff3a48"; ctx.fillRect(L + 8 * u, vy + 7 * u, (mm - 16 * u) * clamp(G.health / 100, 0, 1), 5 * u);
+  if (G.action?.armor > 0) { ctx.fillStyle = "#8fc4ff"; ctx.fillRect(L + 8 * u, vy + 4.5 * u, (mm - 16 * u) * clamp(G.action.armor / 100, 0, 1), 2 * u); }
   const tl = timeLabel(G.time);
   const icon = tl.phase === "NIGHT" ? "☾" : tl.phase === "DAY" ? "☀" : "◐";
   ctx.font = uiFont(10.5 * u, 800); ctx.textAlign = "left"; ctx.fillStyle = "#fff";
@@ -3831,7 +3879,7 @@ function drawHUD(G) {
     }
   }
   if (G.wanted > 0) {
-    const max = 7 + G.wanted * 2.5;
+    const max = loseHeatAfter(G.wanted);
     const label = G.evading ? 'SEARCHING  ' + Math.max(0, max - (G.seenT || 0)).toFixed(0) + 's TO LOSE A STAR' : 'SPOTTED — BREAK LINE OF SIGHT';
     ctx.font = uiFont(10 * u, 800); ctx.textAlign = 'right'; ctx.fillStyle = G.evading ? '#29f0ff' : '#ff8c9c';
     ctx.fillText(label, rr, T + 65 * u);

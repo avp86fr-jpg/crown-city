@@ -56,12 +56,12 @@ export function drawWaterMotion(G,r){
    const phase=t*(p.canal?.8:1.05)+p.phase,sway=Math.sin(phase),dx=sway*6*wind.x,dy=Math.cos(phase*.8)*2+wind.y*2;
    const crest=.4+.6*(.5+.5*Math.sin(phase)),peak=Math.max(0,Math.sin(phase));
    // Painted swell: a broad dark trough, a pale crest band and a bright core at the peak.
-   c.globalAlpha=(p.canal?.12:.24)*crest;c.strokeStyle=night?'#061a2e':'#0a3552';c.lineWidth=low?3:4.5;
+   c.globalAlpha=(p.canal?.14:.34)*crest;c.strokeStyle=night?'#061a2e':'#0a3552';c.lineWidth=low?3.6:6;
    c.beginPath();c.moveTo(p.x+dx,p.y+dy+3);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy+1,p.x+dx+p.len*.6,p.y+dy+5,p.x+dx+p.len,p.y+dy+2.4);c.stroke();
-   c.globalAlpha=(p.canal?.2:.36)*crest;c.strokeStyle=night?'#6f93b8':'#bfeee6';c.lineWidth=low?2.2:3;
+   c.globalAlpha=(p.canal?.22:.46)*crest;c.strokeStyle=night?'#7a9dc2':'#c8f2ea';c.lineWidth=low?2.6:3.6;
    c.beginPath();c.moveTo(p.x+dx,p.y+dy);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy-2.2,p.x+dx+p.len*.6,p.y+dy+2,p.x+dx+p.len,p.y+dy-.6);c.stroke();
    c.fillStyle=night?'#d5e6ff':'#ffffff';
-   c.globalAlpha=(p.canal?.25:.55)*peak;const L=p.len,X=p.x+dx,Y=p.y+dy;
+   c.globalAlpha=(p.canal?.28:.72)*peak;const L=p.len,X=p.x+dx,Y=p.y+dy;
    c.beginPath();c.moveTo(X+L*.1,Y-1);c.quadraticCurveTo(X+L*.45,Y-3.6-peak,X+L*.85,Y-.8);c.quadraticCurveTo(X+L*.45,Y-1.2,X+L*.1,Y-1);c.fill();stats.waves++;
    // Sun sparkle by day, a cool moon glint at night: brief, crest-timed twinkles.
    const tw=Math.sin(phase*2.3+p.phase*3);if(!p.canal&&tw>.82){const k=(tw-.82)/.18;c.globalAlpha=k*(night?.35:.7);c.fillStyle=night?'#bcd4ff':'#fffbe8';const sx=p.x+dx+p.len*.45,sy=p.y+dy-1;c.fillRect(sx-2.5*k,sy-.5,5*k,1);c.fillRect(sx-.5,sy-1.6*k,1,3.2*k);}

@@ -196,8 +196,12 @@ export function drawParticleFX(ctx, p) {
     const grow=k==='smoke'?(p.dark?30:24):k==='dust'?15:k==='gunsmoke'?14*(p.size||1):k==='steam'?14:46;
     const size=base+ease*grow,fade=k==='haze'?Math.sin(Math.PI*Math.min(1,age*1.4+.05))*.5:(1-age)*(1-age*.35);
     const alpha=(k==='smoke'?(p.dark?.66:.5):k==='dust'?.42:k==='gunsmoke'?.72:k==='steam'?.46:.26)*fade*(p.a??1);
-    const col=k==='dust'?'190,160,118':k==='steam'?'240,244,246':k==='gunsmoke'?'236,232,224':k==='haze'?'214,214,210':p.dark?'40,40,46':'206,210,214';
-    const tex=puff(col);ctx.translate(p.x,p.y);ctx.rotate((p.seed||0)+age*.6);
+    const col=k==='dust'?'190,160,118':k==='steam'?'240,244,246':k==='gunsmoke'?'240,237,230':k==='haze'?'214,214,210':p.dark?'40,40,46':'224,227,230';
+    const tex=puff(col);ctx.translate(p.x,p.y);
+    // Pale smoke vanished on mid-grey asphalt: a cool contact shadow cast
+    // down-screen gives every light puff an edge and a sense of height.
+    if(!p.dark&&k!=='haze'&&k!=='dust'){const sh=puff('22,27,36'),o=size*.22+age*4;ctx.globalAlpha=Math.min(1,alpha*1.5)*.52;ctx.drawImage(sh,-size*1.1+o*.7,-size*.82+o*1.2,size*2.2,size*1.7);}
+    ctx.rotate((p.seed||0)+age*.6);
     // Billow: a main puff plus two smaller offset lobes that separate as it ages.
     const A=Math.min(1,alpha*1.5),sp=size*(.35+age*.35);
     ctx.globalAlpha=A;ctx.drawImage(tex,-size*1.2,-size,size*2.4,size*2);
