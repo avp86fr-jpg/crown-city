@@ -1,3 +1,4 @@
+import {MISSIONS} from './story.js';
 /* Optional crew guidance and job quality. Completion rewards belong to this module;
  * finishJob applies them once. Call recordIncident only at player-attributed sources.
  */
@@ -9,7 +10,7 @@ const CONDITIONS = Object.freeze({
   neighbors: Object.freeze({ id: 'neighbors', title: 'People before profit', description: 'Finish without hurting a civilian or getting wasted or busted.', reward: 150 }),
   wheels: Object.freeze({ id: 'wheels', title: 'Keep it straight', description: 'Drive 400 metres without causing a damaging collision.', reward: 200 }),
   measured: Object.freeze({ id: 'measured', title: 'Controlled force', description: 'Complete the interception using six shots or fewer.', reward: 175 }),
-  ghost: Object.freeze({ id: 'ghost', title: 'Leave no face', description: 'Keep your weapon holstered and avoid Palace security detection.', reward: 250 }),
+  ghost: Object.freeze({ id: 'ghost', title: 'Leave no face', description: 'Do not fire a weapon or let Palace security identify you.', reward: 250 }),
 });
 const JOBS = [
   ['COLD WALLET', 'HUNTER', 'The convoy carries the key to the Palace debt archive. Get the van open and bring that key home.', 'The convoy is the target. The pavement belongs to everybody.', ['neighbors', 'measured']],
@@ -18,7 +19,7 @@ const JOBS = [
   ['THE INSIDE LINE', 'MASK', 'Read the south doors, learn the lot, and trace the water exit. A good escape starts before the alarm.', 'Walk like you belong here. Running past a uniform invites a second look.', ['neighbors', 'ghost']],
   ['HOUSE OF GLASS', 'NEURAL', 'The Palace archive names the people Gold Mage erased. Hold the transfer, reach the marina, get it offshore.', 'Quiet buys ninety seconds with the scrambler. Loud buys five stars.', ['neighbors', 'ghost']],
   ['EXIT WOUNDS', 'VERA VALE', 'The Nyx is waiting at the marina. Carry the archive beyond the city and shake the last pursuit.', 'Give me the evidence and a clear signal. Crown City can do the rest.', ['neighbors', 'wheels']],
-].map(([title, contact, story, tip, ids], index) => Object.freeze({ index, title, contact, story, tip,
+].map(([title, contact, story, tip, ids], index) => Object.freeze({ index, title:MISSIONS[index].title, contact, story, tip,
   challenge: ids.map(id => CONDITIONS[id].description).join(' '),
   bonusLabel: `UP TO +${ids.reduce((sum, id) => sum + CONDITIONS[id].reward, 0)} CHIPS`,
   challenges: Object.freeze(ids.map(id => CONDITIONS[id])) }));
@@ -26,7 +27,7 @@ Object.freeze(JOBS);
 
 const GUIDANCE = [
   { enter_car: ['HUNTER', 'Riot is on the lot. Get close and enter; save your bullets for the van.'],
-    hit_van: ['HUNTER', 'Put the convoy engine out. Four clean sidearm hits should do it. Keep the sidewalk clear.'],
+    hit_van: ['HUNTER', 'Put the convoy engine out. Ram it or shoot until the engine gives out. Keep the sidewalk clear.'],
     grab: ['HUNTER', 'Engine is done. Stop beside the van, then interact to take the sealed archive key.'],
     lose_heat: ['MASK', 'Turn out of their sight. A building between you and Metro is worth more than another mile.'],
     stash: ['HUNTER', 'Bring the key into the garage. Next we find a way into the Palace.'] },
@@ -133,17 +134,18 @@ function observe(G, D, dt) {
 }
 function security(G, D, b, dt) {
   const A = D.active, p = G.player, at = G.meta?.interactions?.casinoDoor;
-  if (![3, 4].includes(A.job) || A.approach !== 'quiet' || G.objectiveIndex > 1 || !at || !p) { D.suspicion = 0; return null; }
+  if ((A.job !== 3 && A.job !== 4) || A.approach !== 'quiet' || G.objectiveIndex > 1 || !at || !p) { D.suspicion = 0; return null; }
   const close = Math.hypot(p.x - at[0], p.y - at[1]) < 440;
   const conspicuous = b.recentShot > 0 || G.wanted > 0 || (p.type === 'foot' ? p.speed > 85 : Math.hypot(p.vx || 0, p.vy || 0) > 70);
   let seen = false;
   if (close && conspicuous && G.nav?.clearLine) {
-    for (const guard of [...(G.cops || []), ...(G.peds || []).filter(ped => ped.copPed)]) {
+    guards: for (const group of [G.cops, G.peds]) for (const guard of group || []) {
+      if (group === G.peds && !guard.copPed) continue;
       if (guard.dead) continue;
       const dx = p.x - guard.x, dy = p.y - guard.y, dist = Math.hypot(dx, dy);
       if (dist > 220) continue;
       const facing = (dx * Math.sin(guard.rot || 0) - dy * Math.cos(guard.rot || 0)) / Math.max(1, dist);
-      if (facing > 0.25 && G.nav.clearLine(guard.x, guard.y, p.x, p.y)) { seen = true; break; }
+      if (facing > 0.25 && G.nav.clearLine(guard.x, guard.y, p.x, p.y)) { seen = true; break guards; }
     }
   }
   D.suspicion = clamp(D.suspicion + dt * (seen ? 0.34 : -0.23), 0, 1);
@@ -166,7 +168,7 @@ export function tickDirector(G, dt) {
   const objective = G._flow?.objectives?.[G.objectiveIndex];
   const key = `${G.missionIndex}:${objective?.id || G.objectiveIndex}`;
   const words = GUIDANCE[G.missionIndex]?.[objective?.id];
-  D.guidance = words ? { name: words[0], text: words[1], key } : null;
+  if (D.guidance?.key !== key) D.guidance = words ? { name: words[0], text: words[1], key } : null;
   if (D.active.lastObjective !== key) {
     D.active.lastObjective = key;
     return alert || D.guidance;
