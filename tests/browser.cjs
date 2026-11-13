@@ -124,7 +124,7 @@ async function dialogue(page, choices) {
       await page.evaluate(()=>{const G=__CC.G,s=G.services.find(s=>s.id==='garage');const car=T.makeVeh('riot',s.x,s.y,0);G.vehicles.push(car);T.enterVeh(G,car,true);car.health=20;car.wrecked=true;G.chips=1400;G.wanted=0;G.evading=true;});
       await page.keyboard.press('KeyC');await step(page);assert.equal(await page.evaluate(()=>__CC.G.scene),'garage');
       await button(page,'REPAIR / 120');assert.equal(await page.evaluate(()=>__CC.G.player.health),100);assert.equal(await page.evaluate(()=>__CC.G.chips),1280);
-      await button(page,'ENGINE + TIRES / 500');assert.equal(await page.evaluate(()=>__CC.G.action.upgrades),1);
+      await button(page,'ENGINE + TIRES 1 / 500');assert.equal(await page.evaluate(()=>__CC.G.action.upgrades),1);
       await button(page,'LOSE HEAT / 250');assert.equal(await page.evaluate(()=>__CC.G.player.paint),1);assert.equal(await page.evaluate(()=>__CC.G.chips),530);
       await button(page,'BACK TO CITY');await page.evaluate(()=>{T.loadSave(__CC.G);T.render(__CC.G)});assert.equal(await page.evaluate(()=>__CC.G.action.upgrades),1);assert.equal(await page.evaluate(()=>__CC.G.player.paint),1);
     });
