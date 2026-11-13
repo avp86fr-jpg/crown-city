@@ -1,5 +1,6 @@
 import {createEffects,createContactPlayer,surfaceMotion,engineMotion,sceneAcoustics,soundPosition,railMotion} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
+import {islandAmbience} from './resort.js';
 import {regionalTrainAt,ridePhase} from './transit.js';
 /** Crown City sound design: original arranged radio plus synthesized spatial effects.
  *  Buses: sfx / music / ambience -> glue compressor -> limiter -> master.
@@ -300,7 +301,7 @@ export function createAudio() {
   A.currentStation = () => A.stations[A.station % A.stations.length].name;
 
   /* ---------------- per-tick update (cheap: a handful of param ramps) ---------------- */
-  let stepDist=0,gullT=3,dingT=2,railT=0,scanT=0,scanX=Infinity,scanY=Infinity,lastScene='',lastAudible=false,spatialQueries=0;
+  let stepDist=0,gullT=3,dingT=2,surfT=2,callT=0,callN=0,coasterT=0,screamT=4,bellT=6,jointY=null,railT=0,scanT=0,scanX=Infinity,scanY=Infinity,lastScene='',lastAudible=false,spatialQueries=0;
   const railWorld={motion:0,gain:0,pan:0},platformDoors=[false,false];
   A.update = (G, dt) => {
     if (!ctx || ctx.state !== "running") return;
@@ -384,9 +385,21 @@ export function createAudio() {
     const night = G.time > 20 || G.time < 6;
     const busy=acoustics.traffic||0,airHeight=P.def?.aircraft?Math.max(0,P.altitude||0):0,ground=Math.max(.12,1-airHeight/360);
     set(L.traffic.g.gain,play&&audible?.16*busy*ground:0,.6);if(L.traffic.p.pan)set(L.traffic.p.pan,acoustics.trafficPan||0,.3);
-    set(L.crowd.g.gain,audible&&(play||casino)?(casino?.045:strip?.10:.055)*(acoustics.crowd||0)*(night&&strip?1.15:1)*ground:0,.8);
+    const parkCrowd=play&&audible?(islandAmbience(G)?.park||0):0;
+    set(L.crowd.g.gain,audible&&(play||casino)?Math.max((casino?.045:strip?.10:.055)*(acoustics.crowd||0)*(night&&strip?1.15:1),parkCrowd*.11)*ground:0,.8);
     set(L.crowd.f.frequency, 600 + 300 * Math.sin(now() * 0.7), 0.4);
-    set(L.surf.g.gain,play&&audible?water*(canal?.075:.14)*(1+.18*Math.sin(now()*.5))*ground:0,.8);set(L.surf.f.frequency,canal?470:900,.8);
+    const isle=play&&audible?islandAmbience(G):null,beach=isle?.beach||0,park=isle?.park||0;
+    set(L.surf.g.gain,play&&audible?Math.max(water*(canal?.075:.14),beach*.2)*(1+.18*Math.sin(now()*.5))*ground:0,.8);
+    if(isle){
+     if(beach>.2&&(surfT-=dt)<0){surfT=3.4+Math.random()*3.5;fx('surf',.16*beach*ground,Math.random()*1.2-.6,.85+Math.random()*.25);}
+     if(beach>.3&&!night&&(gullT-=dt*.8)<0){gullT=3+Math.random()*5;fx('gull',.07*beach,Math.random()*1.6-.8);}
+     if(park>.05&&(callT-=dt)<0){callT=2.38;callN++;fx(callN%4<2?'calliopeA':'calliopeB',.07*park*ground,(G.world.resort.ferris.x-P.x)/900,1);}
+     const R=G.world.resort,cp=R?.coasterPos;
+     if(cp&&park>.05){const d=Math.hypot(cp.x-P.x,cp.y-P.y);if(d<700&&R.coasterSpeed>.6&&(coasterT-=dt)<0){coasterT=2;fx('coaster',.16*(1-d/700),Math.max(-.9,Math.min(.9,(cp.x-P.x)/500)),.9+R.coasterSpeed*.2);}
+      if(d<900&&(screamT-=dt)<0&&(R.coasterSpeed>.85||R.dropFall)){screamT=5+Math.random()*5;fx('screams',.09*(1-d/900),Math.max(-.9,Math.min(.9,(cp.x-P.x)/500)));}}
+     if(isle.district==='LUCKY ISLE MARINA'&&(bellT-=dt)<0){bellT=7+Math.random()*9;fx('marinaBell',.05,Math.random()*1.2-.6,.9+Math.random()*.2);}
+     if(isle.district==='CROWN BAY BRIDGE'&&P.type==='veh'&&!P.def?.boat&&!P.def?.aircraft){const k=Math.floor((P.y+370)/240);if(jointY!==null&&k!==jointY&&Math.hypot(P.vx||0,P.vy||0)>60)fx('bumper',.12,0,.72);jointY=k;}else jointY=null;
+    }set(L.surf.f.frequency,canal?470:900,.8);
     set(L.wind.g.gain,play&&audible?(airHeight>10?.06+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.045:dist.includes('FOREST')?.028:.008):0,.6);
     set(L.rain.g.gain,play&&audible?(A._rain||0)*.2:0,.3);
     if(play&&audible&&water&&(gullT-=dt)<0&&!night){gullT=5+Math.random()*8;fx('gull',.055*water,Math.random()*1.6-.8);}

@@ -15,7 +15,7 @@ export function drawMinimapBackdrop(G,x,y,size,span){
   const c=canvas.getContext('2d');c.setTransform(1,0,0,1,0,0);
   c.fillStyle='#0b1622';c.fillRect(0,0,side,side);
   const extent=side/k;
-  c.drawImage(M.c,(P.x-extent/2)/M.S,(P.y-extent/2)/M.S,extent/M.S,extent/M.S,0,0,side,side);
+  c.drawImage(M.c,(P.x-extent/2)/M.S,(P.y+(M.oy||0)-extent/2)/M.S,extent/M.S,extent/M.S,0,0,side,side);
   c.fillStyle='rgba(0,0,0,.12)';c.fillRect(0,0,side,side);
   drawTransitMap({ctx:c,ui:G.ui},(wx,wy)=>[side/2+(wx-P.x)*k,side/2+(wy-P.y)*k],{x:0,y:0,size:side});
   Object.assign(cache,{source:M.c,side,span,ui:G.ui,x:P.x,y:P.y,builds:cache.builds+1});

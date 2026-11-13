@@ -9,7 +9,12 @@ export function roofDetailPlan(b){
  const plan={w,h,pitched:b.roof==='terra'||b.roof==='terra2',industrial,residential,fans:[],solar:[],skylights:[],terrace:null,access:null};
  if(b.helipad||w<45||h<40)return b._roofDetailPlan=plan;
  if(plan.pitched){if(w>85&&h>65)plan.access={x:w*.7,y:h*.26,w:12,h:15};return b._roofDetailPlan=plan;}
- const margin=14;
+ const margin=14,pick=((seed*9301+w*13+h*7)%997)/997,pick2=((seed*4973+w*31+h*17)%991)/991;
+ // Flat roofs read as a varied, lived-in skyline: membrane colours, roof gardens, pools.
+ if(!industrial)plan.tint=['rgba(205,126,88,.26)','rgba(88,156,152,.22)','rgba(226,198,140,.26)','rgba(122,142,178,.2)',null,'rgba(186,98,96,.2)'][Math.floor(pick2*6)];
+ else plan.tint=pick2<.4?'rgba(120,150,160,.18)':pick2<.6?'rgba(170,120,80,.18)':null;
+ if(!industrial&&w>112&&h>92&&pick<.3){plan.garden={x:margin,y:margin+30,w:w-margin*2,h:h-margin*2-30};plan.access={x:margin,y:margin,w:Math.min(36,w*.2),h:25};return b._roofDetailPlan=plan;}
+ if(!industrial&&w>128&&h>104&&pick>=.3&&pick<.46){plan.pool={x:w*.32,y:h*.3,w:w*.5,h:h*.42};plan.access={x:margin,y:margin,w:Math.min(36,w*.2),h:25};return b._roofDetailPlan=plan;}
  if(w>90&&h>76){
   plan.access={x:margin,y:margin,w:Math.min(36,w*.2),h:25};
   if(industrial){
@@ -41,6 +46,18 @@ export function drawRoofArtwork(c,b){
   c.strokeStyle='rgba(229,192,141,.35)';c.lineWidth=1;c.strokeRect(4,4,w-8,h-8);
   if(p.access){const a=p.access;unit(c,a.x,a.y,a.w,a.h,'#84675a');box(c,a.x+2,a.y+2,a.w-4,a.h-5,'#352f2c');}return;
  }
+ if(p.tint){c.fillStyle=p.tint;c.fillRect(2,2,w-4,h-4);c.strokeStyle='rgba(255,246,226,.28)';c.lineWidth=3;c.strokeRect(3,3,w-6,h-6);}
+ if(p.garden){const a=p.garden;box(c,a.x,a.y,a.w,a.h,'#5b8a47');box(c,a.x,a.y,a.w,3,'rgba(255,255,255,.18)');
+  c.strokeStyle='#c9b48c';c.lineWidth=6;c.beginPath();c.moveTo(a.x,a.y+a.h/2);c.lineTo(a.x+a.w,a.y+a.h/2);c.moveTo(a.x+a.w*.4,a.y);c.lineTo(a.x+a.w*.4,a.y+a.h);c.stroke();
+  let k=(b.seed||1)*7;const rn=()=>((k=(k*9301+49297)%233280)/233280);
+  for(let i=0;i<Math.max(3,a.w*a.h/1600);i++){const tx=a.x+8+rn()*(a.w-16),ty=a.y+8+rn()*(a.h-16),r=5+rn()*7;c.fillStyle='rgba(10,30,10,.3)';c.beginPath();c.arc(tx+3,ty+4,r,0,TAU);c.fill();c.fillStyle=rn()<.2?'#d9708a':rn()<.5?'#4e7d3c':'#6a9a4c';c.beginPath();c.arc(tx,ty,r,0,TAU);c.fill();c.fillStyle='rgba(190,230,140,.35)';c.beginPath();c.arc(tx-r*.3,ty-r*.3,r*.45,0,TAU);c.fill();}
+  for(const x of [a.x+6,a.x+a.w-18])unit(c,x,a.y+a.h-16,12,10,'#8a6a4a');
+ }
+ if(p.pool){const a=p.pool;box(c,a.x-8,a.y-8,a.w+16,a.h+16,'#e4dccb');const g=c.createLinearGradient(a.x,a.y,a.x+a.w,a.y+a.h);g.addColorStop(0,'#86e6e3');g.addColorStop(1,'#1f93b8');c.fillStyle=g;c.fillRect(a.x,a.y,a.w,a.h);
+  c.strokeStyle='rgba(255,255,255,.5)';c.lineWidth=1.2;for(let i=1;i<4;i++){c.beginPath();c.moveTo(a.x+i*a.w/4-4,a.y+4);c.quadraticCurveTo(a.x+i*a.w/4+5,a.y+a.h/2,a.x+i*a.w/4-3,a.y+a.h-4);c.stroke();}
+  for(let x=a.x;x<a.x+a.w-8;x+=16){unit(c,x,a.y-22,9,12,'#f3efe6');box(c,x,a.y-22,9,3,'#d2654a');}
+ }
+ if(p.garden||p.pool){if(p.access){const a=p.access;unit(c,a.x,a.y,a.w,a.h,'#828f8b');box(c,a.x+3,a.y+4,a.w-6,a.h-8,'#687a79');}return;}
  // An inset maintenance path and drains explain the roof's arrangement.
  if(w>90&&h>76){c.strokeStyle='rgba(202,195,167,.18)';c.lineWidth=5;c.beginPath();c.moveTo(19,40);c.lineTo(19,h-12);c.lineTo(w-22,h-12);c.lineTo(w-22,39);c.stroke();}
  if(p.access){const a=p.access;unit(c,a.x,a.y,a.w,a.h,'#828f8b');box(c,a.x+3,a.y+4,a.w-6,a.h-8,'#687a79');box(c,a.x+8,a.y+a.h-3,12,4,'#273f40');}

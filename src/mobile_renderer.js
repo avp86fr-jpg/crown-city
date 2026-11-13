@@ -20,6 +20,7 @@ import {drawTransitWorld} from './transit.js';
 import {drawCasinoWorld} from './casino.js';
 import {drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
+import {drawResortGround,drawResortOverhead,drawResortLights} from './resort.js';
 const CORE=4096,TILE=1024,OUTER=512;
 function retire(e){e.retired=true;e.job?.return();e.bitmap?.close();if(e.canvas)e.canvas.width=1;if(e.working)e.working.width=1;}
 function seal(e){
@@ -108,13 +109,13 @@ export function drawMobileWorld(G,H) {
   G._outerLimit=Math.min(96,Math.max(40,queue.length+8));
   for(const {x,y,key} of queue){
    if(drawBakedWorldTile(G,c,x,y)){const old=G.mobileOuter?.get(key);if(old){retire(old);G.mobileOuter.delete(key);}continue;}
-   const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const m=G.minimap;c.drawImage(m.c,x*OUTER/m.S,y*OUTER/m.S,OUTER/m.S,OUTER/m.S,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}
+   const image=outerTile(G,x,y);if(image)c.drawImage(image,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);else{pending++;const m=G.minimap;c.drawImage(m.c,x*OUTER/m.S,(y*OUTER+(m.oy||0))/m.S,OUTER/m.S,OUTER/m.S,x*OUTER,y*OUTER,OUTER+.5,OUTER+.5);}
   }
   const composeMs=performance.now()-G._outerStart;
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
-  drawWaterMotion(G,r);
+  drawWaterMotion(G,r);drawResortGround(G,r);
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
@@ -133,7 +134,7 @@ export function drawMobileWorld(G,H) {
   if(G.player.type==='foot')actors.push(G.player);
   actors.sort((a,b)=>(a.dead?-1e6:a.y)-(b.dead?-1e6:b.y));
   for(const a of actors)a.def?H.drawVeh(G,a):H.drawChar(G,a);
-  drawWildlife(G,r);drawExpansionPeople(G,r);drawTransitWorld(G,r,true);H.drawAirborne?.(G,r);
+  drawWildlife(G,r);drawExpansionPeople(G,r);drawResortOverhead(G,r);drawTransitWorld(G,r,true);H.drawAirborne?.(G,r);
   H.drawParticles(G,r,false);
   // One restrained ambient tint, with a small set of additive lights. No full-screen light-map passes.
   c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(7,15,32,${tint.alpha})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
@@ -142,6 +143,7 @@ export function drawMobileWorld(G,H) {
   H.worldXform(G,c,r.S);c.globalCompositeOperation='lighter';
   if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.2*night;for(const lamp of visibleStreetLights(G,r,16))c.drawImage(glow,lamp.x-42,lamp.y-42,84,84);}
   drawMobileVehicleLights(G,actors,night);
+  drawResortLights(G,r,night);
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);

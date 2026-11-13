@@ -31,6 +31,7 @@ import { AIRCRAFT_DEFS, airborne, spawnAircraft, tickAircraft, aircraftSnapshot,
 import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, drawExpansionHUD } from './expansion.js';
 import { drawExpansionOverhead } from './expansion_world.js';
 import { drawMobileWorld } from './mobile_renderer.js';
+import {initResort,drawResortGround,drawResortOverhead,drawResortLights,NORTH} from './resort.js';
 import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
 import { loadImage as loadImg } from "./assets.js";
 import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, resetInput } from "./session.js";
@@ -221,7 +222,7 @@ export async function boot() {
   servicePoints(G); buildStreetScene(G);
   G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
-  initExpansion(G);initTransit(G);initWildlife(G);initCasino(G);
+  initExpansion(G);initTransit(G);initWildlife(G);initCasino(G);initResort(G);
   seedPickups(G);
   // Warm the first city tiles without running the city behind the static title.
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
@@ -264,14 +265,14 @@ export async function boot() {
 
 function buildMinimap(G) {
   const S = 8; // world px per minimap px
-  const W = WORLD_W / S, H = WORLD_H / S;
+  const W = WORLD_W / S, H = (WORLD_H + NORTH) / S, OY = NORTH;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
   const img = x.createImageData(W, H);
   const col = { 0: [144, 153, 150], 1: [81, 94, 88], 2: [49, 65, 66], 3: [25, 62, 75], 4: [125, 110, 79], 5: [49, 77, 62], 6: [150, 155, 150], 7: [129, 117, 86], 8: [25, 62, 75], 9: [103, 109, 100], 10: [89, 87, 66] };
   for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) {
-    const c0 = G.codeAt(xx * S + 4, y * S + 4);
+    const c0 = G.codeAt(xx * S + 4, y * S + 4 - OY);
     const k = col[c0] || [0, 0, 0];
     const i = (y * W + xx) * 4;
     img.data[i] = k[0]; img.data[i + 1] = k[1]; img.data[i + 2] = k[2]; img.data[i + 3] = 255;
@@ -279,7 +280,7 @@ function buildMinimap(G) {
   x.putImageData(img, 0, 0);
   // Use the actual collision geography across the whole atlas. Mixing the
   // illustrated core image with a schematic frontier obscured roads at the seam.
-  return { c, S };
+  return { c, S, oy: OY };
 }
 
 function drawBoot(ctx, canvas, p, msg) {
@@ -338,7 +339,7 @@ function navOk(G, x, y) {
   if (!N.reach) {
     N.reach = new Uint8Array(N.NW * N.NH);
     const q = [];
-    const s = ((2108 / N.C) | 0) + ((2000 / N.C) | 0) * N.NW;
+    const s = ((2108 / N.C) | 0) + (((2000 + (N.OY||0)) / N.C) | 0) * N.NW;
     q.push(s); N.reach[s] = 1;
     while (q.length) {
       const i = q.pop(); const xx = i % N.NW, yy = (i / N.NW) | 0;
@@ -348,7 +349,7 @@ function navOk(G, x, y) {
       }
     }
   }
-  return !!N.reach[((y / N.C) | 0) * N.NW + ((x / N.C) | 0)];
+  return !!N.reach[(((y + (N.OY||0)) / N.C) | 0) * N.NW + ((x / N.C) | 0)];
 }
 
 function spawnWorld(G) {
@@ -559,7 +560,7 @@ function canvasMouse(G) {
       const m = G.mapView;
       if (mx >= m.x && my >= m.y && mx <= m.x + m.w && my <= m.y + m.h) {
         G.waypoint = { x: clamp((mx - m.x) / m.k * G.minimap.S, 0, WORLD_W - 1),
-          y: clamp((my - m.y) / m.k * G.minimap.S, 0, WORLD_H - 1) };
+          y: clamp((my - m.y) / m.k * G.minimap.S - (G.minimap.oy||0), -NORTH + 40, WORLD_H - 1) };
         G.gps = null; toast(G, 'Blue waypoint set. Gold marker is your job.');
       }
       return;
@@ -775,7 +776,7 @@ function restoreState(G, d) {
   G.ended = d.ended === true || G.missionIndex >= MISSIONS.length;
   G.race = null; G.jack = null; G.bullets = []; G.seenT = 0;
   const x = finite(d.px, G.meta.spawns.player[0], 40, WORLD_W - 40);
-  const y = finite(d.py, G.meta.spawns.player[1], 40, WORLD_H - 40);
+  const y = finite(d.py, G.meta.spawns.player[1], -NORTH + 40, WORLD_H - 40);
   const rot = finite(d.prot, 0, -Math.PI * 100, Math.PI * 100);
   if (G.player?.type === 'veh') { G.player.driver = null; G.player.loose = true; }
   if (d.ptype === 'veh' && VEH_DEFS[d.vehKind]) {
@@ -797,7 +798,7 @@ function restoreState(G, d) {
   if (G._flow && G._flow.onStart && G._flow.onStart.spawnVan) {
     spawnVan(G);
     if (d.van) {
-      G.van.x = finite(d.van.x, G.van.x, 40, WORLD_W - 40); G.van.y = finite(d.van.y, G.van.y, 40, WORLD_H - 40);
+      G.van.x = finite(d.van.x, G.van.x, 40, WORLD_W - 40); G.van.y = finite(d.van.y, G.van.y, -NORTH + 40, WORLD_H - 40);
       G.van.health = finite(d.van.health, 100, 0, 100); G.van.dead = d.van.dead === true; G.van.loose = d.van.loose === true;
     }
   }
@@ -2884,7 +2885,7 @@ function renderWorldLayer(G) {
   _ph('w_core');
   // 3. procedural districts
   G.ground.draw(ctx, r, frame);
-  G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);
+  G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);drawResortGround(G,r);
   if (G.wet > 0.15 && r.x0 < CORE && r.y0 < CORE) { ctx.globalAlpha = 0.4 * G.wet; L.puddles.draw(ctx, r, frame); ctx.globalAlpha = 1; }
   if (G.wet > 0.15) { ctx.fillStyle = `rgba(30,40,60,${0.18 * G.wet})`; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
   _ph('w_ground');
@@ -2938,6 +2939,7 @@ function renderWorldLayer(G) {
   for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
   drawWildlife(G,r);drawExpansionPeople(G,r);
   drawParticles(G, r, false);
+  drawResortOverhead(G,r);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
   G.bld.trees(ctx, cam, r, { low, time: G.settings.reducedMotion ? 0 : G.ticks / 60,storm:Math.max(G.rainAmt,G.sand) });
@@ -2958,6 +2960,7 @@ function renderWorldLayer(G) {
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
+  worldXform(G, ctx, S, 1, ox, oy);drawResortLights(G,r,nightFactor(G));
   _ph('w_light');
   drawArchitectureLights(G, r, nightFactor(G));drawLocalAtmosphere(G,r);
   drawAtmosphere(G, r, nightFactor(G));
@@ -3230,7 +3233,7 @@ function drawVeh(G, v) {
     let clipping=false;
     for(const b of G.world.expansion?.overpasses||[]){
       if(v.x+100<=b.x||v.x-100>=b.x+b.w||v.y+120<=b.y||v.y-120>=b.y+b.h)continue;
-      if(!clipping){ctx.beginPath();ctx.rect(-1000,-1000,WORLD_W+2000,WORLD_H+2000);clipping=true;}
+      if(!clipping){ctx.beginPath();ctx.rect(-1000,-NORTH-1000,WORLD_W+2000,WORLD_H+NORTH+2000);clipping=true;}
       ctx.rect(b.x,b.y,b.w,b.h);
     }
     if(clipping)ctx.clip('evenodd');
@@ -3757,7 +3760,7 @@ function drawMap(G) {
   G.mapView = { x: mx, y: my, w: mw, h: mh, k };
   ctx.drawImage(M.c, mx, my, mw, mh);
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
-  const to = (x, y) => [mx + x / M.S * k, my + y / M.S * k];
+  const to = (x, y) => [mx + x / M.S * k, my + (y + (M.oy||0)) / M.S * k];
   drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
   for(const contact of G.contacts||[]){const p=to(contact.x,contact.y);ctx.fillStyle=contact.color;ctx.beginPath();ctx.arc(p[0],p[1],3*u,0,TAU);ctx.fill();}

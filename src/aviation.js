@@ -130,7 +130,7 @@ export function tickAircraft(G,v,I,dt,hooks={}){
   if(ground&&speed>170&&!onRunway(G,v))notice('Takeoff needs the marked runway.');
  }
  v.verticalSpeed=vertical;v.altitude=clamp(v.altitude+vertical*dt,0,420);
- const edge=helicopter?80:105;let nx=clamp(v.x+v.vx*dt,edge,WORLD_W-edge),ny=clamp(v.y+v.vy*dt,edge,WORLD_H-edge);
+ const edge=helicopter?80:105;let nx=clamp(v.x+v.vx*dt,edge,WORLD_W-edge),ny=clamp(v.y+v.vy*dt,-2816+edge,WORLD_H-edge);
  const steps=Math.max(1,Math.ceil(Math.hypot(nx-oldX,ny-oldY)/18));let height=0;
  for(let i=1;i<=steps;i++){const q=i/steps,h=aircraftClearance(G,v,oldX+(nx-oldX)*q,oldY+(ny-oldY)*q);if(h&&oldAltitude+(v.altitude-oldAltitude)*q<h+18){height=h;break;}}
  if(height){

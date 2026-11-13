@@ -69,7 +69,7 @@ export function drawBoundaryMarkers(c,W,r){
   else{c.fillStyle='#48574b';c.fillRect(vertical?-5:-20,vertical?-20:-5,vertical?10:40,vertical?40:10);c.fillStyle='#8e9378';c.fillRect(-3,-3,6,6);}
   c.restore();
  };
- if(r.y0<24)for(let x=Math.floor(r.x0/160)*160+80;x<Math.min(right,r.x1+160);x+=160)if(x>=0)marker(x,12,true,false);
+ if(r.y0<b.y+24)for(let x=Math.floor(r.x0/160)*160+80;x<Math.min(right,r.x1+160);x+=160)if(x>=0)marker(x,b.y+12,true,false);
  if(r.y1>bottom-24)for(let x=Math.floor(r.x0/96)*96+48;x<Math.min(right,r.x1+96);x+=96)if(x>=0)marker(x,bottom-2,false,false);
- for(const [x,on] of [[2,r.x0<24],[right-2,r.x1>right-24]])if(on)for(let y=Math.floor(r.y0/96)*96+48;y<Math.min(bottom,r.y1+96);y+=96)if(y>=0)marker(x,y,y<720||y>W.river[0]&&y<W.river[1],true);
+ for(const [x,on] of [[2,r.x0<24],[right-2,r.x1>right-24]])if(on)for(let y=Math.floor(r.y0/96)*96+48;y<Math.min(bottom,r.y1+96);y+=96)if(y>=b.y)marker(x,y,y<720||y>W.river[0]&&y<W.river[1],true);
 }

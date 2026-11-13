@@ -58,19 +58,19 @@ test('a car waits for a fast vehicle approaching the adjacent lane before beginn
 });
 
 test('police steering lookahead follows an L-shaped corridor instead of cutting its blocked corner',()=>{
- const nav=createNav({surfaceAt:()=> 'road'}),C=nav.C;
+ const nav=createNav({surfaceAt:()=> 'road'}),C=nav.C,OY=nav.OY||0;
  nav.pass.fill(0);nav.raw.fill(0);nav.dist.fill(65535);
  const path=[[5,5],[6,5],[7,5],[8,5],[8,6],[8,7],[8,8]];
  for(const [i,[x,y]]of path.entries()){nav.pass[y*nav.NW+x]=nav.raw[y*nav.NW+x]=1;nav.dist[y*nav.NW+x]=path.length-i-1;}
- const start={x:5.5*C,y:5.5*C},next=nav.next(start.x,start.y,6);
- assert.ok(nav.gridLine(start.x,start.y,next.x,next.y));assert.deepEqual([next.x,next.y],[8.5*C,5.5*C]);
- const finish=nav.next(next.x,next.y,6);assert.deepEqual([finish.x,finish.y],[8.5*C,8.5*C]);
+ const start={x:5.5*C,y:5.5*C-OY},next=nav.next(start.x,start.y,6);
+ assert.ok(nav.gridLine(start.x,start.y,next.x,next.y));assert.deepEqual([next.x,next.y],[8.5*C,5.5*C-OY]);
+ const finish=nav.next(next.x,next.y,6);assert.deepEqual([finish.x,finish.y],[8.5*C,8.5*C-OY]);
  // Recovery from an eroded edge cannot jump through a wall to a tempting
  // low-distance cell; a farther reachable cell on this side is preferable.
  nav.pass.fill(0);nav.raw.fill(0);nav.dist.fill(65535);
  for(let y=5;y<=8;y++)nav.raw[y*nav.NW+5]=1;
  for(const [x,y,d]of [[7,5,0],[5,8,10]]){nav.raw[y*nav.NW+x]=nav.pass[y*nav.NW+x]=1;nav.dist[y*nav.NW+x]=d;}
- const recover=nav.next(start.x,start.y);assert.deepEqual([recover.x,recover.y],[5.5*C,8.5*C]);
+ const recover=nav.next(start.x,start.y);assert.deepEqual([recover.x,recover.y],[5.5*C,8.5*C-OY]);
 });
 
 test('two boat captains share one broadphase scan and still detect a newly arriving wreck',()=>{

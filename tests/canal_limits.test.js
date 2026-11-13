@@ -34,7 +34,7 @@ test('whole rotated bodies remain inside the world and receive inward boundary n
  const bounds=G.world.limits;
  for(const kind of ['riot','bus','stitch','wake','gulf','plane','heli'])for(const rot of [0,.3,Math.PI/4,Math.PI/2]){
   const v=T.makeVeh(kind,0,0,rot),body=bodySize(v);
-  for(const [x,y,nx,ny] of [[-20,500,1,0],[bounds.w+20,500,-1,0],[500,-20,0,1],[500,bounds.h+20,0,-1]]){
+  for(const [x,y,nx,ny] of [[-20,500,1,0],[bounds.w+20,500,-1,0],[500,bounds.y-20,0,1],[500,bounds.y+bounds.h+20,0,-1]]){
    const hit=worldBoundaryContact(bounds,v,x,y,body);assert.ok(hit?.boundary);assert.equal(hit.nx,nx);assert.equal(hit.ny,ny);
    const p=clampWorldBody(bounds,v,x,y,body);assert.equal(worldBoundaryContact(bounds,v,p.x,p.y,body),null,kind+' '+rot);
   }

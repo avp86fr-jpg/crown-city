@@ -5,9 +5,11 @@ import {drawCircuitGround,circuitGroundSteps,loadCircuitArt,CIRCUIT} from './cir
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
 import {drawWorldDetails} from './world_details.js';
 import {drawRoofArtwork} from './architecture_art.js';
-import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE } from "./world.js";
+import { CORE, WORLD_W, WORLD_H, CELL, GW, GH, CODE, DISTRICTS } from "./world.js";
 
 const TAU = Math.PI * 2;
+const GRADES={eastside:['rgba(236,150,96,.19)','rgba(214,140,92,.02)'],downtown:['rgba(150,180,220,.14)','rgba(110,140,190,.02)'],port:['rgba(120,196,196,.15)','rgba(70,140,150,.02)'],industrial:['rgba(214,170,96,.17)','rgba(160,120,60,.03)'],oldtown:['rgba(240,190,120,.19)','rgba(210,160,100,.02)'],suburb:['rgba(170,214,120,.16)','rgba(120,170,90,.02)'],airfield:['rgba(200,210,170,.12)','rgba(150,160,120,.01)']};
+function districtGrade(x,y){for(const d of DISTRICTS){const r=d.r;if(x>=r[0]&&y>=r[1]&&x<r[0]+r[2]&&y<r[1]+r[3])return GRADES[d.id];}return null;}
 import { loadImage as loadImg,loadScenery } from "./assets.js";
 const roofParallax=(offset,k)=>Math.max(-24,Math.min(24,offset*k));
 // Roof art, rooftop details and neon share the same capped perspective.
@@ -252,6 +254,9 @@ export function makeGround(W, tex, codeAt) {
       // A world-aligned repeat replaces clipped per-chunk radial washes. The
       // same material continues over tile seams and rasterizes only once.
       x.fillStyle=yield* weatherPatternSteps();x.fillRect(ox,oy,CH,CH);
+      // Each procedural district carries its own light and palette, so the
+      // outer city reads as distinct neighbourhoods rather than one grey grid.
+      if(!(ox<CORE&&oy<CORE)&&!terrainRegion(ox+CH/2,oy+CH/2)){const g=districtGrade(ox+CH/2,oy+CH/2);if(g){x.globalCompositeOperation='soft-light';x.fillStyle=g[0];x.fillRect(ox,oy,CH,CH);x.globalCompositeOperation='source-over';x.fillStyle=g[1];x.fillRect(ox,oy,CH,CH);}}
       for (let i = 0; i < 46; i++) {
         const px = ox + rn() * CH, py = oy + rn() * CH;
         const v = cellAt((px / CELL) | 0, (py / CELL) | 0);
@@ -482,7 +487,25 @@ export function drawIntersection(x,W,n,pats){
     x.beginPath();if(v){x.moveTo(n.x-hw,n.y+side*hh);x.lineTo(n.x+hw,n.y+side*hh);}else{x.moveTo(n.x+side*hw,n.y-hh);x.lineTo(n.x+side*hw,n.y+hh);}x.stroke();
   }
 }
+function drawCourtyard(x,l){
+  // Courtyards too tight for parking become small residents' gardens: paved
+  // path, lawn, planters, benches and canopy trees, all baked flat into terrain.
+  const {x:X,y:Y,w,h}=l;let k=((X*73856093)^(Y*19349663))>>>0;const rn=()=>((k=(k*1103515245+12345)>>>0)/4294967296);
+  x.fillStyle='#b9a88a';x.fillRect(X+2,Y+2,w-4,h-4);
+  x.fillStyle='rgba(120,96,70,.18)';for(let yy=Y+2;yy<Y+h-2;yy+=8)x.fillRect(X+2,yy,w-4,1);for(let xx=X+2;xx<X+w-2;xx+=12)x.fillRect(xx,Y+2,1,h-4);
+  const m=10;if(w>40&&h>40){x.fillStyle='#4f7d3e';x.fillRect(X+m,Y+m,w-m*2,h-m*2);x.fillStyle='rgba(150,200,110,.18)';for(let i=0;i<w*h/220;i++)x.fillRect(X+m+rn()*(w-m*2-3),Y+m+rn()*(h-m*2-3),3,2);
+    x.fillStyle='#c8b896';if(w>h)x.fillRect(X+m,Y+h/2-5,w-m*2,10);else x.fillRect(X+w/2-5,Y+m,10,h-m*2);
+    x.strokeStyle='rgba(60,46,30,.5)';x.lineWidth=2;x.strokeRect(X+m,Y+m,w-m*2,h-m*2);}
+  const n=Math.max(1,Math.min(9,Math.round(w*h/4200)));
+  for(let i=0;i<n;i++){const tx=X+16+rn()*Math.max(1,w-32),ty=Y+16+rn()*Math.max(1,h-32),r=9+rn()*8;
+    x.fillStyle='rgba(8,22,10,.32)';x.beginPath();x.ellipse(tx+5,ty+6,r,r*.85,0,0,TAU);x.fill();
+    x.fillStyle=rn()<.15?'#c86f86':rn()<.5?'#3f6d33':'#58893f';x.beginPath();x.arc(tx,ty,r,0,TAU);x.fill();
+    x.fillStyle='rgba(28,58,24,.45)';x.beginPath();x.arc(tx+r*.25,ty+r*.25,r*.6,0,TAU);x.fill();
+    x.fillStyle='rgba(196,232,142,.35)';x.beginPath();x.arc(tx-r*.35,ty-r*.35,r*.42,0,TAU);x.fill();}
+  if(w>60&&h>60)for(const [bx,by] of [[X+m+6,Y+m+4],[X+w-m-26,Y+h-m-10]]){x.fillStyle='rgba(0,0,0,.25)';x.fillRect(bx+2,by+3,20,6);x.fillStyle='#8a6440';x.fillRect(bx,by,20,6);x.fillStyle='#b48a5a';x.fillRect(bx,by,20,2);}
+}
 export function drawLot(x,l){
+  if(l.k==='parking'&&Array.isArray(l.bays)&&!l.bays.length){drawCourtyard(x,l);return;}
   if(Array.isArray(l.bays)){
     // Paint the exact plan used by vehicle placement. Bay width/depth includes
     // door space and bumper clearance; entrances face the shared driving aisle.

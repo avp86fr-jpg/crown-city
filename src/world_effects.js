@@ -24,7 +24,7 @@ export function drawLocalAtmosphere(G,r){
   drawBoundaryBackdrop(G.ctx,bounds,r,G);
  }
  // The west/north painted core bypasses the procedural ground cache.
- if(r.x0<24&&r.y0<4096||r.y0<24&&r.x0<4096)drawBoundaryMarkers(G.ctx,G.world,{x0:r.x0,y0:r.y0,x1:Math.min(4096,r.x1),y1:Math.min(4096,r.y1)});
+ if(r.x0<24&&r.y0<4096)drawBoundaryMarkers(G.ctx,G.world,{x0:r.x0,y0:r.y0,x1:Math.min(4096,r.x1),y1:Math.min(4096,r.y1)});
  drawAirfieldSignals(G,r);
  if(G.settings.reducedMotion){if(G.atmosphereStats)G.atmosphereStats.plumes=G.atmosphereStats.puffs=G.atmosphereStats.leaves=0;return;}const c=G.ctx,t=G.ticks/60,n=nightMix(G.time),count=G.settings.quality==='low'?10:22,w=r.x1-r.x0,h=r.y1-r.y0,forest=G.player.x>10400&&G.player.y<8400,desert=G.player.y>9216&&G.player.x<8800;
  c.save();

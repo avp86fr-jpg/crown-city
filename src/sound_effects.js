@@ -76,7 +76,7 @@ export function engineMotion(v,input={},out={}){
 export function createEffects(ctx,bus){
  const bank=new Map(),variations=new Map();let voices=0;
  const rate=24000,TAU=Math.PI*2;
- const durations={rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.18,smg:.22,shotgun:.45,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
+ const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.18,smg:.22,shotgun:.45,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
  const varied=new Set(['pistol','smg','shotgun','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood']);
  function sample(kind){
   const varying=varied.has(kind),variant=varying?(variations.get(kind)||0)%3:0,key=kind+variant;
@@ -118,6 +118,12 @@ export function createEffects(ctx,bus){
    else if(kind==='horn')x=(Math.sin(TAU*392*t)+Math.sin(TAU*494*t)+.18*Math.sin(TAU*784*t))*.25*Math.min(1,t*40)*Math.min(1,(dur-t)*20);
    else if(kind==='dog'||kind==='fox')x=(Math.sin(TAU*(150*t+5*Math.sin(t*25)))+low*.7)*Math.exp(-t*18)*.35;
    else if(kind==='cat')x=Math.sin(TAU*(550*t+35*t*t)+2*Math.sin(TAU*110*t))*Math.sin(Math.PI*t/dur)*.22;
+   else if(kind==='calliopeA'||kind==='calliopeB'){const mel=kind==='calliopeA'?[523,659,784,659,880,784,659,587,523,587,659,523]:[587,698,880,698,988,880,784,698,659,587,659,784],k=Math.min(11,Math.floor(t/.2)),tt=t-k*.2,f=mel[k],bass=[131,196,165,196][Math.floor(t/.6)%4],bt=t%.6;
+    x=(Math.sin(TAU*f*tt)*.5+Math.sin(TAU*f*2*tt)*.22+Math.sin(TAU*f*3*tt)*.1)*Math.exp(-tt*5)*Math.min(1,tt*300)*.42+(Math.sin(TAU*bass*bt)*.3+Math.sin(TAU*bass*2*bt)*.1)*Math.exp(-bt*6)*(bt<.3?1:.35)*.5+(t%.6>.3?Math.sin(TAU*bass*1.5*(t%.3))*.08*Math.exp(-(t%.3)*12):0);}
+   else if(kind==='coaster'){const clack=Math.pow(Math.max(0,Math.cos(TAU*t*9)),24);x=(low*.75+Math.sin(TAU*(48+12*Math.sin(t*3))*t)*.25)*Math.sin(Math.PI*t/dur)+noise*.25*clack*Math.sin(Math.PI*t/dur);}
+   else if(kind==='screams'){let v=0;for(let j=0;j<4;j++){const f0=900+j*230+180*Math.sin(t*(7+j)+j);v+=Math.sin(TAU*f0*t+3*Math.sin(TAU*(6+j)*t))*Math.max(0,Math.sin(Math.PI*(t-j*.08)/(dur-.2)));}x=(v*.09+noise*.06*Math.sin(Math.PI*t/dur))*Math.sin(Math.PI*t/dur);}
+   else if(kind==='surf'){const swell=Math.sin(Math.PI*Math.min(1,t/1.1)/2)*Math.exp(-Math.max(0,t-1.1)*1.6);x=(low*1.25+noise*.22*Math.exp(-Math.abs(t-1.15)*4))*swell;}
+   else if(kind==='marinaBell'){x=(Math.sin(TAU*1046*t)*.3+Math.sin(TAU*2093*t)*.12+Math.sin(TAU*1568*t)*.08)*Math.exp(-t*3)*(.6+.4*Math.cos(TAU*3*t));}
    else if(kind==='gull'||kind==='pigeon')x=Math.sin(TAU*((kind==='gull'?1500:430)*t+130*t*t)+.4*Math.sin(TAU*37*t))*Math.sin(Math.PI*t/dur)*.2;
    else if(kind==='deer')x=low*.5*Math.exp(-t*18);
    else if(kind==='water')x=low*1.7*Math.sin(Math.min(1,t/.08)*Math.PI/2)*Math.exp(-t*7);

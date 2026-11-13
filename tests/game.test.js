@@ -74,7 +74,7 @@ test('focus loss clears keyboard, mouse and touch holds and pauses active play',
 test('mission anchors are reachable on the actual collision map', () => {
   for (const key of ['casinoDoor', 'casino', 'casinoLot', 'neural', 'pd']) {
     const at = G.meta.interactions[key]; assert.ok(T.footClear(G, ...at, 8), key);
-    assert.ok(G.nav.raw[Math.floor(at[1] / G.nav.C) * G.nav.NW + Math.floor(at[0] / G.nav.C)], key);
+    assert.ok(G.nav.raw[Math.floor((at[1] + (G.nav.OY||0)) / G.nav.C) * G.nav.NW + Math.floor(at[0] / G.nav.C)], key);
   }
   assert.ok(Math.hypot(G.meta.interactions.casinoLot[0] - G.meta.interactions.casinoDoor[0],
     G.meta.interactions.casinoLot[1] - G.meta.interactions.casinoDoor[1]) > 150);

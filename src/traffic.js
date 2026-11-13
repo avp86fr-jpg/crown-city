@@ -4,6 +4,7 @@ import {trafficDemand,spawnWeight,trafficFlowBudget} from './street_population.j
 import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
+import { NORTH } from "./resort.js";
 const TAU = Math.PI * 2;
 const EMPTY=[],CARDINAL=[[1,0],[-1,0],[0,1],[0,-1]],FOOT_SAFE=new Set(['walk','lot','grass','dirt','sand','pier']),bodyRadii=new WeakMap();
 function bodyRadius(v){const b=bodySize(v);let r=bodyRadii.get(b);if(r===undefined){r=Math.hypot(b.w,b.l);bodyRadii.set(b,r);}return r;}
@@ -649,12 +650,12 @@ export function createPeds(G) {
 /* ---------- nav field (cars) ---------- */
 export function createNav(G) {
   let N_raw = null;
-  const C = 32, NW = Math.ceil(WORLD_W / C), NH = Math.ceil(WORLD_H / C);
+  const C = 32, OY = NORTH, NW = Math.ceil(WORLD_W / C), NH = Math.ceil((WORLD_H + OY) / C);
   const pass = new Uint8Array(NW * NH);
   for (let y = 0; y < NH; y++) for (let x = 0; x < NW; x++) {
     let ok = 1;
     for (const [ox, oy] of [[16, 16], [6, 6], [26, 6], [6, 26], [26, 26]]) {
-      const s = G.surfaceAt(x * C + ox, y * C + oy);
+      const s = G.surfaceAt(x * C + ox, y * C + oy - OY);
       if (s === "build" || s === "water" || s === "canal") { ok = 0; break; }
     }
     pass[y * NW + x] = ok;
@@ -671,7 +672,7 @@ export function createNav(G) {
   const dist = new Uint16Array(NW * NH),footDist=new Uint16Array(NW*NH);
   const q = new Int32Array(NW * NH);
   const N = {
-    C, NW, NH, pass, dist, footDist, t: 0, lastX:-1,lastY:-1, get raw() { return N_raw; },
+    C, OY, NW, NH, pass, dist, footDist, t: 0, lastX:-1,lastY:-1, get raw() { return N_raw; },
     update(tx, ty, force) {
       N.t -= 1;
       if (N.t > 0 && !force) return;
@@ -682,7 +683,7 @@ export function createNav(G) {
     },
     flood(D, tx, ty, maxD,grid=pass) {
       D.fill(65535);
-      let cx = clamp((tx / C) | 0, 0, NW - 1), cy = clamp((ty / C) | 0, 0, NH - 1);
+      let cx = clamp((tx / C) | 0, 0, NW - 1), cy = clamp(((ty + OY) / C) | 0, 0, NH - 1);
       if (!grid[cy * NW + cx]) {
         outer: for (let r = 1; r < 6; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= NW || y >= NH) continue;
@@ -703,7 +704,7 @@ export function createNav(G) {
     },
     // GPS: route polyline from (x,y) to the target of field R
     route(R, x, y) {
-      let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp((y / C) | 0, 0, NH - 1);
+      let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp(((y + OY) / C) | 0, 0, NH - 1);
       const pts = [];
       if (R[cy * NW + cx] === 65535) return pts;
       for (let s = 0; s < 900; s++) {
@@ -715,24 +716,24 @@ export function createNav(G) {
         }
         if (bx === cx && by === cy) break;
         cx = bx; cy = by;
-        if (s % 3 === 0) pts.push(cx * C + C / 2, cy * C + C / 2);
+        if (s % 3 === 0) pts.push(cx * C + C / 2, cy * C + C / 2 - OY);
       }
       return pts;
     },
     // returns a steering point a few cells downhill from (x,y)
     next(x,y,steps=3,foot=false) {
       const field=foot?footDist:dist,grid=foot?N_raw:pass;
-      let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp((y / C) | 0, 0, NH - 1);
+      let cx = clamp((x / C) | 0, 0, NW - 1), cy = clamp(((y + OY) / C) | 0, 0, NH - 1);
       if (field[cy * NW + cx] === 65535) {
         // off the car grid (curb, eroded edge): head for the best nearby reachable cell
         let bd = 65535, bx = -1, by = -1;
         for (let r = 1; r <= 4 && bx < 0; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
           const d = field[ny * NW + nx];
-          if(d<bd&&N.gridLine(x,y,nx*C+C/2,ny*C+C/2,N_raw)){bd=d;bx=nx;by=ny;}
+          if(d<bd&&N.gridLine(x,y,nx*C+C/2,ny*C+C/2-OY,N_raw)){bd=d;bx=nx;by=ny;}
         }
         if (bx < 0) return null;
-        return { x: bx * C + C / 2, y: by * C + C / 2, d: bd };
+        return { x: bx * C + C / 2, y: by * C + C / 2 - OY, d: bd };
       }
       for (let s = 0; s < steps; s++) {
         let best = field[cy * NW + cx], bx = cx, by = cy;
@@ -747,15 +748,15 @@ export function createNav(G) {
         // A sequence of individually valid grid steps can still bend around
         // a building. Steering directly at its final point used to cut that
         // corner and pin the cruiser against the facade indefinitely.
-        if(!N.gridLine(x,y,bx*C+C/2,by*C+C/2,grid))break;
+        if(!N.gridLine(x,y,bx*C+C/2,by*C+C/2-OY,grid))break;
         cx = bx; cy = by;
       }
-      return { x: cx * C + C / 2, y: cy * C + C / 2, d: field[cy * NW + cx] };
+      return { x: cx * C + C / 2, y: cy * C + C / 2 - OY, d: field[cy * NW + cx] };
     },
     gridLine(x0,y0,x1,y1,grid=pass){
       const length=Math.hypot(x1-x0,y1-y0),steps=Math.max(1,Math.ceil(length/(C/4)));
       for(let i=1;i<=steps;i++){
-        const x=Math.floor((x0+(x1-x0)*i/steps)/C),y=Math.floor((y0+(y1-y0)*i/steps)/C);
+        const x=Math.floor((x0+(x1-x0)*i/steps)/C),y=Math.floor((y0+(y1-y0)*i/steps+OY)/C);
         if(x<0||y<0||x>=NW||y>=NH||!grid[y*NW+x])return false;
       }return true;
     },
@@ -763,7 +764,7 @@ export function createNav(G) {
       const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 24);
       for (let i = 1; i < n; i++) {
         const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n;
-        if (!N_raw[((y / C) | 0) * NW + ((x / C) | 0)]) return false;
+        if (!N_raw[(((y + OY) / C) | 0) * NW + ((x / C) | 0)]) return false;
       }
       return true;
     },
