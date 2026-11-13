@@ -6,6 +6,8 @@ An illustrated overhead crime game starring Chaos. Steal a Palace archive, assem
 
 The published game is static and needs no runtime packages. For development, run `npm ci`, `npm run build`, then `npm run serve`. Rebuild after changing `src/`: the build emits one content-hashed module and versions the stylesheet, so a returning mobile browser loads a consistent release. The preview server supports video/audio byte ranges.
 
+The latest world-art pass adds finer road and paving materials, forest soil, granite, rippled sand and deeper coastal water. Beach surf, canal wavelets, windblown leaves, moving windsocks and rooftop vent/chimney plumes share bounded rendering budgets. Mobile scenery includes the new materials in its baked tiles. See [the world-materials review](docs/world-materials-review.md) for checks and performance limits.
+
 ## Controls
 
 | Action | Keyboard / mouse | Touch |
