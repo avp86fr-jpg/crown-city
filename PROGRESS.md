@@ -7,3 +7,4 @@
 - [x] Vehicle speed table, balance (wanted-scaled damage, mission rewards)
 - [x] Map sweep + animation strips + mission bot run (all 6 complete)
 - [x] Tests green (424 unit, browser suites), published preview d6043fe, live check OK (desktop 46 fps, mobile 60 fps, 0 errors, 0 SW)
+- [x] Bridge pylons moved to deck edge (map audit was failing on outer lane since 029f0b8); promoted to root

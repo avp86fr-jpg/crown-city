@@ -61,7 +61,7 @@ export function applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  const B=BRIDGE,deckX=B.x-B.deck/2,roadX=B.x-B.road/2;
  fillAny(deckX,B.y0,B.deck,B.y1-B.y0,CODE.walk,c=>c===CODE.water||c===CODE.sand||c===CODE.grass);
  fillAny(roadX,B.y0,B.road,B.y1-B.y0+40,CODE.road,c=>c!==CODE.build);
- for(const y of B.pylons)for(const x of [deckX+4,B.x+B.road/2+6])fillAny(x,y-12,20,24,CODE.build);
+ for(const y of B.pylons)for(const x of [deckX-4,B.x+B.deck/2-12])fillAny(x,y-12,16,24,CODE.build);
  const segs=[];
  for(const s of ROADS){const q={...s,w:200,lanes:2,med:0,k:'resort'};segs.push(q);
   const r=s.v?{x:s.c-128,y:s.a-128,w:256,h:s.b-s.a+256}:{x:s.a-128,y:s.c-128,w:s.b-s.a+256,h:256};
@@ -136,7 +136,7 @@ export function applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
    }
   }
  }
- for(let y=B.y0+90;y<640;y+=150)for(const side of [-1,1]){W.lamps.push({x:B.x+side*(B.road/2+12),y,v:true,side,resort:true,bridge:true});}
+ for(let y=B.y0+90;y<640;y+=150)for(const side of [-1,1]){W.lamps.push({x:B.x+side*(B.road/2+20),y,v:true,side,resort:true,bridge:true});}
  for(const p of R.palms)if(codeAny(p.x,p.y)!==CODE.road)fillAny(p.x-5,p.y-5,10,10,CODE.build,c=>c!==CODE.road);
  for(const p of R.hotels)R.signs.push({x:p.x+p.w/2,y:p.y+p.h+8,text:p.name,c:p.accent});
  // Rocky points at the island corners.
