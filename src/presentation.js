@@ -6,7 +6,7 @@ function lines(c,text,width){const out=[];let line='';for(const w of String(text
 function label(c,text,x,y,size,color=paper,weight=700){c.font=font(size,weight);c.fillStyle=color;c.textAlign='left';c.fillText(text,x,y);}
 function paragraph(c,text,x,y,width,size,leading,color=muted,max=5){c.font=font(size,500);c.fillStyle=color;c.textAlign='left';const rows=lines(c,text,width).slice(0,max);rows.forEach((l,i)=>c.fillText(l,x,y+i*leading));return rows.length*leading;}
 function shade(G,alpha=.9){const {ctx:c,canvas:{width:W,height:H}}=G;c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgba(8,18,24,${alpha})`;c.fillRect(0,0,W,H);}
-export function drawTitleScreen(G,{button,startNew,continueGame,freeRide,settings}){
+export function drawTitleScreen(G,{button,startNew,continueGame,freeRide,settings,watchIntro}){
  const c=G.ctx,W=G.canvas.width,H=G.canvas.height,u=G.ui,portrait=H>W,compact=!portrait&&H/u<500;
  c.setTransform(1,0,0,1,0,0);
  const image=G.assets.hero;
@@ -20,13 +20,14 @@ export function drawTitleScreen(G,{button,startNew,continueGame,freeRide,setting
  c.fillStyle=gold;c.fillRect(x,top+big*2.18,52*u,3*u);
  const taglineY=top+big*2.18+25*u;
  label(c,'THE CITY KEEPS RECEIPTS.',x,taglineY,11*u,mint,800);
- if(!compact)paragraph(c,'Six jobs. A stolen identity. A crew with everything to lose.',x,taglineY+23*u,portrait?W-2*x:310*u,12*u,17*u,muted,2);
+ if(!compact&&H/u>620)paragraph(c,'Six jobs. A stolen identity. A crew with everything to lose.',x,taglineY+23*u,portrait?W-2*x:310*u,12*u,17*u,muted,2);
  const items=[];
  if(G.saveExists)items.push(['CONTINUE',continueGame,true]);
- items.push(['NEW GAME',startNew,!G.saveExists],['FREE RIDE',freeRide,false],['SETTINGS',settings,false]);
+ items.push(['NEW GAME',startNew,!G.saveExists],['FREE RIDE',freeRide,false],['WATCH INTRO',watchIntro,false],['SETTINGS',settings,false]);
  const bw=Math.min(portrait?W-x*2:300*u,350*u),bh=Math.max(44*G.dpr,42*u),gap=8*u;
  let by=H-(G.safe?.b||0)-36*u-items.length*(bh+gap);
- for(const [text,act,primary] of items){button(G,x,by,bw,bh,text,act,{primary,align:'left'});by+=bh+gap;}
+ const bx=compact?W-(G.safe?.r||0)-24*u-bw:x;
+ for(const [text,act,primary] of items){button(G,bx,by,bw,bh,text,act,{primary,align:'left'});by+=bh+gap;}
  if(!portrait&&!compact){label(c,'01 / SOUTHSIDE',W*.64,H-70*u,10*u,gold,800);label(c,'CHAOS',W*.64,H-43*u,23*u,paper,900);}
  label(c,'Fan-made · Play chips only · Not affiliated with MetaWin',x,H-13*u,8*u,'#9baba7',500);
 }
