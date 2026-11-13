@@ -56,6 +56,7 @@ export function tickHeistJob(G,c,dt,notify){
   if(!G.waypoint)point(G,c); // keep the job marker alive if anything (map click, arrival) cleared it
   if(st===0){c.progress=P.type==='foot'&&d<60&&sp<8&&quiet?(c.progress||0)+dt:0;if(c.progress>=3){c.stage=1;c.progress=0;c.timer=90;G.wanted=Math.max(G.wanted,3);G.seenT=0;G.audio?.alarm?.();notify(G,'HUNTER','Alarm. Ninety seconds. Garage, now. Any car.');point(G,c);}}
   else if(st===1){c.timer=(c.timer??90)-dt;if(c.timer<=0){c.failed='HUNTER: Too slow. The plates are burned. Walk away and try it again later.';return false;}
+   if(!car&&d<140&&!c.footNote){c.footNote=1;notify(G,'HUNTER','Plates go on a car, not your coat. Take the Riot in the bay, it is open.');}
    if(car&&d<95){c.stage=2;c.progress=0;G.wanted=Math.min(G.wanted,2);notify(G,'HUNTER','Clean plates on. Metro is still looking for the old ones. Shake them, then walk the ledger to Neural.');point(G,c);}}
   else{c.progress=P.type==='foot'&&d<70&&sp<8&&quiet?(c.progress||0)+dt:0;return c.progress>=2;}
   return false;

@@ -2719,7 +2719,7 @@ function applyQuality(G) {
   if (G.traffic) G.traffic.target = q === "low" ? 24 : q === "med" ? 40 : 54;
   if (G.pedsys) G.pedsys.target = q === "low" ? 42 : q === "med" ? 76 : 110;
   // Mobile retains composed tiles; bound duplicate source art to 8 MiB.
-  if (G.ground){G.ground.maxChunks=q==='low'?8:q==='med'?40:64;G.ground.prepareCircuit(q==='low');}
+  if (G.ground){G.ground.maxChunks=q==='low'?8:q==='med'?40:64;if(q==='low'||G.ground.circuitKey)G.ground.prepareCircuit(q==='low');}
 }
 function prof(G, k, ms) { const P = G.prof || (G.prof = {}); P[k] = (P[k] ?? ms) * 0.95 + ms * 0.05; const X = G.profMax || (G.profMax = {}); if (!(X[k] > ms)) X[k] = ms; }
 function worldXform(G, c, S, div = 1, ox = 0, oy = 0) {
@@ -2985,6 +2985,8 @@ function renderWorldLayer(G) {
   const S = r.S;
   const frame = G.ticks;
   const L = assets.layers;
+  // The 4096 px circuit paint (1.3 MB) streams in only when the camera nears the park.
+  if(G.ground&&!G.ground.circuitKey&&r.x1>CIRCUIT.x-2600&&r.x0<CIRCUIT.x+CIRCUIT.w+2600&&r.y1>CIRCUIT.y-2600&&r.y0<CIRCUIT.y+CIRCUIT.h+2600)G.ground.prepareCircuit(false);
   worldXform(G, ctx, S, 1, ox, oy);
   ctx.imageSmoothingEnabled = true;
   // Opaque fallback while terrain streams. Scrolling full-view water passes
@@ -3572,6 +3574,21 @@ function assignLook(G,a){
  a.build=elder?.96:.9+(h*31%1)*.2;
  if(elder&&a.walk)a.walk*=.7;
 }
+// Silhouette variety on top of the painted wardrobe: backpacks, briefcases
+// and shoulder bags change a pedestrian's outline, not just their colours.
+const ACC_BY_LOOK=[['case','case',''],['pack','',''],['tote','',''],['pack','pack',''],['','',''],['pack','case',''],['bag','',''],['bag','bag',''],['case','bag',''],['tote','bag',''],['pack','',''],['bag','','']];
+const ACC_COL=['#2c3440','#5a3b2c','#3f4a3a','#6b2f36','#27384f','#7a6545'];
+function drawPedAccessory(ctx,a,dx,dy,dw,dh,moving){
+ if(a.acc===undefined){const h=(Math.abs(Math.sin((a.id||0)*91.7+a.x*.013+a.y*.029)*9137.3))%1,opts=ACC_BY_LOOK[a.look]||['','',''];a.acc=h<.55?opts[Math.floor(h/.55*3)%3]:'';a.accCol=ACC_COL[Math.floor(h*977)%ACC_COL.length];a.accSide=h*53%1<.5?-1:1;}
+ if(!a.acc)return;
+ const hx=Math.sin(a.rot||0),hy=-Math.cos(a.rot||0),rx=Math.cos(a.rot||0),ry=Math.sin(a.rot||0),cx=dx+dw/2,torso=dy+dh*.4,swing=moving?Math.sin((a.dist||0)*.31)*2.2:0;
+ ctx.fillStyle=a.accCol;ctx.strokeStyle='rgba(12,14,18,.55)';ctx.lineWidth=.8;
+ if(a.acc==='pack'){if(hy>.35)return;const px=cx-hx*4.2,py=torso-hy*2.6+1;ctx.beginPath();ctx.roundRect(px-4.5,py-5,9,10.5,2.6);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.14)';ctx.fillRect(px-3,py-3.6,6,1.4);}
+ else if(a.acc==='case'){const sx=a.accSide*Math.abs(rx)*6.5+(hy>0?a.accSide*4:0),px=cx+sx+hx*swing,py=dy+dh*.66+hy*swing*.5;ctx.fillRect(px-3.6,py-2.2,7.2,4.6);ctx.strokeRect(px-3.6,py-2.2,7.2,4.6);ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(px-1.3,py-3.4,2.6,1.2);}
+ else{const side=a.accSide,px=cx+side*(4.2+Math.abs(ry)*1.2),py=dy+dh*(a.acc==='tote'?.6:.55)+swing*.3,r=a.acc==='tote'?4.2:3.2;
+  ctx.strokeStyle='rgba(20,20,24,.6)';ctx.beginPath();ctx.moveTo(cx-side*3,torso-dh*.12);ctx.lineTo(px,py-r);ctx.stroke();
+  ctx.fillStyle=a.accCol;ctx.beginPath();ctx.roundRect(px-r,py-r*.8,r*2,r*1.7,1.6);ctx.fill();}
+}
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
@@ -3617,6 +3634,7 @@ function drawChar(G,a){
  const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
  ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
  if(a.gang)drawGangMark(ctx,a);
