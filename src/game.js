@@ -3939,12 +3939,24 @@ function drawMap(G) {
   const { ctx, canvas } = G;
   const W = canvas.width, H = canvas.height, u = G.ui, M = G.minimap;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "rgba(4,2,10,0.9)"; ctx.fillRect(0, 0, W, H);
+  { const bg = ctx.createRadialGradient(W / 2, H * .45, H * .1, W / 2, H / 2, Math.max(W, H) * .7); bg.addColorStop(0, "rgba(14,24,40,0.96)"); bg.addColorStop(1, "rgba(3,4,10,0.98)"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
   const k = Math.min((W - 40 * u) / M.c.width, (H - 112 * u) / M.c.height);
   const mw = M.c.width * k, mh = M.c.height * k, mx = W / 2 - mw / 2, my = 52 * u;
   G.mapView = { x: mx, y: my, w: mw, h: mh, k };
+  // Atlas frame: soft drop shadow, the painted map, a faint survey grid, a gilt double rule.
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 24 * u; ctx.shadowOffsetY = 6 * u; ctx.fillStyle = "#0b1622"; ctx.fillRect(mx, my, mw, mh); ctx.restore();
   ctx.drawImage(M.c, mx, my, mw, mh);
-  ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
+  ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip(); ctx.strokeStyle = "rgba(242,193,78,0.07)"; ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i++) { ctx.beginPath(); ctx.moveTo(mx + mw * i / 8, my); ctx.lineTo(mx + mw * i / 8, my + mh); ctx.moveTo(mx, my + mh * i / 8); ctx.lineTo(mx + mw, my + mh * i / 8); ctx.stroke(); }
+  const vg = ctx.createRadialGradient(mx + mw / 2, my + mh / 2, Math.min(mw, mh) * .35, mx + mw / 2, my + mh / 2, Math.max(mw, mh) * .75); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(5,8,20,0.35)"); ctx.fillStyle = vg; ctx.fillRect(mx, my, mw, mh); ctx.restore();
+  ctx.strokeStyle = "#c9a25a"; ctx.lineWidth = 2.5 * u; ctx.strokeRect(mx - 4 * u, my - 4 * u, mw + 8 * u, mh + 8 * u);
+  ctx.strokeStyle = "rgba(201,162,90,0.45)"; ctx.lineWidth = 1; ctx.strokeRect(mx - 8 * u, my - 8 * u, mw + 16 * u, mh + 16 * u);
+  for (const [cx, cy] of [[mx - 4 * u, my - 4 * u], [mx + mw + 4 * u, my - 4 * u], [mx - 4 * u, my + mh + 4 * u], [mx + mw + 4 * u, my + mh + 4 * u]]) { ctx.fillStyle = "#c9a25a"; ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-4 * u, -4 * u, 8 * u, 8 * u); ctx.restore(); }
+  // Compass rose and scale bar.
+  { const cx = mx + mw - 30 * u, cy = my + 32 * u, R = 16 * u; ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = "rgba(8,14,24,.7)"; ctx.beginPath(); ctx.arc(0, 0, R + 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "rgba(201,162,90,.8)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(4 * u, 0); ctx.lineTo(-4 * u, 0); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#6c7c8c"; ctx.beginPath(); ctx.moveTo(0, R); ctx.lineTo(4 * u, 0); ctx.lineTo(-4 * u, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff3d6"; ctx.font = uiFont(9 * u, 900); ctx.textAlign = "center"; ctx.fillText("N", 0, -R - 1 * u); ctx.restore(); }
+  { const len = 1000 / M.S * k, sx = mx + 14 * u, sy = my + mh - 14 * u; ctx.fillStyle = "rgba(8,14,24,.7)"; ctx.fillRect(sx - 6 * u, sy - 16 * u, len + 12 * u, 24 * u); ctx.fillStyle = "#f2c14e"; ctx.fillRect(sx, sy, len / 2, 3 * u); ctx.fillStyle = "#fff3d6"; ctx.fillRect(sx + len / 2, sy, len / 2, 3 * u); ctx.font = uiFont(8 * u, 800); ctx.textAlign = "left"; ctx.fillText("1 KM", sx, sy - 4 * u); }
   const to = (x, y) => [mx + x / M.S * k, my + (y + (M.oy||0)) / M.S * k];
   drawTransitMap(G,to);
   for(const pad of G.world.expansion?.helipads||[]){const p=to(pad.x,pad.y);ctx.fillStyle="#a4dfcb";ctx.font=uiFont(10*u,900);ctx.textAlign="center";ctx.fillText("H",p[0],p[1]);}
@@ -3956,9 +3968,11 @@ function drawMap(G) {
   for(const station of STATIONS){const [x,y]=to(station.x,station.y);badges.push({x:x-8*u,y:y-8*u,w:16*u,h:16*u});}
   G.atlasLabels=drawAtlasLabels(G,to,labels.concat((G.world.expansion?.landmarks||[]).filter(p=>!['CROWN AIRFIELD','METAWIN CASINO'].includes(p.name)).map(p=>[p.name,p.x,p.y]),(G.contacts||[]).map(p=>[p.name,p.x,p.y])),badges);
 
+  if (G.gpsPts) { ctx.save(); ctx.strokeStyle = "rgba(4,8,16,.75)"; ctx.lineWidth = 6 * u; ctx.lineJoin = "round"; ctx.beginPath(); { const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const q = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(q[0], q[1]); } } ctx.stroke(); ctx.restore(); }
   if (G.gpsPts) { ctx.strokeStyle = G.waypoint ? "#29d7ff" : "#ffd65a"; ctx.lineWidth = 2.5 * u; ctx.beginPath(); const p0 = to(G.player.x, G.player.y); ctx.moveTo(p0[0], p0[1]); for (let i = 0; i < G.gpsPts.length; i += 2) { const p = to(G.gpsPts[i], G.gpsPts[i + 1]); ctx.lineTo(p[0], p[1]); } ctx.stroke(); }
   const at = currentObjectivePos(G);
-  if (at) { const p = to(at.x, at.y); ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(p[0], p[1], 7 * u, 0, TAU); ctx.fill(); }
+  if (at) { const p = to(at.x, at.y), pulse = G.settings.reducedMotion ? 0 : (G.ticks % 60) / 60; ctx.strokeStyle = `rgba(242,193,78,${1 - pulse})`; ctx.lineWidth = 2 * u; ctx.beginPath(); ctx.arc(p[0], p[1], (8 + pulse * 14) * u, 0, TAU); ctx.stroke();
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(Math.PI / 4); ctx.fillStyle = "#f2c14e"; ctx.strokeStyle = "#2a1a05"; ctx.lineWidth = 2; ctx.fillRect(-6 * u, -6 * u, 12 * u, 12 * u); ctx.strokeRect(-6 * u, -6 * u, 12 * u, 12 * u); ctx.restore(); }
   if (G.waypoint) {
     const wp = to(G.waypoint.x, G.waypoint.y);
     ctx.strokeStyle = '#29d7ff'; ctx.lineWidth = 3 * u;
@@ -3968,8 +3982,10 @@ function drawMap(G) {
   drawMapPlaces(G,to);placeButtons(G,uiButton);
   uiButton(G, 18 * u, 12 * u, 125 * u, 34 * u, 'JOB ROUTE', () => { G.waypoint = G.action?.contract?streetJobTarget(G,G.action.contract):null; G.gps = null; updateGPS(G); }, {});
   const pp = to(G.player.x, G.player.y);
-  ctx.fillStyle = "#ff2d9b"; ctx.beginPath(); ctx.arc(pp[0], pp[1], 6 * u, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(16 * u, 900, true); ctx.textAlign = "left"; ctx.fillText("CROWN CITY", Math.max(mx, 160 * u), 34 * u);
+  { ctx.save(); ctx.translate(pp[0], pp[1]); ctx.rotate(G.player.rot || 0); ctx.fillStyle = "rgba(255,45,155,.25)"; ctx.beginPath(); ctx.arc(0, 0, 13 * u, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#ff2d9b"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -9 * u); ctx.lineTo(6 * u, 6 * u); ctx.lineTo(0, 3 * u); ctx.lineTo(-6 * u, 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  { const tx = Math.max(mx, 160 * u); ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(18 * u, 900, true); ctx.textAlign = "left"; ctx.fillText("CROWN CITY", tx, 32 * u);
+    ctx.fillStyle = "rgba(255,243,214,.7)"; ctx.font = uiFont(9 * u, 800); ctx.fillText(("ATLAS  ·  " + (G.district || "")).toUpperCase(), tx, 45 * u); }
   uiButton(G, W - 130 * u, 12 * u, 112 * u, 34 * u, "CLOSE", () => { G.scene = "play"; }, { primary: true });
 }
 
