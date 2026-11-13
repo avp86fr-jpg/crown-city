@@ -137,6 +137,8 @@ export async function boot() {
   const vehNames = ["gulf", "fare_wreck", "metro_wreck"];
   const charNames = ["chaos", "hunter", "fire"];
   const propNames = ["hydrant", "bin", "cone", "newsstand", "planter", "mailbox", "palm"];
+  // Wardrobe variants stream in after the core atlases; civilians use the base crowd until then.
+  loadImg(`assets/premium/crowd-looks${mobileArt?'-mobile':''}.webp`).then(i => (sprites.crowd_looks = i)).catch(() => {});
   await Promise.all([
     ...vehNames.map((n) => loadImg(`assets/sprites/veh_${n}.png`).then((i) => (sprites["veh_" + n] = i))),
     ...charNames.map((n) => loadImg(n === 'chaos' ? `assets/premium/chaos${mobileArt?'-mobile':''}.webp` : `assets/sprites/char_${n}.png`).then((i) => (sprites["char_" + n] = i))),
@@ -3455,6 +3457,20 @@ function charAtlas(src){
  return c;
 }
 const _bitmapSrc=new WeakMap();
+const ORIG_CROWD={width:1086,height:1448};
+// Wardrobe looks in crowd-looks.webp: 0-5 men (suit, tracksuit, beach, workwear, elder, casual),
+// 6-11 women (dress, skirt, suit, beachwear, workwear, elder). -1 keeps the base painted crowd.
+const LOOKS_BY_AREA={beach:[2,2,5,1,-1,9,9,7,6,-1],work:[3,3,1,5,-1,10,10,7,8,-1],suit:[0,0,5,-1,1,8,8,6,7,-1],any:[0,1,5,-1,3,7,6,8,-1,9]};
+function assignLook(G,a){
+ const h=(Math.abs(Math.sin(a.x*12.9898+a.y*78.233+(a.id||0))*43758.5453))%1;
+ const d=districtAt(a.x,a.y),area=a.y<760||d==='HARBOUR'||d==='PORT ROYALE'?'beach':d==='IRONSIDE'||d==='HARBOUR'||d==='CROWN AIRFIELD'?'work':d==='DOWNTOWN'||d==='THE STRIP'||d==='PALACE ROW'||d==='MIDTOWN'||d==='METAWIN TERRACE'?'suit':'any';
+ const female=a.sex?a.sex==='f':h<.5,elder=h*7%1<.1;
+ const pool=LOOKS_BY_AREA[area],half=female?pool.slice(5):pool.slice(0,5);
+ a.sex=female?'f':'m';a.elder=elder;
+ a.look=elder?(female?11:4):half[Math.floor(h*13%1*half.length)];
+ a.build=elder?.96:.9+(h*31%1)*.2;
+ if(elder&&a.walk)a.walk*=.7;
+}
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
@@ -3466,10 +3482,15 @@ function drawChar(G,a){
  // Running shortens the phase distance per frame and lifts the body more.
  const running=(a.speed||0)>150,ph=Math.floor((a.dist||0)/(running?6.6:5))&7,pass=moving&&(ph&1);
  let col=moving?(ph>>1)&3:4;
- if(crowd){const type=a.copPed||a.sprite==='cop'?2:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?(ph>>2)&1:2);}
+ let lookAtlas=null,look=-1;
+ if(crowd){const cop=a.copPed||a.sprite==='cop';if(!cop&&!a.gang){if(a.look==null)assignLook(G,a);look=a.look;}
+  const type=cop?2:look>=0?(look<6?0:1):a.sex==='f'?1:a.sex==='m'?0:['m2','m4','guest','synth'].includes(a.sprite)?1:0;col=type*3+(moving?(ph>>2)&1:2);
+  if(look>=0&&G.assets.sprites.crowd_looks)lookAtlas=G.assets.sprites.crowd_looks;}
  const measured=!!crowd||(a.sprite||'chaos')==='chaos',fw=spr.width/(crowd?9:6),fh=spr.height/8;
- const frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
- const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)):1;
+ let frame=measured?characterFrame(spr,!!crowd,col,row):{x:col*fw,y:row*fh,w:fw,h:fh,anchor:fw/2};
+ let img=spr;
+ if(lookAtlas){const o=characterFrame(ORIG_CROWD,true,col,row),k=lookAtlas.height/1448,cw=1086/9,shift=(look*3+(col%3))*cw-col*cw;frame={x:(o.x+shift)*k,y:o.y*k,w:o.w*k,h:o.h*k,anchor:o.anchor*k};img=lookAtlas;}
+ const stature=crowd?(a.modelScale??=(.94+((Math.abs(Math.sin(a.x*3.1+a.y*7.7))*997)%1)*.1)*(a.elder?.95:1)):1;
  const layout=characterLayout(frame,hero?50:48*stature),pose=characterPose(a,moving,G.ticks/60,G.settings.reducedMotion);
  ctx.save();ctx.globalAlpha*=retirementOpacity(G,a);ctx.translate(a.x,a.y);
  ctx.fillStyle='rgba(8,21,25,.25)';ctx.beginPath();ctx.ellipse(2,2,hero?11:9,4,0,0,TAU);ctx.fill();
@@ -3494,7 +3515,7 @@ function drawChar(G,a){
  }
  const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
- ctx.drawImage(spr,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
+ ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
  if(a.gang)drawGangMark(ctx,a);

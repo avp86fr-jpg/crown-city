@@ -546,13 +546,15 @@ export function createPeds(G) {
         const dirs = CARDINAL.filter(([dx, dy]) => surf(x + dx * 40, y + dy * 40) === "walk");
         const dd = dirs.length ? dirs[(Math.random() * dirs.length) | 0] : [1, 0];
         const n = Math.random() < 0.3 ? 2 : 1;
+        // Pairs walk as couples: one pace, usually one man and one woman.
+        const pace = 26 + Math.random() * 22, firstSex = Math.random() < .5 ? 'f' : 'm';
         for (let k = 0; k < n; k++) {
           const px=x+k*22*-dd[1],py=y+k*22*dd[0];
           if(!pedestrianClear(G,px,py)||[[0,0],[-7,0],[7,0],[0,-7],[0,7]].some(([ox,oy])=>surf(px+ox,py+oy)!=='walk'))continue;
           if(k&&G.peds.some(p=>!p.dead&&(p.x-px)**2+(p.y-py)**2<19**2))continue;
           G.peds.push({
             x:px,y:py, rot: Math.atan2(dd[0], -dd[1]), vx: 0, vy: 0,
-            sprite: PED_SPR[(Math.random() * PED_SPR.length) | 0], speed: 0, walk: 26 + Math.random() * 22,
+            sprite: PED_SPR[(Math.random() * PED_SPR.length) | 0], speed: 0, walk: n > 1 ? pace : 26 + Math.random() * 22, sex: k && Math.random() < .8 ? (firstSex === 'f' ? 'm' : 'f') : firstSex, couple: n > 1,
             dist: Math.random() * 20, flee: 0, r: 8, hp: 30, dead: false, ambient: true, idle: 0, hx: dd[0], hy: dd[1],
           });
         }
