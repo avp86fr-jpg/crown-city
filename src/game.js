@@ -2239,7 +2239,7 @@ function tickVehicles(G, dt) {
       v.responseAge=(v.responseAge||0)+dt;
       if(v.traffic&&v.tr){
         const n=Math.hypot(v.target.x-v.x,v.target.y-v.y);
-        if(n<180&&!v.tr.turn&&v.serviceLeft==null)v.serviceLeft=8;
+        if(n<180&&!v.tr.turn&&v.serviceLeft==null&&(!v.tr.e||v.tr.s>110&&v.tr.e.len-v.tr.s>140))v.serviceLeft=8; // never park a response vehicle inside a junction
         if(v.serviceLeft!=null){v.serviceLeft-=dt;v.cruise=0;}
         if(v.serviceLeft!=null&&v.serviceLeft<=0||v.responseAge>75){v.target=null;v.siren=false;v.cruise=v.responseCruise||100;v.serviceLeft=null;}
         if(v.burning||v.health<45)tickVehDamage(G,v,dt);
@@ -3025,6 +3025,7 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
+  drawRouteChevrons(G);
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
@@ -3092,7 +3093,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   G._lmF = (G._lmF || 0) + 1;
   // Reuse the light map on alternate frames (desktop too). It is world-aligned,
   // so a reused map is shifted by the camera's screen motion since it was built.
-  const LM=G._lmCam,reuse = (G._lmF & 1) && G._lmValid && !hasFlash && LM && LM.S===S && LM.rot===cam.rot && LM.ox===ox && LM.oy===oy && Math.hypot(cam.x-LM.x,cam.y-LM.y)*S<40;
+  const LM=G._lmCam,reuse = (G._lmF % 3 !== 0) && G._lmValid && !hasFlash && LM && LM.S===S && LM.rot===cam.rot && LM.ox===ox && LM.oy===oy && Math.hypot(cam.x-LM.x,cam.y-LM.y)*S<40;
   if (needMap) G._lmValid = true;
   if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
     G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
@@ -3293,6 +3294,22 @@ function drawParticles(G, r, top) {
   }
 }
 
+// Ground route: soft chevrons along the next ~650 px of the GPS line, flowing toward the goal.
+function drawRouteChevrons(G) {
+  const pts = G.gpsPts, P = G.player; if (!pts || pts.length < 4 || G.scene !== 'play' || P.def?.aircraft) return;
+  const c = G.ctx, step = 46, flow = G.settings.reducedMotion ? 0 : (G.ticks * 0.9) % step; let best = 0, bd = 1e18;
+  for (let i = 0; i < pts.length; i += 2) { const d = (pts[i] - P.x) ** 2 + (pts[i + 1] - P.y) ** 2; if (d < bd) { bd = d; best = i; } }
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round'; const col = G.waypoint && !(G._flow) ? '41,215,255' : '255,214,90';
+  let acc = 0, next = step - flow + 40, i = best;
+  while (i + 2 < pts.length && acc < 650) {
+    const ax = pts[i], ay = pts[i + 1], bx = pts[i + 2], by = pts[i + 3], L = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L;
+    while (next <= acc + L) { const t = next - acc, x = ax + ux * t, y = ay + uy * t, fade = Math.min(1, (next - 40) / 120) * Math.max(0, 1 - next / 650);
+      c.globalAlpha = .55 * fade; c.strokeStyle = 'rgba(10,14,22,.7)'; c.lineWidth = 7; c.beginPath(); c.moveTo(x - ux * 7 - uy * 8, y - uy * 7 + ux * 8); c.lineTo(x, y); c.lineTo(x - ux * 7 + uy * 8, y - uy * 7 - ux * 8); c.stroke();
+      c.strokeStyle = `rgba(${col},1)`; c.lineWidth = 3.4; c.stroke(); next += step; }
+    acc += L; i += 2;
+  }
+  c.restore();
+}
 function drawObjectiveGround(G) {
   const at = currentObjectivePos(G);
   if (!at) return;

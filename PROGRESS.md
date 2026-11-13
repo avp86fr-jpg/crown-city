@@ -16,3 +16,12 @@
 - [x] Removed a real car brand from circuit labels/briefs (now "Crown Grand Prix").
 - [x] Pedestrians: 12 painted wardrobe looks (men: suit, tracksuit, beach, hi-vis workwear, elder cardigan, casual cap; women: dress, skirt, suit, beachwear, workwear, elder), district-weighted (island/harbour beach, Ironside/airfield workwear, downtown/Strip suits), ~50/50 sexes, couples pace together, elderly walk slower, body-width variation. Generated offline by tools/make-ped-variants.py from the existing painted crowd (recolour + painted hats/hair), streamed after load.
 - [x] Effects: painted layered smoke puffs (smoke, dust, steam, gunsmoke, haze) drifting with the wind field and easing out; muzzle gunsmoke per shot and haze after bursts; glass shards on heavy hits; damage stages (steam <70%, smoke <45%, flicker flames <22% before the burn); spreading blood pools and streaked drops; sea troughs, crest highlights, sun/moon sparkle, double shore foam; lamp reflections on water at night; particle cap drops 45% when fps sags.
+## Pass 3b
+- [x] Sea: painted swell (dark trough + pale crest band + bright tapered crest), turquoise shallow shelf at beaches, soft animated foam band, sun/moon sparkle, lamp reflections.
+- [x] Smoke: 14-lobe painterly puff texture with long alpha falloff, warm lit crown / cool underside, billowing 3-lobe draw.
+- [x] Circuit artwork rebaked without the real brand ("CROWN MOTORSPORT PARK"). Vehicle atlases crisped (tools/crisp-vehicles.py).
+- [x] Audio mix measured per bus (tools/audio-mix.cjs): no clipping (master peak <=0.73), 2.5–5 kHz share <2%. Heavy gunfire now ducks music 2–4 dB; ambience +3 dB.
+- [x] Map restyled as an atlas (gilt frame, grid, compass, scale bar, outlined route, pulsing objective, heading arrow). Ground route chevrons in the world for every GPS route. Clearer hints on 7 old objectives.
+- [x] Old Town: market squares, civic halls on greens, terraced rows, mixed roofs; built with a local RNG so the rest of the city is unchanged.
+- [x] Response vehicles no longer park inside junctions (gridlock seen in the hand-driven run).
+- [x] Driving measured (tools/drive-metrics.mjs): top speed 226 (taxi) to 457 (Nyx); 0–300 in 1.03 s (Nyx), 1.47 s (Dart), 2.03 s (Riot); braking from top speed in about 1 s. Left unchanged.

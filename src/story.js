@@ -203,7 +203,7 @@ export function missionFlow(id, flags) {
           { id: "enter_car", kind: "enter", near: "garage", hint: "Get in the Riot V8 on the garage lot. (E)" },
           { id: "hit_van", kind: "intercept", at: "van", r: 170, hint: "Disable the convoy van. Ram it or shoot its engine." },
           { id: "grab", kind: "collect", at: "van", r: 80, hint: "Stop close to the van and press E to take the sealed archive key." },
-          { id: "lose_heat", kind: "loseWanted", hint: "Lose the Metro heat." },
+          { id: "lose_heat", kind: "loseWanted", hint: "Lose the Metro heat: break line of sight and stay unseen until the stars fade." },
           { id: "stash", kind: "goto", at: "garage", r: 90, hint: "Take the archive key back to Hunter's garage." },
         ],
         winVN: () => (flags.stash === "flip" ? "m1_win_flip" : "m1_win_safe"),
@@ -239,7 +239,7 @@ export function missionFlow(id, flags) {
         objectives: [
           { id: "case", kind: "goto", at: "casinoDoor", r: 80, foot: true, hold: 2, hint: "On foot: case the Crown Palace south doors." },
           { id: "lot", kind: "goto", at: "casinoLot", r: 100, foot: true, hold: 2, hint: "On foot: walk the Palace lot. Learn the exit." },
-          { id: "exit", kind: "goto", at: "marina", r: 100, hint: "Trace the getaway to the marina." },
+          { id: "exit", kind: "goto", at: "marina", r: 100, hint: "Drive the getaway route to the marina marker." },
         ],
         winVN: "m4_win",
         // Scouting pays a little: before this, the only unrewarded mission.
@@ -249,11 +249,11 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m5_intro",
         objectives: [
-          { id: "door", kind: "goto", at: "casinoDoor", r: 70, hint: "Hit the Palace south doors." },
+          { id: "door", kind: "goto", at: "casinoDoor", r: 70, hint: "Drive to the Palace south doors. Gold marker, gold arrows." },
           { id: "vault", kind: "collect", at: "casino", r: 90, hack: 3, hint: "Stop at the archive. Press E, then stay still for the transfer." },
-          { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the bag to the marina." },
-          { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in a boat." },
-          { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Run the harbour to the drop island." },
+          { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the bag to the marina. Follow the gold arrows." },
+          { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in any boat at the marina slips. (E)" },
+          { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Boat: follow the gold line across the harbour to the drop island." },
         ],
         midVN: { after: "vault", page: flags.heist === 'loud' ? 'm5_mid_loud' : 'm5_mid' },
         winVN: "m5_win",
@@ -266,7 +266,7 @@ export function missionFlow(id, flags) {
           { id: "return", kind: "goto", at: "marina", r: 100, hint: "Return to the marina. Your final getaway car is waiting." },
           { id: "getaway", kind: "enter", near: "marina", vehicle: "nyx", hint: "Get into the Nyx at the marina. (E)" },
           { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the bag out the east highway to the city limits." },
-          { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat." },
+          { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat: break line of sight until every star fades." },
         ],
         winVN: () => (flags.stash === "flip" ? "m6_end_flip" : "m6_end_safe"),
         onStart: { wanted: 3, unlock: ["nyx"] },
