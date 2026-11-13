@@ -57,3 +57,12 @@ test('moving toward a new district preloads one sheet only after visible terrain
  prepareBakedWorld(G,[{x:12,y:0,d:0}]);assert.equal(io.pending.length,0);assert.equal(G.bakedWorld.sheets.get('3_0').image,ahead);
  releaseBakedWorld(G);assert.equal(io.closed.length,2);
 });
+test('warm scenery avoids per-frame planning but responds immediately to a new view and failed loads',async()=>{
+ const io=images(),G={ticks:0,cam:{x:5000,y:400},player:{vx:0,vy:0}},view=tiles(['2_0']);
+ prepareBakedWorld(G,view);await io.settle();prepareBakedWorld(G,view);
+ const plans=G.bakedWorld.plans;
+ for(let i=1;i<30;i++){G.ticks=i;prepareBakedWorld(G,view);}
+ assert.equal(G.bakedWorld.plans,plans);assert.equal(G.bakedWorld.skipped,29);assert.equal(io.pending.length,0);
+ prepareBakedWorld(G,tiles(['3_0']));assert.equal(io.pending.length,1,'newly visible scenery never waits for the safety refresh');
+ await io.settle(true);G.ticks+=1800;prepareBakedWorld(G,tiles(['3_0']));assert.equal(io.pending.length,1,'failed loads still retry');await io.settle();releaseBakedWorld(G);
+});

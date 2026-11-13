@@ -6,6 +6,7 @@ import {pedestrianClear,stepPedestrian} from './pedestrian_motion.js';
 import {bodySize} from './collision.js';
 const TAU = Math.PI * 2;
 const SAFE = new Set(['walk', 'lot', 'pier', 'grass', 'sand', 'dirt']);
+const CURB_PROBES=[[14,0],[-14,0],[0,14],[0,-14]];
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const angle = n => ((n + Math.PI) % TAU + TAU) % TAU - Math.PI;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -62,7 +63,7 @@ export function createCityAI(G) {
   }
   function safe(x, y, radius = 7) {
     if (!SAFE.has(G.surfaceAt(x, y))||!pedestrianClear(G,x,y,radius)) return false;
-    if([[14,0],[-14,0],[0,14],[0,-14]].some(([dx,dy])=>G.surfaceAt(x+dx,y+dy)==='road'))return false;
+    for(const [dx,dy] of CURB_PROBES)if(G.surfaceAt(x+dx,y+dy)==='road')return false;
     if (!G.solidAt) return true;
     return !G.solidAt(x, y) && !G.solidAt(x - radius, y) && !G.solidAt(x + radius, y)
       && !G.solidAt(x, y - radius) && !G.solidAt(x, y + radius);
@@ -134,9 +135,9 @@ export function createCityAI(G) {
     let chosen = null, best = Infinity;
     places.query(p.x, p.y, 420, f => {
       if (f.kind === 4 || f === b.lastFixture) return;
-      const occupied = [...(reservations.get(f) || [])].map(other => brains.get(other)?.slot);
-      if (occupied.length >= 3) return;
-      let slot = 0; while (occupied.includes(slot)) slot++;
+      const guests=reservations.get(f);if(guests?.size>=3)return;
+      let occupied=0;for(const other of guests||[])occupied|=1<<(brains.get(other)?.slot??0);
+      let slot=0;while(occupied&(1<<slot))slot++;
       const rot = f.rot || 0, offset = (slot - 1) * 23;
       const goal = { x: f.x + Math.cos(rot) * offset - Math.sin(rot) * 36,
         y: f.y + Math.sin(rot) * offset + Math.cos(rot) * 36 };
@@ -302,20 +303,29 @@ export function createCityAI(G) {
         if(danger)d.cap=Math.min(d.cap,Math.max(0,(stopAt-body.l-radius-8)*1.4));
       });
       cars.query(v.x, v.y, 230, other => {
-        if (other === v || other.dead || !other.siren) return;
+        if (other === v || other.dead || other.crewOut || !other.siren || Math.cos((other.rot||0)-(v.rot||0))<.5) return;
         const along = (other.x - v.x) * hx + (other.y - v.y) * hy;
         const side = Math.abs((other.x - v.x) * hy - (other.y - v.y) * hx);
         if (along > -190 && along < 80 && side < 85) d.cap = Math.min(d.cap, 20);
       });
       // Shelter service belongs to the curb lane and the right-hand side.
       // An opposite shelter must not halt a bus across a live carriageway.
-      if (v.kind === 'bus' && clock > d.cooldown && !v.tr?.turn && (v.tr?.lane??0)>=(v.tr?.e?.lanes??1)-1) {
-        places.query(v.x, v.y, 100, f => {
-          if (f.kind !== 2 || clock < d.until || Math.abs((f.x - v.x) * hx + (f.y - v.y) * hy) > 32) return;
+      if (v.kind === 'bus' && clock > d.cooldown && !v.tr?.turn && v.tr?.reserved==null && (v.tr?.lane??0)>=(v.tr?.e?.lanes??1)-1) {
+        let shelter=null,nearest=Infinity;
+        places.query(v.x, v.y, 230, f => {
+          const along=(f.x-v.x)*hx+(f.y-v.y)*hy;
+          if(f.kind!==2||along< -16||along>200||along>=nearest)return;
           const side=(f.x-v.x)*Math.cos(v.rot)+(f.y-v.y)*Math.sin(v.rot);
           if(side<body.w+4||side>100)return;
-          d.stop = f; d.until = clock + 4; d.cooldown = clock + 35; d.cap = 0;
+          shelter=f;nearest=along;
         });
+        if(shelter){
+          // Brake on approach, then start the dwell only once the door is
+          // beside the shelter. Previously the four-second clock began while
+          // the bus was still moving and could expire beyond its passengers.
+          d.cap=Math.min(d.cap,Math.max(0,nearest)*1.5,Math.sqrt(Math.max(0,nearest)*160));
+          if(nearest<16&&speed<8){d.stop=shelter;d.until=clock+4;d.cooldown=clock+35;d.cap=0;}
+        }
       }
       return Math.min(want, d.cap);
     },

@@ -80,7 +80,7 @@ Nine stations connect the subway and elevated regional railway. Approach an M/R 
 
 The city canal, outdoor MetaWin casino, Red Mesa desert, Pinewatch forest, Sierra mountains and airport add road, water and air routes. Use LAND in a plane to assist runway alignment, descent and braking; cancel the approach to go around. BRAKE overrides the forward stick. In cars, keep holding it after stopping to reverse; release to drive forward. Boat and bike brakes remain stop-only. Boat exits require docking speed and nearby reachable land. Directional panel damage persists and reduces handling and power; wrecks retain their vehicle type and remain solid.
 
-Find Chief at East Port station, Ice at Sierra Junction and Steampunk beside Midtown Metro for three new stories. The crew menu now contains 13 repeatable contracts, including canal, casino and helicopter jobs. The Last Witness and Borrowed Minutes require actual train travel. Six wildlife species populate local habitats: deer, foxes, dogs, cats, gulls and pigeons react to nearby traffic, movement and gunfire.
+Find Chief at East Port station, Ice at Sierra Junction and Steampunk beside Midtown Metro for three new stories. The crew menu contains 17 repeatable contracts, including canal, casino, cargo and aircraft jobs. The Last Witness and Borrowed Minutes require actual train travel. Six wildlife species populate local habitats: deer, foxes, dogs, cats, gulls and pigeons react to nearby traffic, movement and gunfire. Cars and bikes can strike grounded animals; impact reactions follow Blood Effects settings. Fallen animals retire without growing the population, and habitats replenish only while out of view.
 
 Gold Mage’s portrait is the exact user-supplied reference, also used as the face/armor texture in his world character. [Character provenance](docs/character-references.md) records the reference hash and verified collectible links for Chief, Ice and Steampunk.
 
@@ -117,3 +117,11 @@ Three slot machines on the southeast side of the MetaWin terrace accept 10, 25 o
 See [the precision, campaign and streaming pass](docs/precision-campaign-pass.md) for circuit race migration, obstruction recovery, canal repairs and measured limits.
 
 The [full release review](docs/full-review.md) covers save and checkpoint recovery, reachable chip pickups, circuit wreck avoidance, fairer junction queues and mobile street-cache memory. GitHub now runs the built game’s Chromium gameplay suite as well as the build and Node regressions. Performance results include the remaining loading spikes and the limits of mobile emulation.
+
+## Living-world overhaul
+
+Cars now have individual torque, traction, steering response, rolling resistance and braking profiles. Body heading and velocity are independent, so a muscle car's slide differs from a sports car's grip. Buses and vans accelerate and corner more slowly; the two boats have different speed and inertia. Damage and boost release no longer erase momentum abruptly. Civilian drivers also vary by vehicle and temperament, adapt to road limits and weather, and brake before tight junctions.
+
+**Cold Storage** adds a four-stop evidence delivery: carry a fragile recorder, perform two stationary checksums and return to Hunter. Crashes and prolonged drifting damage the recording; saving, repairs and recovery cannot restore lost integrity. **Skyline Ghost** requires three continuous aircraft scans at 110–210 altitude and 32–60 knots, followed by a runway return and a quiet on-foot handoff. Both are available through CREW and retain their progress across saves.
+
+New overhead street sprites, complete placement checks, storefront entrances and distinct roof layouts improve city readability. Static roof detail and the minimap's terrain/rail network are cached; live objectives, police and traffic remain animated. [Changes, validation and measured limits](docs/living-world-overhaul.md).

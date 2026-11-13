@@ -36,4 +36,5 @@ jobs:
           npm run test:intro
           CC_URL=http://127.0.0.1:8000/ npm run test:baked
           CC_URL=http://127.0.0.1:8000/ npm run test:street
+          CC_URL=http://127.0.0.1:8000/ npm run test:operations
           CC_URL=http://127.0.0.1:8000/ npm run test:rockets

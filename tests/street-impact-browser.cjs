@@ -9,6 +9,18 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=r
  await page.evaluate(()=>{const G=__CC.G;G.peds=G.peds.filter(p=>p.mission);for(let i=0;i<5;i++){const p={x:2080+(i%3)*44,y:2390+Math.floor(i/3)*45,rot:.4,sprite:i%2?'female':'male',dead:true,deadT:i===0?.1:1,dist:0,ambient:true,fallSide:i%2?1:-1};G.peds.push(p);B.bloodImpact(G,p,180,20,2,true);}T.render(G);});
  const after=await page.evaluate(()=>{const G=__CC.G,d=G.ctx.getImageData(0,0,G.canvas.width,G.canvas.height).data;let red=0;for(let i=0;i<d.length;i+=4)if(d[i]>40&&d[i]>d[i+1]*2&&d[i]>d[i+2]*1.3)red++;return red;});
  assert.ok(after>before+100,`mobile renderer must show blood (${before} -> ${after})`);fs.mkdirSync('.qa/street-impact',{recursive:true});await page.screenshot({path:'.qa/street-impact/mobile.png'});
+ const wildlife=await page.evaluate(()=>{
+  const G=__CC.G,W=G.wildlife,a=W.animals.find(a=>a.kind===2);
+  Object.assign(a,{x:2108,y:2400,hx:2108,hy:2400,dead:false,hidden:false,hp:70,lift:0,walk:0,flee:0,impactT:0});
+  W.animals=[a];W.bins=new Map([[Math.floor(a.hx/512)+':'+Math.floor(a.hy/512),[a]]]);W.elapsed=1;
+  W.stats.hits=W.stats.playerHits=0;G.peds=[];G.cops=[];G.wanted=0;G.traffic.target=G.pedsys.target=0;
+  const car=T.makeVeh('riot',2108,2480,0,{parked:false,vy:-260});G.vehicles=[car];G.player=car;G.input.x=0;G.input.y=1;
+  G.cam.x=car.x;G.cam.y=car.y;
+  for(let i=0;i<18;i++)T.tickPlay(G,1/60);T.render(G);
+  return {dead:a.dead,hits:W.stats.playerHits,effects:!!G.bloodFX,active:W.active.includes(a)};
+ });
+ assert.deepEqual(wildlife,{dead:true,hits:1,effects:true,active:true});
+ console.log('PASS actual mobile driving hits an animal once, renders its fallen sprite and honors the blood renderer');
  for(const size of [{width:844,height:390},{width:390,height:844}]){
   await page.setViewportSize(size);await page.evaluate(()=>{const G=__CC.G;G.scene='settings';G.settingsTab=0;T.fit(G);T.render(G);});
   assert.ok(await page.evaluate(()=>__CC.G.buttons.every(b=>b.x>=0&&b.y>=0&&b.x+b.w<=__CC.G.canvas.width&&b.y+b.h<=__CC.G.canvas.height)),'settings fit the phone viewport');

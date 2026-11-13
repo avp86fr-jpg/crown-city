@@ -1,3 +1,4 @@
+import {operationHint,drawOperationMarkers} from './crew_operations.js';
 /* Encounterable MetaWinners cast: original portraits, local story and optional contracts. */
 import {loadImage} from './assets.js';
 import {startContract,message} from './action.js';
@@ -43,7 +44,7 @@ export function tickExpansion(G,dt){
  const P=G.player;G.contactNear=P.type==='foot'&&!G.jack?(G.contacts||[]).find(p=>Math.hypot(p.x-P.x,p.y-P.y)<60)||null:null;
  if(G.contactTalk){G.contactTalk.t-=dt;if(G.contactTalk.t<=0)G.contactTalk=null;}
  for(const p of G.contacts||[])if(Math.abs(p.x-P.x)<800&&Math.abs(p.y-P.y)<700)portrait(G,p);
- if(G.action?.contract&&EXPANSION_STEPS[G.action.contract.id])G.expansionHint=EXPANSION_STEPS[G.action.contract.id][G.action.contract.stage];else G.expansionHint='';
+ if(G.action?.contract&&EXPANSION_STEPS[G.action.contract.id])G.expansionHint=operationHint(G,G.action.contract)||EXPANSION_STEPS[G.action.contract.id][G.action.contract.stage];else G.expansionHint='';
 }
 export function interactExpansion(G){
  const P=G.player;if(P.type!=='foot')return false;const contact=(G.contacts||[]).find(p=>Math.hypot(p.x-P.x,p.y-P.y)<60);if(!contact)return false;
@@ -56,6 +57,7 @@ export function interactExpansion(G){
  G.contactTalk={id:contact.id,t:16,text};return true;
 }
 export function drawExpansionPeople(G,r){
+ drawOperationMarkers(G,r);
  const c=G.ctx;for(const p of G.contacts||[]){if(p.x<r.x0-100||p.x>r.x1+100||p.y<r.y0-100||p.y>r.y1+100)continue;
   portrait(G,p);c.save();c.translate(p.x,p.y);c.fillStyle='rgba(0,0,0,.35)';c.beginPath();c.ellipse(2,2,12,4,0,0,Math.PI*2);c.fill();
   const atlas=G.contactAtlas,reference=G.contactPortraits.get(p.id);

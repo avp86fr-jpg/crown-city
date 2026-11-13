@@ -1,18 +1,28 @@
 import {loadScenery} from './assets.js';
 import {BAKED_WORLD} from './baked_world_manifest.js';
 const available=new Set(BAKED_WORLD.sheets),TILE=512,SIDE=4,PIXEL=256;
+const sheetIds=new Map(BAKED_WORLD.sheets.map((key,i)=>[key,i]));
+const sheetKeys=Array.from({length:5},(_,y)=>Array.from({length:6},(_,x)=>x+'_'+y));
 function release(e){e.retired=true;e.image?.close?.();e.image=null;}
 export const hasBakedWorldTile=(G,x,y)=>!!G.bakedWorld?.sheets.get(Math.floor(x/SIDE)+'_'+Math.floor(y/SIDE))?.image;
 export function releaseBakedWorld(G){if(!G.bakedWorld)return;for(const e of G.bakedWorld.sheets.values())release(e);G.bakedWorld.sheets.clear();G.bakedWorld=null;}
 export function prepareBakedWorld(G,tiles){
- const state=G.bakedWorld||(G.bakedWorld={sheets:new Map(),frame:0,pending:0,ready:0,bytes:0}),wanted=new Map();state.frame++;
- for(const p of tiles){const key=Math.floor(p.x/SIDE)+'_'+Math.floor(p.y/SIDE);if(!available.has(key))continue;wanted.set(key,Math.min(wanted.get(key)??Infinity,p.d));}
+ const state=G.bakedWorld||(G.bakedWorld={sheets:new Map(),frame:0,pending:0,ready:0,bytes:0,plans:0,skipped:0});state.frame++;
+ // A warm camera view previously rebuilt maps, sets and sorted eviction lists
+ // on every render. Replan only when sheets, camera cells or travel direction
+ // change (with a half-second safety refresh); async/missing sheets never skip.
+ let mask=0;for(const p of tiles){const key=sheetKeys[Math.floor(p.y/SIDE)]?.[Math.floor(p.x/SIDE)],id=sheetIds.get(key);if(id!==undefined)mask|=1<<id;}
+ const cx=G.cam?.x||0,cy=G.cam?.y||0,vx=G.player?.vx||0,vy=G.player?.vy||0;
+ const cellX=Math.floor(cx/256),cellY=Math.floor(cy/256),leadX=Math.floor((cx+vx*2)/512),leadY=Math.floor((cy+vy*2)/512);
+ if(state.warm&&state.mask===mask&&state.cellX===cellX&&state.cellY===cellY&&state.leadX===leadX&&state.leadY===leadY&&G.ticks-state.planAt<30){state.skipped++;return;}
+ Object.assign(state,{mask,cellX,cellY,leadX,leadY,planAt:G.ticks});state.plans++;
+ const wanted=new Map();
+ for(const p of tiles){const key=sheetKeys[Math.floor(p.y/SIDE)]?.[Math.floor(p.x/SIDE)];if(!available.has(key))continue;wanted.set(key,Math.min(wanted.get(key)??Infinity,p.d));}
  const nearest=[...wanted].sort((a,b)=>a[1]-b[1]).slice(0,16),keep=new Set(nearest.map(([key])=>key));
  const limit=Math.min(16,Math.max(2,keep.size+1));
  // Once the visible world is ready, use the existing spare slot for the next
  // sheet along the vehicle's path. Decode before the camera crosses its edge;
  // visible requests always win and neither memory nor concurrency grows.
- const vx=G.player?.vx||0,vy=G.player?.vy||0;
  if(keep.size&&keep.size<16&&Math.hypot(vx,vy)>55&&nearest.every(([key])=>state.sheets.get(key)?.image)){
   let ahead=null,best=Infinity;
   for(const p of tiles){const x=(p.x+.5)*TILE+vx*2,y=(p.y+.5)*TILE+vy*2,key=Math.floor(x/(TILE*SIDE))+'_'+Math.floor(y/(TILE*SIDE));
@@ -36,6 +46,7 @@ export function prepareBakedWorld(G,tiles){
  // Newly discovered sheets also count toward the budget in this frame.
  for(const [key,e] of cold){if(state.sheets.size<=limit)break;if(state.sheets.has(key)){release(e);state.sheets.delete(key);}}
  state.ready=0;state.bytes=0;for(const e of state.sheets.values())if(e.image){state.ready++;state.bytes+=e.image.width*e.image.height*4;}
+ state.warm=nearest.every(([key])=>state.sheets.get(key)?.image)&&state.pending===0;
 }
 export function drawBakedWorldTile(G,c,x,y){
  const image=G.bakedWorld?.sheets.get(Math.floor(x/SIDE)+'_'+Math.floor(y/SIDE))?.image;if(!image)return false;

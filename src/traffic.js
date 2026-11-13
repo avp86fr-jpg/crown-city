@@ -1,4 +1,5 @@
 import {stepPedestrian,pedestrianClear} from './pedestrian_motion.js';
+import {ROAD_CRUISE,trafficDriver,trafficCruise,trafficTurnSpeed} from './traffic_drivers.js';
 import {trafficDemand,spawnWeight,trafficFlowBudget} from './street_population.js';
 import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
@@ -146,8 +147,6 @@ export function lightGreen(G, n, e) {
   return signalPhase(G.ticks,ns)===0;
 }
 
-const KSPEED = { highway: 165, strip: 120, boulevard: 120, coast: 110, arterial: 105, street: 72 };
-
 export function createTraffic(G) {
   const graph = G.graph,hash=new Map(),buckets=[],junctions=new Map(),order=[],closedCaps=new Set(),staticRoutes=new Map(),departures=new Map();
   let routeSurface=G.surfaceAt,spawnCache=null;
@@ -280,10 +279,21 @@ export function createTraffic(G) {
     if(tr.turn||tr.merge||tr.backoff!=null||tr.reserved!=null||e.lanes<2||gap>240||tr.s<180||e.len-tr.s<300)return;
     if((tr.passCheck||0)>G.ticks)return;tr.passCheck=G.ticks+30;
     const hx=tr.fwd?e.dx:-e.dx,hy=tr.fwd?e.dy:-e.dy;
-    const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&!o.traffic&&!o.ai&&!o.cop&&Math.hypot(o.vx||0,o.vy||0)<3&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
+    const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&(o.dead||!o.traffic&&!o.ai&&!o.cop)&&Math.hypot(o.vx||0,o.vy||0)<3&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
     if(!parked)return;
     for(const lane of [tr.lane-1,tr.lane+1]){
       if(lane<0||lane>=e.lanes)continue;
+      // A clear lane now can still contain a fast car arriving during the
+      // merge. Predict relative motion before indicating or taking its space.
+      const target=edgePoint(e,tr.fwd,tr.s,lane),own=bodySize(v),mergeTime=2.6;
+      if(nearby(target.x,target.y,600,o=>{
+        if(o===v||!o.def)return false;
+        const dx=o.x-target.x,dy=o.y-target.y,other=bodySize(o),side=dx*hy-dy*hx;
+        if(Math.abs(side)>own.w+other.w+12)return false;
+        const along=dx*hx+dy*hy,relative=(o.vx||0)*hx+(o.vy||0)*hy-Math.min(55,tr.spd+25);
+        const future=along+relative*mergeTime,clearance=own.l+other.l+40;
+        return Math.min(along,future)<clearance&&Math.max(along,future)>-clearance;
+      }))continue;
       let clear=true;for(let ds=-160;ds<=220;ds+=35)if(!poseClear(v,edgePoint(e,tr.fwd,tr.s+ds,lane))){clear=false;break;}
       if(!clear)continue;
       // Try a swept, gradual lane change, including cars that were already
@@ -350,7 +360,9 @@ export function createTraffic(G) {
           return Math.abs(dx*p.dy-dy*p.dx)<own.w+b.w*co+b.l*si+5&&Math.abs(dx*p.dx+dy*p.dy)<own.l+b.l*co+b.w*si+100;
         }))continue;
         if(!canDepart(v,e,fwd,lane))continue;
-        v.cruise = (KSPEED[e.k] || 100) * (0.8 + Math.random() * 0.3) * (k === "bus" ? 0.7 : 1);
+        v.driverPace=.82+Math.random()*.26;
+        v.cruise=(ROAD_CRUISE[e.k]||100);
+        v.cruise=trafficCruise(v,e,G);
         G.vehicles.push(v);
         return v;
       }
@@ -416,7 +428,8 @@ export function createTraffic(G) {
         if (!v.traffic || !tr || v === P || v.dead) continue;
         if (Math.abs(v.x - P.x) > 2600 || Math.abs(v.y - P.y) > 2600) continue;
         const hx = Math.sin(v.rot), hy = -Math.cos(v.rot);
-        let want = v.cruise;
+        const driver=trafficDriver(v,tr.e),cruise=trafficCruise(v,tr.e,G);
+        let want=cruise;
         const gap=tr.turn?300:ahead(v,hx,hy,300);
         passParked(v,gap);
         if(tr.backoff!=null){
@@ -428,7 +441,7 @@ export function createTraffic(G) {
           continue;
         }
         if(tr.merge)want=Math.min(want,55);
-        if(gap<300)want=Math.min(want,Math.sqrt(2*110*gap),gap/0.85);
+        if(gap<300)want=Math.min(want,Math.sqrt(2*driver.brake*.76*gap),gap/driver.headway);
         v.blockedT=gap<12?(v.blockedT||0)+dt:0;
         if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
         if (v.blockedT < 0.5) v.honked = false;
@@ -444,6 +457,10 @@ export function createTraffic(G) {
           const zone=end.zone??end.id;let owners=junctions.get(zone),room=Math.max(0,hold-tr.s);
           if(controlled&&!owners?.has(v)&&room<100)tr.waitSince??=G.ticks;
           if(!tr.route&&toStop<300)tr.route=chooseRoute(v,end);
+          if(tr.route){
+            const nextCruise=trafficCruise(v,tr.route.ne,G);
+            if(nextCruise<cruise)want=Math.min(want,Math.sqrt(nextCruise*nextCruise+2*driver.brake*.65*Math.max(0,toStop-60)));
+          }
           const green=lightGreen(G,end,e);
           if(controlled&&!owners?.has(v)&&(tr.reserved==null||tr.reserved===zone)&&green&&room<100&&gap>room+8&&G.ticks>=(tr.junctionCheck||0)){
             // Queue decisions run at 10 Hz, while motion and contact checks
@@ -464,8 +481,8 @@ export function createTraffic(G) {
           const blocked=(controlled?!owners?.has(v):!green)||!tr.route&&toStop<300;
           const stopping=blocked&&tr.s<=hold+2;
           if(stopping)want=Math.min(want,Math.sqrt(2*115*room),room*1.8);
-          if(end.edges.length>1&&toStop<90)want=Math.min(want,Math.max(45,v.cruise*.55));
-          tr.spd=Math.max(0,tr.spd+clamp(want-tr.spd,-145*dt,38*dt));
+          if(end.edges.length>1&&toStop<90&&tr.route)want=Math.min(want,trafficTurnSpeed(v,tr.route,cruise));
+          tr.spd=Math.max(0,tr.spd+clamp(want-tr.spd,-driver.brake*dt,driver.accel*dt));
           let travel=Math.min(tr.spd*dt,gap);
           if(stopping){travel=Math.min(travel,room);if(room<.5)tr.spd=0;}
           // Commit route distance only after the physical body has room. Otherwise
@@ -486,7 +503,7 @@ export function createTraffic(G) {
         }
         if (tr.turn) {
           const t=tr.turn;
-          tr.spd=Math.max(0,tr.spd+clamp(Math.min(want,68)-tr.spd,-145*dt,32*dt));
+          tr.spd=Math.max(0,tr.spd+clamp(Math.min(want,trafficTurnSpeed(v,t,cruise))-tr.spd,-driver.brake*dt,driver.accel*.84*dt));
           const p=turnPoint(t,t.u),next=Math.min(1,t.u+tr.spd*dt/p.speed);
           // Follow the actual curve, not a forward ray that mistakes the
           // waiting cross-traffic for a permanent obstacle during left turns.
@@ -711,7 +728,8 @@ export function createNav(G) {
         let bd = 65535, bx = -1, by = -1;
         for (let r = 1; r <= 4 && bx < 0; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
           const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= NW || ny >= NH) continue;
-          const d = field[ny * NW + nx]; if (d < bd) { bd = d; bx = nx; by = ny; }
+          const d = field[ny * NW + nx];
+          if(d<bd&&N.gridLine(x,y,nx*C+C/2,ny*C+C/2,N_raw)){bd=d;bx=nx;by=ny;}
         }
         if (bx < 0) return null;
         return { x: bx * C + C / 2, y: by * C + C / 2, d: bd };
@@ -726,9 +744,20 @@ export function createNav(G) {
           if (d < best) { best = d; bx = nx; by = ny; }
         }
         if (bx === cx && by === cy) break;
+        // A sequence of individually valid grid steps can still bend around
+        // a building. Steering directly at its final point used to cut that
+        // corner and pin the cruiser against the facade indefinitely.
+        if(!N.gridLine(x,y,bx*C+C/2,by*C+C/2,grid))break;
         cx = bx; cy = by;
       }
       return { x: cx * C + C / 2, y: cy * C + C / 2, d: field[cy * NW + cx] };
+    },
+    gridLine(x0,y0,x1,y1,grid=pass){
+      const length=Math.hypot(x1-x0,y1-y0),steps=Math.max(1,Math.ceil(length/(C/4)));
+      for(let i=1;i<=steps;i++){
+        const x=Math.floor((x0+(x1-x0)*i/steps)/C),y=Math.floor((y0+(y1-y0)*i/steps)/C);
+        if(x<0||y<0||x>=NW||y>=NH||!grid[y*NW+x])return false;
+      }return true;
     },
     clearLine(x0, y0, x1, y1) {
       const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 24);

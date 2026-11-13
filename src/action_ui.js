@@ -1,3 +1,4 @@
+import {operationStatus} from './crew_operations.js';
 import {racePace,cycleRacePace} from './circuit_rules.js';
 import {WEAPONS,CONTRACTS,nearService,buyService,startContract,servicePoints} from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px Inter, system-ui, sans-serif`;
@@ -11,7 +12,7 @@ export function drawActionHUD(G,L,y,width){
  c.font=font(16*u,900);c.fillStyle=A.reloadT>0?'#edc67f':'#fff';c.fillText(A.reloadT>0?'RELOADING':String(A.ammo[A.weapon]).padStart(2,'0')+' / '+WEAPONS[A.weapon].mag,L+9*u,yy+33*u,width-18*u);
  c.fillStyle='#28383c';c.fillRect(L+9*u,yy+40*u,width-18*u,3*u);c.fillStyle=A.exhausted?'#d77863':'#91c9ac';c.fillRect(L+9*u,yy+40*u,(width-18*u)*A.stamina/100,3*u);
  if(A.cover&&G.player.type==='foot'){c.font=font(9*u,800);c.fillStyle='#a3e0cf';c.fillText('IN COVER',L+9*u,yy+62*u);}
- if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));}
+ if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));const status=operationStatus(G,A.contract);if(status){c.font=font(9*u,700);c.fillStyle='#e5cf98';c.fillText(status,L,yy+(A.cover?94:78)*u,Math.min(W-L*2,390*u));}}
  const service=nearService(G);
  if(service&&!G.race&&!G.input.touchJoy.active){c.font=font(11*u,800);c.textAlign='center';c.fillStyle='#edd3a1';c.fillText(service.name+' / '+(G.touch?'CREW → WORKSHOP':'C WORKSHOP'),W*.5,H-(G.touch?222:82)*u,W-32*u);}
  if(A.message&&A.messageT>0&&G.scene==='play'&&!(G.contactTalk&&G.contactNear)){
@@ -47,7 +48,7 @@ export function drawCrew(G,{button,panel,save}){
   c.textAlign='left';c.fillStyle='#d3b582';c.font=font(9*u,800);c.fillText(d.contact+' / '+d.time+' SEC',x+14*u,y+20*u);
   if(portraitArt){c.save();c.beginPath();c.arc(x+cw-37*u,y+31*u,22*u,0,Math.PI*2);c.clip();c.drawImage(portraitArt,x+cw-59*u,y+9*u,44*u,44*u);c.restore();}
   c.font=font(16*u,900);c.fillStyle='#f2eadb';c.fillText(d.title,x+14*u,y+43*u,cw-84*u);
-  c.font=font(11*u,500);c.fillStyle='#bfc5bf';const lines=textLines(c,d.text,cw-28*u).slice(0,Math.max(1,Math.min(4,Math.floor((ch/u-108)/15)+1)));lines.forEach((line,j)=>c.fillText(line,x+14*u,y+(64+j*15)*u));
+  c.font=font(11*u,500);c.fillStyle='#bfc5bf';const lines=textLines(c,d.summary||d.text,cw-28*u).slice(0,Math.max(1,Math.min(4,Math.floor((ch/u-108)/15)+1)));lines.forEach((line,j)=>c.fillText(line,x+14*u,y+(64+j*15)*u));
   const active=A.contract?.id===d.id,label=active?'CANCEL CONTRACT':A.contract?'CONTRACT ACTIVE':(A.completedJobs?.includes(d.id)?'REPLAY / +':'TAKE JOB / +')+d.reward;
   button(G,x+12*u,y+ch-39*u,cw-24*u,29*u,label,()=>{if(active){if(A.contract.id==='circuit')G.circuitSession=null;G.parcel=null;A.contract=null;G.waypoint=null;G.gps=null;}else if(startContract(G,d.id))G.scene='play';save(G);},{primary:!A.contract,size:10*u});
  });
