@@ -39,6 +39,7 @@ import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, r
 import { createAudio } from "./audio.js";
 import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
 import { HEIST_VN } from "./street_heists.js";
+import { sceneWind } from "./wind.js";
 Object.assign(VN, HEIST_VN);
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
@@ -1631,13 +1632,16 @@ function damageVeh(G, v, amt, byPlayer=false,point=null) {
   const hit=recordVehicleDamage(v,amt,point);if(!hit)return;
   if(hit.previous!==hit.stage&&v===G.player&&v.health<65)toast(G,hit.stage==='CRITICAL'?'Critical damage — find a workshop.':hit.stage==='ENGINE FIRE'?'Engine fire — stop and get clear!':'Body damaged. Handling and power reduced.');
   if(amt>13&&G.particles){for(let i=0;i<(G.settings.quality==='low'?3:6);i++)G.particles.push({kind:'panel',x:point?.x??v.x,y:point?.y??v.y,vx:(Math.random()-.5)*100,vy:(Math.random()-.5)*100,rot:Math.random()*TAU,spin:(Math.random()-.5)*9,col:i%2?'#9db9b5':'#36434a',life:1.1,maxLife:1.1});}
+  if(amt>18&&G.particles&&!v.def.boat){const n=v.glassOut?2:(G.settings.quality==='low'?4:9);v.glassOut=(v.glassOut||0)+1;for(let i=0;i<n;i++)G.particles.push({kind:'glass',x:(point?.x??v.x)+(Math.random()-.5)*10,y:(point?.y??v.y)+(Math.random()-.5)*10,vx:(Math.random()-.5)*140,vy:(Math.random()-.5)*140,rot:Math.random()*6,life:.5+Math.random()*.5});}
   if (v.health < 35 && !v.wrecked) { v.wrecked = true; }
   if (v.health < 12 && !v.burning) { v.burning = true; v.burnT = 4.5; v.playerIgnited=byPlayer; }
   if (v.cop && v === G.player) return;
 }
 function tickVehDamage(G, v, dt) {
   if(v.dead)return;v.damagePulse=Math.max(0,(v.damagePulse||0)-dt);
-  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
+  if (v.health >= 45 && v.health < 70 && !v.def.boat && (G.ticks % 9) === 0) G.particles.push({ kind: "steam", x: v.x + (Math.random() - 0.5) * 8, y: v.y + (Math.random() - 0.5) * 8, vx: (Math.random() - 0.5) * 10, vy: -18, life: .8, seed: Math.random()*6 });
+  if (v.health < 22 && !v.burning && (G.ticks % 6) === 0 && Math.random() < .6) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: 0, vy: -22, life: 0.25 });
+  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ seed: Math.random()*6, kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
   if (v.burning) {
     v.burnT -= dt;
     if ((G.ticks % 2) === 0) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 16, y: v.y + (Math.random() - 0.5) * 16, vx: 0, vy: -30, life: 0.4 });
@@ -1879,7 +1883,11 @@ function shoot(G, from, onFoot) {
     // Feel: recoil kick on the camera, heavier for the shotgun.
     addShake(G,weapon.pellets>1?5:weapon.quiet?1.2:2);
   }
-  if(!weapon.rocket)G.particles.push({kind:'casing',x:base.x+ay*9,y:base.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+  if(!weapon.rocket){G.particles.push({kind:'casing',x:base.x+ay*9,y:base.y-ax*9,vx:ay*50,vy:-ax*50,life:.7});
+   // Painted gunsmoke: a puff at the muzzle; sustained bursts leave a thin haze.
+   const mz=onFoot?23:14,mx=base.x+ax*16,my=base.y+ay*16-mz,heavy=weapon.pellets>1?1.6:weapon.quiet?.55:1;
+   G.particles.push({kind:'gunsmoke',x:mx,y:my,vx:ax*28,vy:ay*28-6,life:.9*heavy,a:.75,seed:Math.random()*6,size:heavy});
+   G.gunHaze=Math.min(8,(G.gunHaze||0)+1);G.gunHazeAt={x:mx,y:my};}
   const fx=block===null?sx:base.x+(sx-base.x)*block,fy=(block===null?sy:base.y+(sy-base.y)*block)-(onFoot?23:14);
   G.particles.push({ kind:block===null?"flash":"spark", x:fx, y:fy, life:block===null?.06:.18, a:1 });
   G.flashes.push({ x: sx, y: sy, r: 150, col: "rgba(255,210,140,0.9)", life: 0.07, max: 0.07 });
@@ -2455,12 +2463,21 @@ function tickProps(G, dt) {
 function tickParticles(G, dt) {
   tickBlood(G,dt);tickBlastFX(G,dt);
   tickLightEffects(G,dt);
+  // Smoke-like particles drift downwind and slow; haze settles after a burst.
+  const wind=sceneWind(G),wx=wind.x*22,wy=wind.y*22,drag=Math.max(0,1-dt*1.8);
+  if(G.gunHaze>0){G.gunHazeT=(G.gunHazeT||0)+dt;if(G.input&&G.input.fire)G.gunHazeT=0;
+   if(G.gunHazeT>.25&&G.gunHaze>=3&&G.gunHazeAt){const h=G.gunHazeAt;G.particles.push({kind:'haze',x:h.x,y:h.y,vx:0,vy:-4,life:2.6,a:Math.min(1,G.gunHaze/8),seed:Math.random()*6});G.gunHaze=0;}
+   else if(G.gunHazeT>.25)G.gunHaze=0;}
   for (const p of G.particles) {
     if (!p.maxLife) p.maxLife = p.life;
+    const soft=p.kind==='smoke'||p.kind==='gunsmoke'||p.kind==='haze'||p.kind==='steam'||p.kind==='dust';
+    if(soft){p.vx=(p.vx||0)*drag;p.vy=(p.vy||0)*drag;p.x+=wx*dt;p.y+=wy*dt;}
     p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.life -= dt;
     if (p.frame != null) p.frame += dt * 12;
   }
-  const cap=G.settings.quality==='low'?140:500;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
+  // Caps scale with the frame budget: when frames run long, effects thin out first.
+  const slow=(G.fps||60)<(G.touch?48:40);
+  const cap=(G.settings.quality==='low'?140:500)*(slow?.55:1)|0;if(G.particles.length>cap)G.particles.splice(0,G.particles.length-cap);
   let live=0;for(const p of G.particles)if(p.life>0)G.particles[live++]=p;G.particles.length=live;
   for (const s of G.skids) s.a -= dt * 0.07;
   live=0;for(const s of G.skids)if(s.a>0)G.skids[live++]=s;G.skids.length=live;
@@ -3149,7 +3166,27 @@ function drawLighting(G, r, S, ox, oy, low) {
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);
   }
-  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;
+  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;G.night=night;
+  if (night > 0.3 && G.codeAt && !G.settings.reducedMotion) {
+    // Lamp light on water: broken, swaying vertical streaks below lights at the water's edge.
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; const t = G.ticks / 60; let n = 0;
+    for (const L of visibleStreetLights(G, r)) {
+      if (n >= (G.touch ? 10 : 24)) break;
+      const bx = L.bulbX, by = L.bulbY, wet = (x, y) => { const c = G.codeAt(x, y); return c === 3 || c === 8; };
+      let dir = null, start = 0;
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) { for (let d = 20; d <= 140; d += 20) if (wet(bx + dx * d, by + dy * d)) { dir = [dx, dy]; start = d; break; } if (dir) break; }
+      if (!dir) continue; n++;
+      for (let k = 0; k < 8; k++) {
+        const d = start + 4 + k * 11, xx = bx + dir[0] * d, yy = by + dir[1] * d;
+        if (!wet(xx, yy)) break;
+        const sway = Math.sin(t * 2.1 + k * 1.7 + bx * .01) * (2 + k * .6), wdt = 10 - k * .9;
+        ctx.globalAlpha = night * (0.36 - k * .04) * (0.7 + 0.3 * Math.sin(t * 3 + k));
+        ctx.fillStyle = "#ffcf86";
+        if (dir[0] === 0) ctx.fillRect(xx + sway - wdt / 2, yy, wdt, 2.2); else ctx.fillRect(xx, yy + sway - wdt / 2, 2.2, wdt);
+      }
+    }
+    ctx.restore();
+  }
   for (const v of G.vehicles) {
     if (v.x < r.x0 || v.x > r.x1 || v.y < r.y0 || v.y > r.y1) continue;
     vehLights(G, ctx, v, night, false);

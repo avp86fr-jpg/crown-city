@@ -39,6 +39,7 @@ export function drawWaterMotion(G,r){
  if((x1-x0+1)*(y1-y0+1)>80)return;
  const c=G.ctx,t=G.ticks/60,wind=sceneWind(G),waveLimit=low?64:150,shoreLimit=low?40:90;
  const stride=Math.max(1,Math.ceil((x1-x0+1)*(y1-y0+1)*16/waveLimit));
+ const night=(G.night||0)>.45;
  c.save();c.lineWidth=low?1.15:1;c.lineCap='round';c.strokeStyle='#a4cec8';
  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
   const key=y*48+x;let chunk=state.chunks.get(key);
@@ -49,15 +50,23 @@ export function drawWaterMotion(G,r){
    if((Math.floor(p.x/64)+Math.floor(p.y/64)*3)%stride)continue;
    if(p.x<r.x0-30||p.x>r.x1||p.y<r.y0-12||p.y>r.y1+12)continue;
    const phase=t*(p.canal?.8:1.05)+p.phase,sway=Math.sin(phase),dx=sway*6*wind.x,dy=Math.cos(phase*.8)*2+wind.y*2;
-   c.globalAlpha=(p.canal?.12:.16)*(.4+.6*(.5+.5*Math.sin(phase)));
+   const crest=.4+.6*(.5+.5*Math.sin(phase));
+   // Painted trough: a darker stroke under each crest gives the swell volume.
+   c.globalAlpha=(p.canal?.08:.14)*crest;c.strokeStyle='#0d3550';c.lineWidth=low?2:2.6;
+   c.beginPath();c.moveTo(p.x+dx,p.y+dy+2.4);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy+.4,p.x+dx+p.len*.6,p.y+dy+4.4,p.x+dx+p.len,p.y+dy+1.8);c.stroke();
+   c.strokeStyle=night?'#7fa6c4':'#c8ece6';c.lineWidth=low?1.15:1.2;
+   c.globalAlpha=(p.canal?.16:.26)*crest;
    c.beginPath();c.moveTo(p.x+dx,p.y+dy);c.bezierCurveTo(p.x+dx+p.len*.25,p.y+dy-2.2,p.x+dx+p.len*.6,p.y+dy+2,p.x+dx+p.len,p.y+dy-.6);c.stroke();stats.waves++;
+   // Sun sparkle by day, a cool moon glint at night: brief, crest-timed twinkles.
+   const tw=Math.sin(phase*2.3+p.phase*3);if(!p.canal&&tw>.82){const k=(tw-.82)/.18;c.globalAlpha=k*(night?.35:.7);c.fillStyle=night?'#bcd4ff':'#fffbe8';const sx=p.x+dx+p.len*.45,sy=p.y+dy-1;c.fillRect(sx-2.5*k,sy-.5,5*k,1);c.fillRect(sx-.5,sy-1.6*k,1,3.2*k);}
   }
   c.lineWidth=1.7;
   for(const p of chunk.shores){
    if(stats.shores>=shoreLimit)break;
    if(p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;
    const pulse=.5+.5*Math.sin(t*.95+p.phase),retreat=3+3*pulse,px=p.x-p.dx*retreat,py=p.y-p.dy*retreat;
-   c.globalAlpha=.08+.16*pulse;c.beginPath();c.moveTo(px-p.dy*6,py+p.dx*6);c.quadraticCurveTo(px-p.dx*1.5,py-p.dy*1.5,px+p.dy*6,py-p.dx*6);c.stroke();stats.shores++;
+   c.globalAlpha=.1+.2*pulse;c.beginPath();c.moveTo(px-p.dy*6,py+p.dx*6);c.quadraticCurveTo(px-p.dx*1.5,py-p.dy*1.5,px+p.dy*6,py-p.dx*6);c.stroke();
+   c.globalAlpha=.06+.08*(1-pulse);c.beginPath();c.moveTo(px-p.dy*5-p.dx*6,py+p.dx*5-p.dy*6);c.quadraticCurveTo(px-p.dx*8,py-p.dy*8,px+p.dy*5-p.dx*6,py-p.dx*5-p.dy*6);c.stroke();stats.shores++;
   }
   c.lineWidth=low?1.15:1;
  }

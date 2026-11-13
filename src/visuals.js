@@ -140,6 +140,17 @@ export function drawAtmosphere(G, r, night) {
   }
 }
 
+const _puffs=new Map();
+function puff(col){
+ let c=_puffs.get(col);if(c)return c;
+ c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+ const lobes=[[32,36,22],[20,34,14],[44,32,15],[30,24,13],[40,42,12],[22,44,11]];
+ for(const [lx,ly,r] of lobes){const g=x.createRadialGradient(lx-r*.25,ly-r*.3,r*.1,lx,ly,r);g.addColorStop(0,`rgba(${col},.9)`);g.addColorStop(.55,`rgba(${col},.55)`);g.addColorStop(1,`rgba(${col},0)`);x.fillStyle=g;x.beginPath();x.arc(lx,ly,r,0,Math.PI*2);x.fill();}
+ // Painted top-light: a pale highlight on the upper lobes, a cooler shade below.
+ x.globalCompositeOperation='source-atop';
+ const h=x.createLinearGradient(0,8,0,58);h.addColorStop(0,'rgba(255,255,255,.22)');h.addColorStop(.5,'rgba(255,255,255,0)');h.addColorStop(1,'rgba(20,24,40,.22)');x.fillStyle=h;x.fillRect(0,0,64,64);
+ _puffs.set(col,c);return c;
+}
 export function drawParticleFX(ctx, p) {
   const age = 1 - clamp(p.life / (p.maxLife || p.life || 1));
   ctx.save();
@@ -167,11 +178,22 @@ export function drawParticleFX(ctx, p) {
     ctx.strokeStyle = '#ffd3a0'; ctx.lineWidth = 1.3;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - (p.vx || 0) * .035, p.y - (p.vy || 0) * .035); ctx.stroke();
     ctx.fillStyle = '#fff6d1'; ellipse(ctx, p.x, p.y, 1.6, 1.6);
-  } else if (p.kind === 'smoke' || p.kind === 'dust') {
-    const size = (p.kind === 'smoke' ? 6 : 3) + age * (p.kind === 'smoke' ? 22 : 14);
-    ctx.globalAlpha = (1 - age) * .42 * (p.a ?? 1);
-    const col=p.kind==='dust'?'178,151,111':p.dark?'34,39,48':'166,181,196';
-    ctx.drawImage(LIGHT.radial(`rgba(${col},.65)`,64),p.x-size,p.y-size*.8,size*2,size*1.6);
+  } else if (p.kind === 'smoke' || p.kind === 'dust' || p.kind === 'gunsmoke' || p.kind === 'haze' || p.kind === 'steam') {
+    // Painted, layered puffs: a soft shadow lobe under a lit lobe, growing and
+    // easing out. Colour and scale per source; rotation from a per-puff seed.
+    const k=p.kind,ease=1-(1-age)*(1-age);
+    const base=k==='smoke'?(p.dark?7:6):k==='dust'?3:k==='gunsmoke'?3*(p.size||1):k==='steam'?4:14;
+    const grow=k==='smoke'?(p.dark?30:24):k==='dust'?15:k==='gunsmoke'?14*(p.size||1):k==='steam'?14:46;
+    const size=base+ease*grow,fade=k==='haze'?Math.sin(Math.PI*Math.min(1,age*1.4+.05))*.5:(1-age)*(1-age*.35);
+    const alpha=(k==='smoke'?(p.dark?.66:.5):k==='dust'?.42:k==='gunsmoke'?.72:k==='steam'?.46:.26)*fade*(p.a??1);
+    const col=k==='dust'?'178,151,111':k==='steam'?'232,238,242':k==='gunsmoke'?'206,206,200':k==='haze'?'190,194,196':p.dark?'34,36,42':'178,186,194';
+    const tex=puff(col);ctx.translate(p.x,p.y);ctx.rotate((p.seed||0)+age*.6);
+    ctx.globalAlpha=alpha*.55;ctx.drawImage(tex,-size*.92+size*.12,-size*.72+size*.14,size*1.84,size*1.44);
+    ctx.globalAlpha=alpha;ctx.drawImage(tex,-size,-size*.8,size*2,size*1.6);
+  } else if (p.kind === 'glass') {
+    ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)+age*9);ctx.globalAlpha=clamp(p.life*2.5)*.9;
+    ctx.fillStyle='#cfe9f2';ctx.beginPath();ctx.moveTo(-2.4,0);ctx.lineTo(0,-1.3);ctx.lineTo(2.4,.2);ctx.lineTo(0,1.2);ctx.closePath();ctx.fill();
+    if(((p.rot*10|0)+(age*20|0))%3===0){ctx.globalCompositeOperation='lighter';ctx.fillStyle='#ffffff';ellipse(ctx,0,0,1.1,1.1);}
   } else if (p.kind === 'boom') {
     ctx.globalCompositeOperation = 'lighter';
     const radius = (p.big ? 90 : 36) * age + 3;
