@@ -38,6 +38,8 @@ import { loadImage as loadImg } from "./assets.js";
 import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, resetInput } from "./session.js";
 import { createAudio } from "./audio.js";
 import { CHAR, MISSIONS, VN, missionFlow } from "./story.js";
+import { HEIST_VN } from "./street_heists.js";
+Object.assign(VN, HEIST_VN);
 import { buildWorld, makeCollision, districtAt, WORLD_W, WORLD_H, CORE, CODE } from "./world.js";
 import { TileLayer, makeGround, makeBuildings } from "./render_world.js";
 import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
@@ -578,7 +580,7 @@ function canvasMouse(G) {
 
 function setupTouch(G) {
   const touch = document.getElementById("touch");
-  const coarse = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+  const coarse = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0 || "ontouchstart" in window;
   G.touch = coarse;
   const joy = document.getElementById("joy"), knob = document.getElementById("knob"), zone = document.getElementById("joyZone");
   const hintL = document.getElementById("hintL");
@@ -1013,6 +1015,7 @@ function tickEnd(G) {
 function openVN(G, page) {
   const p = typeof page === "function" ? page() : page;
   if (p === "play") {
+    if (G.vn && String(G.vn.id).startsWith("job_")) { G.scene = "play"; return; }
     if (G.vnQueue && G.vnQueue.length) return openVN(G, G.vnQueue.shift());
     if (G.missionIndex >= MISSIONS.length) { G.scene = "end"; G.ended = true; return; }
     G.scene = "play";
@@ -1248,6 +1251,7 @@ function tickPlay(G, dt) {
   G.ticks++;
   if(G.ticks%30===0)retireStreetActors(G);
   if(G.action.contract?.id!=='airdrop')G.parcel=null;
+  if(!G.jobHooks)G.jobHooks={vn:id=>openVN(G,id),traffic:(n,a,b,k)=>G.traffic?.spawnCar(n,a,b,k),spawn:(k,x,y)=>{const at=findSafe(G,x,y,34,false);const v=makeVeh(k,at.x,at.y,0);G.vehicles.push(v);return v;}};
   tickAction(G,dt,{moveFoot});
   G.hitConfirmT=Math.max(0,(G.hitConfirmT||0)-dt);if(G.hitMark){G.hitMark.t-=dt;if(G.hitMark.t<=0)G.hitMark=null;}
   if(G.scene !== 'play') return;
@@ -3013,7 +3017,7 @@ function renderWorldLayer(G) {
   for (const p of G.peds) if (p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1) actors.push(p);
   if (G.player.type === "foot") actors.push(G.player);
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
-  _ph('a_sort');for (const a of actors) { if (a.def) drawVeh(G, a); else drawChar(G, a); }
+  _ph('a_sort');const noVeh=G.dbg&&G.dbg.noVeh;for (const a of actors) { if (a.def) {if(!noVeh)drawVeh(G, a);} else drawChar(G, a); }
   _ph('a_draw');drawWildlife(G,r);drawExpansionPeople(G,r);_ph('a_wild');
   drawParticles(G, r, false);_ph('a_part');
   drawResortOverhead(G,r);
@@ -3067,9 +3071,12 @@ function drawLighting(G, r, S, ox, oy, low) {
   const needMap = Math.min(ar, ag, ab) < 238;
   // low tier: rebuild the light map every other frame (the multiply still runs every frame)
   G._lmF = (G._lmF || 0) + 1;
-  const reuse = low && (G._lmF & 1) && G._lmValid && !hasFlash;
+  // Reuse the light map on alternate frames (desktop too). It is world-aligned,
+  // so a reused map is shifted by the camera's screen motion since it was built.
+  const LM=G._lmCam,reuse = (G._lmF & 1) && G._lmValid && !hasFlash && LM && LM.S===S && LM.rot===cam.rot && LM.ox===ox && LM.oy===oy && Math.hypot(cam.x-LM.x,cam.y-LM.y)*S<40;
   if (needMap) G._lmValid = true;
   if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
+    G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
     lx.setTransform(1, 0, 0, 1, 0, 0);
     lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
     lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
@@ -3117,7 +3124,9 @@ function drawLighting(G, r, S, ox, oy, low) {
     // multiply onto the frame
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = 1;
-    ctx.drawImage(lt.cv, 0, 0, canvas.width, canvas.height);
+    const sh=reuse&&G._lmCam?{x:(G._lmCam.x-cam.x)*S,y:(G._lmCam.y-cam.y)*S}:{x:0,y:0};
+    ctx.drawImage(lt.cv, sh.x, sh.y, canvas.width, canvas.height);
+    if(sh.x||sh.y){ctx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;if(sh.x>0)ctx.fillRect(0,0,Math.ceil(sh.x),canvas.height);else if(sh.x<0)ctx.fillRect(canvas.width+Math.floor(sh.x),0,-Math.floor(sh.x),canvas.height);if(sh.y>0)ctx.fillRect(0,0,canvas.width,Math.ceil(sh.y));else if(sh.y<0)ctx.fillRect(0,canvas.height+Math.floor(sh.y),canvas.width,-Math.floor(sh.y));}
     ctx.restore();
   }
   // emissive pass (additive, unaffected by darkness)
@@ -3138,7 +3147,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);
   }
-  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);
+  const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;
   for (const v of G.vehicles) {
     if (v.x < r.x0 || v.x > r.x1 || v.y < r.y0 || v.y > r.y1) continue;
     vehLights(G, ctx, v, night, false);
@@ -3188,7 +3197,9 @@ function vehLights(G, c, v, night, map) {
   if (active) {
     c.globalAlpha = 0.25 + 0.75 * night;
     for (const s of w ? [-1, 1] : [0]) c.drawImage(bulb, v.x + h * len + rt.x * w * s - 7, v.y + k * len + rt.y * w * s - 7, 14, 14);
-    if (night > 0.25) {
+    // Full-resolution additive beams are the costliest light; only the player
+    // and a handful of other cars get one, the rest keep their light-map pool.
+    if (night > 0.25 && (v === G.player || (G._beams = (G._beams || 0) + 1) <= 4)) {
       // additive beam so headlights actually brighten dark asphalt (multiply alone can't)
       c.save(); c.translate(v.x + h * len, v.y + k * len); c.rotate(v.rot);
       c.globalAlpha = (v === G.player ? 0.3 : 0.18) * night; const cn = LIGHT.cone("rgba(255,240,205,0.95)");

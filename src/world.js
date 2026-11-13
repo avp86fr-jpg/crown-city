@@ -47,7 +47,7 @@ export const CORE_DISTRICTS = [
 ];
 export function districtAt(x, y) {
   if(y<760){const isle=resortDistrict(x,y);if(isle)return isle;}
-  if(inCircuit(x,y))return 'BUGATTI / CROWN CIRCUIT';
+  if(inCircuit(x,y))return 'CROWN GRAND PRIX';
   const biome=terrainRegion(x,y);if(biome)return biome==='forest'?'PINEWATCH FOREST':biome==='desert'?'RED MESA':'SIERRA CROWN';
   if(x>=6784&&x<=7152&&y>560&&y<6800)return 'CROWN CANAL';
   if(x>=7540&&x<=8960&&y>=2820&&y<=3590)return 'METAWIN TERRACE';
