@@ -51,6 +51,17 @@ export function drawVehicleDamage(ctx,v){
    if(a>.45){ctx.fillStyle='#101b20';ctx.fillRect(-w*.58,-l*.81,w*.36,4);}
   }ctx.restore();
  }
+ // Dented panels catch a pale highlight along the crumple edge.
+ if(wear>.2&&!v.dead){ctx.strokeStyle=`rgba(232,236,228,${.25+wear*.4})`;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(-w*.5,-l*.62);ctx.quadraticCurveTo(-w*.1,-l*(.55-wear*.12),w*.45,-l*.64);ctx.stroke();
+  ctx.fillStyle=`rgba(8,12,15,${.12+wear*.25})`;ctx.beginPath();ctx.ellipse(w*.32,l*.1,w*.22,l*.14,.4,0,Math.PI*2);ctx.ellipse(-w*.36,-l*.2,w*.18,l*.12,-.3,0,Math.PI*2);ctx.fill();}
+ // Smashed glass: frosted, crazed windscreen, then the rear screen too.
+ if(wear>.5&&!v.def.bike){
+  const glass=(y0,y1,seed)=>{ctx.fillStyle=v.dead?'rgba(30,34,36,.65)':'rgba(206,226,232,.34)';ctx.beginPath();ctx.moveTo(-w*.48,y0);ctx.lineTo(w*.48,y0);ctx.lineTo(w*.42,y1);ctx.lineTo(-w*.42,y1);ctx.closePath();ctx.fill();
+   ctx.strokeStyle='rgba(236,246,248,.8)';ctx.lineWidth=.6;const cx=w*(seed-.5)*.5,cy=(y0+y1)/2;ctx.beginPath();
+   for(let k=0;k<7;k++){const a=k/7*Math.PI*2+seed;ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*w*.42,cy+Math.sin(a)*Math.abs(y1-y0)*.62);}ctx.stroke();
+   ctx.fillStyle='rgba(255,255,255,.9)';for(let k=0;k<4;k++)ctx.fillRect(cx+Math.cos(k*1.9+seed)*w*.25,cy+Math.sin(k*2.3)*2,1,1);};
+  glass(-l*.4,-l*.16,.3);if(wear>.72||v.dead)glass(l*.42,l*.58,.7);
+ }
  if(wear>.35&&!v.def.bike){
   ctx.strokeStyle='rgba(181,224,222,.82)';ctx.lineWidth=.75;const x=-w*.14,y=-l*.24;
   ctx.beginPath();ctx.moveTo(x-w*.31,y-l*.11);ctx.lineTo(x,y);ctx.lineTo(x+w*.39,y-l*.07);ctx.moveTo(x,y);ctx.lineTo(x-w*.19,y+l*.11);ctx.moveTo(x,y);ctx.lineTo(x+w*.14,y+l*.12);ctx.stroke();

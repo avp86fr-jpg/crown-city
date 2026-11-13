@@ -233,7 +233,7 @@ export function createCityAI(G) {
       if (local.some(p => p.cityBoarded)) G.peds = G.peds.filter(p => !p.cityBoarded);
     },
     steerPed(p, dt) {
-      if (p.dead || p.copPed || p.mission || p.flee > 0 || p.dive > 0) return false;
+      if (p.dead || p.copPed || p.mission || p.owEvent || p.flee > 0 || p.dive > 0) return false;
       const b = brain(p);
       // Painted crossings can be tagged as sidewalk in the core mask. A person
       // waiting directly in a stopped driver's path must step aside instead of

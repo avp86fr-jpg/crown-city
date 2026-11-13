@@ -48,5 +48,5 @@ test('roof furniture stays inside roofs, keeps equipment separate and uses stabl
 
 test('frontage sprites share a bounded style cache rather than allocating per building',async()=>{
  const {G}=await harness();for(const p of G.street.frontages)frontageSprite(G.street,p);const first=[...G.street.frontageCache.values()];
- assert.ok(first.length<=16);for(const p of G.street.frontages)frontageSprite(G.street,p);assert.deepEqual([...G.street.frontageCache.values()],first);
+ assert.ok(first.length<=32);for(const p of G.street.frontages)frontageSprite(G.street,p);assert.deepEqual([...G.street.frontageCache.values()],first);
 });

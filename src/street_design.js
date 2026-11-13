@@ -59,7 +59,7 @@ export function buildStreetDesign(G){
   if(!['casino','hangar'].includes(b.kind))for(const p of candidates(b,20,60)){
    const bounds=fixtureBounds(p,60,20);if(inCityHub(p.x,p.y,48)||!safeStreetFootprint(G,bounds)||!free(bounds))continue;
    const category=industrial?'workshop':home?'residential':b.kind==='office'?'office':'shop';
-   frontages.push({...p,category,seed,index:Math.floor(seed*4),name:b.name||'',bounds});reserve({...bounds,x:bounds.x-3,y:bounds.y-3,w:bounds.w+6,h:bounds.h+6});break;
+   frontages.push({...p,category,seed,index:Math.floor(seed*8),name:b.name||'',bounds});reserve({...bounds,x:bounds.x-3,y:bounds.y-3,w:bounds.w+6,h:bounds.h+6});break;
   }
   for(const choice of [kind,...(kind===3?[]:[3])]){
    const [w,h]=FIXTURE_SIZES[choice];let placed=false;
@@ -72,14 +72,14 @@ export function buildStreetDesign(G){
  return {fixtures,frontages,fixtureBins:indexStreetItems(fixtures),frontageBins:indexStreetItems(frontages),placementStats:{fixtures:fixtures.length,frontages:frontages.length,reservations:reserved.length}};
 }
 const schemes={shop:['#526e6b','#e0cdaa','#a84e44','#c5a45d'],residential:['#677c69','#d4ccb0','#526a72','#9c8566'],office:['#3b626e','#d2d5bd','#56838b','#6a8585'],workshop:['#536364','#d5b777','#aa7350','#7e8d85']};
-const signs={shop:['CROWN / RECORDS','AFTER HOURS','NIGHT MARKET','RIVER CAFE'],residential:['RESIDENCES','CROWN / ROOMS','GARDEN HOUSE','CITY APARTMENTS'],office:['CROWN / HOUSE','MERIDIAN','CITY EXCHANGE','ARCHIVE / 04'],workshop:['MOTOR / WORKS','CITY / SUPPLY','WAREHOUSE','GARAGE / 24']};
+const signs={shop:['CROWN / RECORDS','AFTER HOURS','NIGHT MARKET','RIVER CAFE','NOODLE BAR','PAWN / GOLD','LAUNDRY 24','FLOWERS'],residential:['RESIDENCES','CROWN / ROOMS','GARDEN HOUSE','CITY APARTMENTS','PALM COURT','THE ARCHES','HARBOUR VIEW','NO. 12'],office:['CROWN / HOUSE','MERIDIAN','CITY EXCHANGE','ARCHIVE / 04','LEDGER & CO','TOWER ONE','NORTHGATE','STUDIO / 9'],workshop:['MOTOR / WORKS','CITY / SUPPLY','WAREHOUSE','GARAGE / 24','TYRES / FAST','BODY SHOP','PARTS DEPOT','FREIGHT 7']};
 export function frontageSprite(street,p){
  const key=p.category+':'+p.index;let canvas=street.frontageCache.get(key);if(canvas)return canvas;
  canvas=document.createElement('canvas');canvas.width=128;canvas.height=64;const c=canvas.getContext('2d');c.translate(64,32);c.scale(2,2);
  const palette=schemes[p.category]||schemes.shop;c.fillStyle='rgba(16,28,29,.25)';c.fillRect(-29,-7,60,18);c.fillStyle=palette[0];c.fillRect(-30,-10,60,17);
  c.fillStyle='#223e43';c.fillRect(-25,-6,17,9);c.fillRect(8,-6,17,9);c.fillStyle='#8ea9a5';c.fillRect(-24,-6,15,1);c.fillRect(9,-6,15,1);
  c.fillStyle='#172f36';c.fillRect(-5,-6,10,13);c.fillStyle=palette[1];c.fillRect(-4,0,8,1);c.fillRect(2,-4,1,5);
- c.fillStyle=palette[2];c.fillRect(-30,-10,60,5);c.fillStyle=palette[1];for(let x=-29;x<29;x+=10)c.fillRect(x,-10,4,5);
+ c.fillStyle=p.category==='shop'?['#a84e44','#2f6f8a','#c58a2e','#5b7d3a','#7a4a86','#b8463a','#2c5f57','#9b6a3c'][p.index%8]:palette[2];c.fillRect(-30,-10,60,5);c.fillStyle=palette[1];for(let x=-29;x<29;x+=10)c.fillRect(x,-10,4,5);
  c.fillStyle=palette[3];c.fillRect(-7,7,14,3);c.fillStyle='#eadfc0';c.font='700 4px system-ui';c.textAlign='center';c.fillText(signs[p.category][p.index],0,-6.5,52);
  // Paved approach only; no solid prop is painted into the path.
  c.strokeStyle='rgba(39,65,62,.36)';c.lineWidth=.6;c.beginPath();c.moveTo(-8,11);c.lineTo(8,11);c.stroke();street.frontageCache.set(key,canvas);return canvas;

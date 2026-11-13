@@ -54,6 +54,7 @@ import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from 
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld } from './open_world.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
@@ -1303,6 +1304,8 @@ function tickPlay(G, dt) {
   tickProps(G, dt);
   tickParticles(G, dt);
   tickPickups(G, dt);
+  if(!G.ow&&G.graph&&G.meta)initOpenWorld(G,{makeVeh});
+  tickOpenWorld(G, dt);
   tickCamera(G, dt);
   const guidance=tickDirector(G,dt);
   if(guidance)message(G,guidance.name,guidance.text);
@@ -1646,7 +1649,7 @@ function tickVehDamage(G, v, dt) {
   if(v.dead)return;v.damagePulse=Math.max(0,(v.damagePulse||0)-dt);
   if (v.health >= 45 && v.health < 70 && !v.def.boat && (G.ticks % 9) === 0) G.particles.push({ kind: "steam", x: v.x + (Math.random() - 0.5) * 8, y: v.y + (Math.random() - 0.5) * 8, vx: (Math.random() - 0.5) * 10, vy: -18, life: .8, seed: Math.random()*6 });
   if (v.health < 22 && !v.burning && (G.ticks % 6) === 0 && Math.random() < .6) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: 0, vy: -22, life: 0.25 });
-  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ seed: Math.random()*6, kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: 0.7, frame: 0, dark: v.health < 25 });
+  if (v.health < 45 && (G.ticks % 5) === 0) G.particles.push({ seed: Math.random()*6, kind: "smoke", x: v.x + (Math.random() - 0.5) * 10, y: v.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 16, vy: -24, life: v.health < 25 ? 1.15 : 0.9, frame: 0, dark: v.health < 25 });
   if (v.burning) {
     v.burnT -= dt;
     if ((G.ticks % 2) === 0) G.particles.push({ kind: "fire", x: v.x + (Math.random() - 0.5) * 16, y: v.y + (Math.random() - 0.5) * 16, vx: 0, vy: -30, life: 0.4 });
@@ -2040,9 +2043,9 @@ function tickWanted(G, dt) {
   if (G.starFlash > 0) G.starFlash -= dt;
   if (G.wanted <= 0) {
     // stand-down: cops go back to patrol (become regular cars and despawn)
-    for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; }
+    for (const c of G.cops) { c.chasing = false; c.ai = false; c.loose = true; c.siren = false; c.ambient = true; c.cop = true; c.keep = false; c.knocked = true; c.restT = 0; }
     G.cops = []; G.policeTarget = null; G.heliChase=false;G.evading=false;G.seenT=0;
-    for(const v of G.vehicles)if(v.roadblock){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}
+    for(const v of G.vehicles)if(v.roadblock){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;v.parked=false;v.knocked=true;v.restT=0;}
     // Officers stand down and return to their cruiser in tickCops; they do not
     // vanish in front of the player when the last star clears.
     return;
@@ -2102,7 +2105,7 @@ function tickWanted(G, dt) {
       }else G.roadblockT=2;
     }else G.roadblockT=2;
   }
-  for(const v of G.vehicles)if(v.roadblock){v.blockT-=dt;if(v.blockT<=0||G.wanted===0){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;}}
+  for(const v of G.vehicles)if(v.roadblock){v.blockT-=dt;if(v.blockT<=0||G.wanted===0){v.roadblock=false;v.keep=false;v.siren=false;v.loose=true;v.ambient=true;v.parked=false;v.knocked=true;v.restT=0;}}
   // heli at 4+
   G.heliChase = G.wanted >= 4;
 }
@@ -2267,7 +2270,8 @@ function tickVehicles(G, dt) {
       // the correct lane; if no lane fits it is towed once out of view.
       if(v.knocked&&v.ambient&&!v.burning&&!v.mission&&!v.keep&&v.health>25&&v.vx*v.vx+v.vy*v.vy<400){
         v.restT=(v.restT||0)+dt;
-        if(v.restT>1.6&&(G.ticks%20)===0&&G.traffic?.rejoin?.(v))continue;
+        // A cruiser standing down waits for its officers to climb back in.
+        if(v.restT>1.6&&(G.ticks%20)===0&&!(v.cop&&G.peds.some(p=>p.car===v&&!p.dead&&!p.removed))&&G.traffic?.rejoin?.(v))continue;
         if(v.restT>6&&!G.traffic?.visible?.(v.x,v.y)){const i=G.vehicles.indexOf(v);if(i>=0)G.vehicles.splice(i,1);continue;}
       }
       if(v.vx*v.vx+v.vy*v.vy<.04&&!v.burning){v.vx=v.vy=v.yaw=0;if(!(v.knocked&&v.ambient&&v.health>25)){v.loose=false;v.parked=true;}}
@@ -3056,6 +3060,7 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
+  drawOpenWorld(G, r);
   drawRouteChevrons(G);
   drawObjectiveGround(G);
   drawLife(G, cam, viewForLife(cam));

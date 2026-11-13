@@ -56,10 +56,15 @@ export function drawVehicleFinish(G, v, w, h, pose) {
     for (const side of [-1, 1]) for (const front of [-1, 1]) {
       ctx.save(); ctx.translate(side * w * .39, front * h * .28);
       if (front < 0) ctx.rotate(pose.wheel);
-      ctx.fillStyle = '#10171d'; ctx.fillRect(-2.5, -6, 5, 12);
-      ctx.strokeStyle = 'rgba(205,221,230,.65)'; ctx.lineWidth = .7;
-      const spin = Math.sin((v.visualTravel || 0) * .23) * 3.5;
-      ctx.beginPath(); ctx.moveTo(-1.6, spin); ctx.lineTo(1.6, spin); ctx.stroke(); ctx.restore();
+      // Painted tyre: rounded rubber, rolling tread bands, outer sidewall
+      // light and a small alloy glint on the outside face.
+      ctx.fillStyle = '#0b1014'; ctx.beginPath(); ctx.roundRect(-2.9, -6.3, 5.8, 12.6, 2.2); ctx.fill();
+      ctx.fillStyle = '#2b343b'; ctx.fillRect(side < 0 ? -2.7 : 1.5, -5.2, 1.2, 10.4);
+      const ph = (((v.visualTravel || 0) * .23) % 3 + 3) % 3;
+      ctx.fillStyle = 'rgba(112,124,132,.5)';
+      for (let k = -5.6 + ph; k < 5.4; k += 3) ctx.fillRect(-2.2, k, 4.4, .8);
+      ctx.fillStyle = 'rgba(222,231,238,.85)'; ctx.fillRect(side < 0 ? -2.9 : 2.1, -1.6, .9, 3.2);
+      ctx.restore();
     }
     // Painted lenses are always present: pale headlamps, dark-red tail lamps
     // that flare when braking. Lit cars at night also get a warm lens core.
@@ -215,6 +220,9 @@ export function drawParticleFX(ctx, p) {
     // Billow: a main puff plus two smaller offset lobes that separate as it ages.
     const A=Math.min(1,alpha*1.5),sp=size*(.35+age*.35);
     ctx.globalAlpha=A;ctx.drawImage(tex,-size*1.2,-size,size*2.4,size*2);
+    // Dark engine smoke read as a hole on night asphalt: a sky-lit crown
+    // on the upper lobe separates it from the road.
+    if(p.dark){ctx.globalAlpha=A*.42;ctx.drawImage(puff('128,130,138'),-size*.95,-size*1.05,size*1.5,size*1.2);}
     if(k!=='dust'&&k!=='haze'){ctx.globalAlpha=A*.7;ctx.drawImage(tex,sp-size*.8,-sp*.5-size*.7,size*1.6,size*1.4);ctx.drawImage(tex,-sp-size*.7,sp*.3-size*.6,size*1.4,size*1.2);}
   } else if (p.kind === 'glass') {
     ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)+age*9);ctx.globalAlpha=clamp(p.life*2.5)*.9;

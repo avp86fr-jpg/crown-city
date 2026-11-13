@@ -4,7 +4,7 @@ import {bloodImpact,tickBlood} from '../src/blood_fx.js';
 import {escapeHeading} from '../src/navigation_ai.js';
 import {createCityAI} from '../src/city_ai.js';
 import {createPeds,createTraffic,buildGraph} from '../src/traffic.js';
-import {trafficDemand} from '../src/street_population.js';
+import {trafficDemand,pedDemand} from '../src/street_population.js';
 import {characterPose} from '../src/visuals.js';
 import {settingsFrom} from '../src/session.js';
 import {circleBody} from '../src/collision.js';
@@ -95,5 +95,5 @@ test('sustained mobile load reduces ambient demand with hysteresis, leaving visi
  const visible={x:G.cam.x,y:G.cam.y,ambient:true},mission={x:G.cam.x+1500,y:G.cam.y,ambient:true,mission:true},crossing={x:G.cam.x+1400,y:G.cam.y,ambient:true,crossing:true};
  G.peds=[visible,mission,crossing,...Array.from({length:50},(_,i)=>({x:G.cam.x+1200+i,y:G.cam.y,ambient:true}))];
  const before=G.peds.length;G.pedsys.tick(1/60);assert.equal(G.peds.length,before-1);assert.ok(G.peds.includes(visible)&&G.peds.includes(mission)&&G.peds.includes(crossing));
- assert.equal(G.pedsys.effectiveTarget,34);G.settings.quality='high';T.applyQuality(G);assert.equal(G.streetBudget,1);
+ assert.equal(G.pedsys.effectiveTarget,Math.round(pedDemand(G,42)*.8));G.settings.quality='high';T.applyQuality(G);assert.equal(G.streetBudget,1);
 });

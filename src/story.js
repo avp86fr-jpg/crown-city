@@ -263,7 +263,7 @@ export function missionFlow(id, flags) {
       return {
         startVN: "m6_intro",
         objectives: [
-          { id: "return", kind: "goto", at: "marina", r: 100, hint: "Return to the marina. Your final getaway car is waiting." },
+          { id: "return", kind: "goto", at: "marina", r: 100, hint: "Dock at the marina quay and step ashore. Your final getaway car is waiting." },
           { id: "getaway", kind: "enter", near: "marina", vehicle: "nyx", hint: "Get into the Nyx at the marina. (E)" },
           { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the bag out the east highway to the city limits." },
           { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat: break line of sight until every star fades." },

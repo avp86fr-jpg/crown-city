@@ -9,21 +9,21 @@ FR=json.loads(re.search(r'"crowd":(\[\[.*?\]\]\])',open('src/sprite_frames.js').
 def hx(h):return np.array([int(h[i:i+2],16)/255 for i in (1,3,5)],np.float32)
 # sex, top, bottom, hair, skin multiplier (r,g,b), hat, hairstyle
 LOOKS=[
- ('m','#3a3e47','#26282e','#17120f',(1.0,1.0,1.0),None,'short'),     # suit
+ ('m','#2c3756','#22252c','#17120f',(1.0,1.0,1.0),None,'short'),     # suit
  ('m','#b5313b','#283063','#1a1410',(.62,.55,.5),None,'short'),     # tracksuit
  ('m','#2fa89f','#cdb68a','#5a3a22',(1.08,1.02,.95),'sun','short'), # beach shirt + shorts
  ('m','#e2772a','#3d5a86','#2a1f18',(.78,.7,.62),'hard','short'),   # hi-vis workwear
- ('m','#a99a7b','#5b5b60','#cfcac2',(1.1,1.04,1.0),None,'bald'),    # elderly cardigan
+ ('m','#5e4a6e','#4a4d55','#cfcac2',(1.1,1.04,1.0),None,'bald'),    # elderly cardigan
  ('m','#4d7944','#3b5476','#3a2a1c',(.9,.85,.75),'cap','short'),    # casual
  ('f','#b02c3c','#3a1e24','#120d0b',(.95,.9,.86),None,'bun'),       # red dress
  ('f','#3d6db0','#2a2f3a','#d9b25e',(1.1,1.05,1.0),None,'pony'),    # blue skirt, blonde
- ('f','#5b6069','#2a2c31','#3b2618',(.6,.52,.46),None,'bun'),       # grey suit
+ ('f','#2f6b60','#22302d','#3b2618',(.6,.52,.46),None,'bun'),       # grey suit
  ('f','#ea8c78','#f0e8d8','#5a341c',(1.06,1.0,.92),'sun','long'),   # beachwear
  ('f','#d6c13a','#3c4f6e','#8a3a1e',(.85,.78,.7),'hard','pony'),    # workwear
  ('f','#9b8ab0','#55505e','#d8d6d2',(1.12,1.06,1.02),None,'bun'),   # elderly
 ]
 # look index -> (kind, colour, waist y, hem y, flare) as fractions of the frame height
-GARMENT={6:('dress','#a8283a',.46,.74,1.32),7:('skirt','#2c3f6e',.47,.63,1.12),8:('skirt','#4e535c',.47,.66,1.0),
+GARMENT={6:('dress','#a8283a',.46,.74,1.32),7:('skirt','#2c3f6e',.47,.63,1.12),8:('skirt','#285a51',.47,.66,1.0),
  9:('dress','#e08672',.47,.68,1.24),11:('dress','#7b6c90',.46,.8,1.18)}
 def hls(rgb):
  mx=rgb.max(-1);mn=rgb.min(-1);l=(mx+mn)/2;d=mx-mn
@@ -113,6 +113,13 @@ for li,look in enumerate(LOOKS):
    fr=(f[0]-cx0,f[1]-cy0,f[2],f[3])
    out=paint(cell,fr,look)
    atlas.alpha_composite(out,(int(round((li*3+j)*CW)),cy0))
+# Readability at street zoom: a soft dark rim around every silhouette so
+# figures separate from pavement and from each other in crowds.
+from PIL import ImageFilter
+al=atlas.getchannel('A');dil=al.filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.GaussianBlur(1.2))
+rim=np.clip(np.asarray(dil,np.float32)-np.asarray(al,np.float32),0,255)*.55
+rl=Image.new('RGBA',atlas.size,(14,16,22,0));rl.putalpha(Image.fromarray(rim.astype(np.uint8)))
+rl.alpha_composite(atlas);atlas=rl
 k=128/CH
 full=atlas.resize((int(outW*k),int(H*k)),Image.LANCZOS);full.save('assets/premium/crowd-looks.webp',quality=86,method=6)
 mob=atlas.resize((int(outW*k*.5),int(H*k*.5)),Image.LANCZOS);mob.save('assets/premium/crowd-looks-mobile.webp',quality=84,method=6)
