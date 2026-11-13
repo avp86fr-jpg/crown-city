@@ -1,3 +1,4 @@
+import {drawWaterMotion} from './water_motion.js';
 import {drawBlastFX} from './explosions.js';
 import {drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
@@ -113,6 +114,7 @@ export function drawMobileWorld(G,H) {
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
+  drawWaterMotion(G,r);
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);

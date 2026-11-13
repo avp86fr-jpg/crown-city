@@ -1,3 +1,4 @@
+import {drawWaterMotion} from './water_motion.js';
 import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
@@ -2866,38 +2867,24 @@ function renderWorldLayer(G) {
   const L = assets.layers;
   worldXform(G, ctx, S, 1, ox, oy);
   ctx.imageSmoothingEnabled = true;
-  // 1. open water (animated) under everything outside the painted core
+  // Opaque fallback while terrain streams. Scrolling full-view water passes
+  // were immediately covered by ground tiles; visible motion is drawn once.
   if (r.x0 < 0 || r.y0 < 0 || r.x1 > CORE || r.y1 > CORE) {
-    if (!G._waterPat) G._waterPat = ctx.createPattern(assets.tex.water, "repeat");
-    const t = G.ticks * 0.25;
-    G._waterPat.setTransform(new DOMMatrix([1, 0, 0, 1, t % 256, (t * 0.6) % 256]));
-    ctx.fillStyle = G._waterPat;
-    ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
-    if (!low) {
-      ctx.globalAlpha = 0.35;
-      G._waterPat.setTransform(new DOMMatrix([1.4, 0, 0, 1.4, -(t * 0.7) % 358, (t * 0.3) % 358]));
-      ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
-      ctx.globalAlpha = 1;
-    }
+    ctx.fillStyle='#173e4b';ctx.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
   }
   let _pt = performance.now(); const _ph = (k) => { const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
   _ph('w_water');
   // 2. painted core
   if (r.x0 < CORE && r.y0 < CORE) {
     if (!(G.dbg && G.dbg.noAlb)) L.albedo.draw(ctx, r, frame);
-    const wi = G.settings.reducedMotion ? 0 : ((G.ticks / 12) | 0) % 4;
-    if (!(G.dbg && G.dbg.noWater)) {
-      L["water" + wi].draw(ctx, r, frame);
-      if (!low && !G.settings.reducedMotion) {
-        ctx.globalAlpha = (G.ticks % 12) / 12;
-        L["water" + ((wi + 1) % 4)].draw(ctx, r, frame); ctx.globalAlpha = 1;
-      }
-    }
-    for (let k = 0; k < 4; k++) if (k !== wi) for (const key of L["water" + k].keys) { const [tx, ty] = key.split("_").map(Number); if (tx * 1024 < r.x1 && tx * 1024 + 1024 > r.x0 && ty * 1024 < r.y1 && ty * 1024 + 1024 > r.y0) L["water" + k].get(tx, ty, frame); }
+    // Water motion is now geometry-aware and shared with mobile. Keep one
+    // authored base frame; decoding four identical shoreline layers wastes RAM.
+    if (!(G.dbg && G.dbg.noWater)) L.water0.draw(ctx,r,frame);
   }
   _ph('w_core');
   // 3. procedural districts
   G.ground.draw(ctx, r, frame);
+  G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);
   if (G.wet > 0.15 && r.x0 < CORE && r.y0 < CORE) { ctx.globalAlpha = 0.4 * G.wet; L.puddles.draw(ctx, r, frame); ctx.globalAlpha = 1; }
   if (G.wet > 0.15) { ctx.fillStyle = `rgba(30,40,60,${0.18 * G.wet})`; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
   _ph('w_ground');
@@ -2953,7 +2940,7 @@ function renderWorldLayer(G) {
   drawParticles(G, r, false);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
-  G.bld.trees(ctx, cam, r, { low, time: G.settings.reducedMotion ? 0 : G.ticks / 60 });
+  G.bld.trees(ctx, cam, r, { low, time: G.settings.reducedMotion ? 0 : G.ticks / 60,storm:Math.max(G.rainAmt,G.sand) });
   if (!(G.dbg && G.dbg.noBld)) G.bld.draw(ctx, cam, r, frame, sun, { low, player:G.scene==='title'?null:G.player });
   drawRoofDetail(G,r);
   // the player is never lost behind a tower: soft outline when occluded

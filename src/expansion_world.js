@@ -110,7 +110,7 @@ export function drawExpansionGround(c,W,r,pats={}){
  const E=W.expansion;if(!E)return;
  const canal=E.canal;if(r.x1>canal.x-80&&r.x0<canal.x+canal.w+80&&r.y1>canal.y&&r.y0<6800){
   const bankEnd=E.canalBanks.end,waterEnd=bankEnd;
-  c.fillStyle=pats.water||'#193e43';c.fillRect(canal.x,canal.y,canal.w,waterEnd-canal.y);c.fillStyle='rgba(16,54,55,.62)';c.fillRect(canal.x,canal.y,canal.w,waterEnd-canal.y);
+  c.fillStyle=pats.water||'#193e43';c.fillRect(canal.x,canal.y,canal.w,waterEnd-canal.y);c.fillStyle='rgba(31,69,59,.24)';c.fillRect(canal.x,canal.y,canal.w,waterEnd-canal.y);
   for(const x of [canal.x-8,canal.x+canal.w]){
    box(c,x,canal.y,8,bankEnd-canal.y,'#716c5d');box(c,x+2,canal.y,2,bankEnd-canal.y,'#c2b89a');
    for(let y=Math.max(canal.y,Math.floor(r.y0/80)*80);y<Math.min(bankEnd,r.y1);y+=80)box(c,x,y,8,2,'#434f49');

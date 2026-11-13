@@ -152,11 +152,24 @@ async function dialogue(page, choices) {
     await step(phone, 10);
     await check('multi-touch joystick and RUN release; phone MAP, PAUSE and TAKE work', async () => {
       const cdp = await mobile.newCDPSession(phone);
-      const start = await phone.evaluate(() => { const G = __CC.G, a = T.findSafe(G,2108,2400,10,true); G.player = T.makeFoot(G,a.x,a.y,0); return G.player.y; });
+      const start = await phone.evaluate(() => {
+        const G=__CC.G;
+        // This verifies touch input, not an accidental traffic encounter. A
+        // clear starting circle alone does not guarantee a clear running path.
+        for(const [ox,oy]of [[2108,2400],[8200,3200]])for(let dy=-144;dy<=144;dy+=24)for(let dx=-144;dx<=144;dx+=24){
+          const x=ox+dx,y=oy+dy;
+          if(G.surfaceAt(x,y)==='road'||G.vehicles.some(v=>Math.hypot(v.x-x,v.y-y)<220)||G.peds.some(p=>Math.hypot(p.x-x,p.y-y)<90))continue;
+          let clear=true;for(let d=0;d<=96;d+=8)if(!T.footClear(G,x,y-d,12)){clear=false;break;}
+          if(clear){G.player=T.makeFoot(G,x,y,0);return y;}
+        }
+        throw Error('No clear corridor for the touch movement check');
+      });
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:70,y:650,id:1}]});
       await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:70,y:585,id:1}]});
+      await phone.waitForFunction(()=>__CC.G.input.touchJoy.active&&__CC.G.input.touchJoy.y>.8,null,{polling:50});
       const run=await phone.locator('#tSprint').boundingBox();
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:70,y:585,id:1},{x:run.x+run.width/2,y:run.y+run.height/2,id:2}]});
+      await phone.waitForFunction(()=>__CC.G.input.tSprint,null,{polling:50});
       await step(phone,30);
       assert.ok(await phone.evaluate(start => __CC.G.player.y < start - 20, start));
       assert.equal(await phone.evaluate(() => __CC.G.input.tSprint),true);

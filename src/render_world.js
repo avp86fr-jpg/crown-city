@@ -1,3 +1,5 @@
+import {makeCoreFinish} from './ground_finish.js';
+import {windAt} from './wind.js';
 /* Streaming tile layers, chunked procedural ground, extruded buildings, trees. */
 import {drawCircuitGround,circuitGroundSteps,loadCircuitArt,CIRCUIT} from './circuit_world.js';
 import { terrainRegion, drawExpansionGround } from "./expansion_world.js";
@@ -80,36 +82,26 @@ export class TileLayer {
 const CH = 512;
 export function makeGround(W, tex, codeAt) {
   const cache = new Map();
-  const pats = {};let revision=0,useId=0,viewPlan=null,circuitScale=1;
+  const pats = {};const coreFinish=makeCoreFinish(codeAt,pats);let revision=0,useId=0,viewPlan=null,circuitScale=1;
   loadScenery('assets/premium/frontier-scenery.webp',512).then(im=>{W.sceneryAtlas=im;for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;}).catch(()=>{});
   // Eight material paintings, decoded once; detail is baked into streamed chunks.
-  loadScenery('assets/premium/world-materials.webp',1024).then(atlas=>{
+  loadScenery('assets/premium/world-materials.webp?v=2',1024).then(atlas=>{
     ['forest','desert','mountain','casino','asphalt','paver','trail','water'].forEach((name,i)=>{
       const tile=document.createElement('canvas');tile.width=tile.height=256;
       tile.getContext('2d',{willReadFrequently:true}).drawImage(atlas,(i%4)*atlas.width/4,Math.floor(i/4)*atlas.height/2,atlas.width/4,atlas.height/2,0,0,256,256);
-      // The original forest painting read as another canopy under the actual
-      // trees. Quiet ground materials give trunks, foliage and road edges a
-      // clear silhouette. Keep the existing 256px backing store and tile phase.
-      if(name==='forest'||name==='mountain'){
-        const c=tile.getContext('2d',{willReadFrequently:true}),forest=name==='forest';
-        c.fillStyle=forest?'rgba(57,73,53,.82)':'rgba(122,125,112,.76)';c.fillRect(0,0,256,256);
-        let seed=forest?397:841;const rnd=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
-        for(let j=0;j<80;j++){
-          const px=rnd()*256,py=rnd()*256,rr=forest?1+rnd()*3:2+rnd()*5;
-          c.fillStyle=forest?(j%3?'rgba(179,157,102,.23)':'rgba(24,47,39,.22)'):(j%2?'rgba(222,214,184,.16)':'rgba(69,83,78,.14)');
-          c.beginPath();c.ellipse(px,py,rr,rr*.42,rnd()*3,0,TAU);c.fill();
-        }
-      }
-      // Quiet limestone tones keep the casino's green felt and characters readable.
-      if(name==='casino'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(185,177,157,.58)';c.fillRect(0,0,256,256);}
-      if(name==='asphalt'){const c=tile.getContext('2d',{willReadFrequently:true});c.fillStyle='rgba(48,53,56,.64)';c.fillRect(0,0,256,256);}
+      // Fine-scale, quiet materials retain their painted detail at street zoom.
+      const c=tile.getContext('2d',{willReadFrequently:true});
+      const tone={forest:'rgba(47,70,51,.19)',mountain:'rgba(101,120,115,.12)',casino:'rgba(185,184,165,.12)',asphalt:'rgba(34,43,47,.24)'}[name];
+      if(tone){c.fillStyle=tone;c.fillRect(0,0,256,256);}
       pats[name]=scratch.createPattern(tile,'repeat');
-      const scale=name==='casino'?.3:name==='paver'?.22:name==='asphalt'?.25:name==='forest'||name==='mountain'?1.25:.8;
+      const scale=name==='casino'?.7:name==='paver'?.6:name==='asphalt'?.65:name==='forest'?.85:name==='water'?1.1:.95;
       pats[name].setTransform(new DOMMatrix([scale,0,0,scale,0,0]));
       if(name==='forest'){
-        const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d',{willReadFrequently:true});ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,99,60,.78)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
+        const lawn=document.createElement('canvas');lawn.width=lawn.height=256;const ctx=lawn.getContext('2d',{willReadFrequently:true});ctx.drawImage(tile,0,0);ctx.fillStyle='rgba(74,101,65,.58)';ctx.fillRect(0,0,256,256);pats.grass=scratch.createPattern(lawn,'repeat');pats.grass.setTransform(new DOMMatrix([.6,0,0,.6,0,0]));
       }
     });
+    pats.sand=pats.desert;pats.dirt=pats.trail;pats.asphalt_hw=pats.asphalt;
+    atlas.close?.();coreFinish.clear();
     for(const e of cache.values())if(e.c)e.c.width=1;cache.clear();revision++;
   }).catch(()=>{});
   const scratch = document.createElement("canvas").getContext("2d",{willReadFrequently:true});
@@ -156,7 +148,7 @@ export function makeGround(W, tex, codeAt) {
         if (v !== run || currentTex !== runTex) {
           if(run===CODE.water){
             x.fillStyle=pats.water||'#24585b';x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);
-            x.fillStyle='rgba(15,48,56,.66)';x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);any=true;
+            x.fillStyle='rgba(15,48,56,.13)';x.fillRect(start*CELL,cy*CELL,(cx-start)*CELL,CELL);any=true;
           }else if (run >= 0 && run !== 255 && run !== CODE.canal) {
             const t = runTex;
             x.fillStyle = pats[t] || pats[codeTex[run]] || pats.concrete;
@@ -196,12 +188,22 @@ export function makeGround(W, tex, codeAt) {
         if (U === CODE.road) x.fillRect(px, py - 2, CELL, 2);
         if (D === CODE.road) x.fillRect(px, py + CELL, CELL, 2);
       } else if (v === CODE.water) {
-        const land = (q) => q !== CODE.water && q !== 254 && q !== CODE.canal;
-        x.fillStyle = "rgba(225,240,245,0.32)";
-        if (land(cellAt(cx + 1, cy))) x.fillRect(px + CELL - 5, py, 5, CELL);
-        if (land(cellAt(cx - 1, cy))) x.fillRect(px, py, 5, CELL);
-        if (land(cellAt(cx, cy - 1))) x.fillRect(px, py, CELL, 5);
-        if (land(cellAt(cx, cy + 1))) x.fillRect(px, py + CELL - 5, CELL, 5);
+        // Shallow shelves and thin tide lines follow the real shoreline. Do
+        // not frame every water cell in opaque white, especially at quay walls.
+        const neighbors=[cellAt(cx+1,cy),cellAt(cx-1,cy),cellAt(cx,cy-1),cellAt(cx,cy+1)];
+        for(let side=0;side<4;side++){
+          const q=neighbors[side];if(q!==CODE.sand&&q!==CODE.grass)continue;
+          const vertical=side<2,ex=px+(side===0?CELL-10:0),ey=py+(side===3?CELL-10:0);
+          x.fillStyle='rgba(106,159,145,.22)';x.fillRect(ex,ey,vertical?10:CELL,vertical?CELL:10);
+          x.fillStyle=q===CODE.sand?'rgba(208,219,194,.22)':'rgba(73,111,92,.25)';
+          x.fillRect(px+(side===0?CELL-2:0),py+(side===3?CELL-2:0),vertical?2:CELL,vertical?CELL:2);
+        }
+      } else if (v === CODE.sand) {
+        const shoreline=cellAt(cx+1,cy)===CODE.water||cellAt(cx-1,cy)===CODE.water||cellAt(cx,cy-1)===CODE.water||cellAt(cx,cy+1)===CODE.water;
+        if(shoreline){
+          x.fillStyle='rgba(92,99,72,.16)';x.fillRect(px,py,CELL,CELL);
+          if((cx*7+cy*11)%5===0){x.fillStyle='rgba(112,109,85,.45)';x.beginPath();x.ellipse(px+6,py+9,2,1.2,.4,0,TAU);x.fill();x.fillStyle='rgba(220,207,166,.6)';x.fillRect(px+5,py+8,2,1);}
+        }
       } else if (v === CODE.grass) {
         const e = cellAt(cx, cy - 1);
         if (e !== CODE.grass && e !== 255) { x.fillStyle = "rgba(20,40,10,0.25)"; x.fillRect(px, py, CELL, 3); }
@@ -339,6 +341,8 @@ export function makeGround(W, tex, codeAt) {
     maxChunks:64,
     get revision(){return revision;},
     get asphalt(){return pats.asphalt;},
+    drawCoreFinish(ctx,r,budget=2){coreFinish.draw(ctx,r,budget);},
+    coreFinish,
     get materialsReady(){return !!pats.forest&&!!W.sceneryAtlas;},
     get circuitReady(){return pats.circuitImage?.width===(this.circuitKey==='mobile'?2048:4096);},
     composeTile(ix,iy,scale=.5){return renderSteps(ix,iy,scale);},
@@ -714,7 +718,7 @@ export function makeBuildings(W, tex, coreRoofs) {
     ctx.fillStyle = `rgba(0,0,0,${(1 - lit) * 0.75})`; ctx.fill();
   }
   return {
-    all, inView: (r,pad=24) => inView(r,pad),queryStats,
+    all, inView: (r,pad=24) => inView(r,pad),treesInView:r=>inViewTrees(r),queryStats,
     // Camera-independent roofs and foliage are baked into mobile scenery tiles.
     *staticSteps(ctx,r){
       for(const b of inView(r,18).slice()){
@@ -810,10 +814,10 @@ export function makeBuildings(W, tex, coreRoofs) {
     },
     trees(ctx,cam,r,opts){for(const step of this.treeSteps(ctx,cam,r,opts)){}},
     *treeSteps(ctx, cam, r, opts) {
-      const D = 980 / Math.max(0.45, cam.scale);
+      const D = 980 / Math.max(0.45, cam.scale),breeze=windAt(opts.time||0,opts.storm||0);
       for (const t of (opts.static?inViewTrees(r).slice():inViewTrees(r))) {if(opts.static)yield;
         const k = 28 / D;
-        const wind = opts.time ? Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012) * 1.6 : 0;
+        const wind = opts.time ? (Math.sin(opts.time * 1.25 + t.x * .019 + t.y * .012)*.55+.45)*2.2*breeze.x : 0;
         const x = opts.static?t.x:t.x + (t.x - cam.x) * k + wind, y = opts.static?t.y:t.y + (t.y - cam.y) * k + wind * .35;
         if(t.pine){
           ctx.fillStyle='rgba(11,24,25,.32)';ctx.beginPath();ctx.ellipse(x+10,y+12,t.r*1.1,t.r*.7,-.6,0,TAU);ctx.fill();
