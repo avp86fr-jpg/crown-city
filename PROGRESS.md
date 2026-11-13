@@ -29,3 +29,4 @@
 ### Pass 3b wrap-up (Nov 13 20:20 CET)
 - f706ceb: sign-face cache, cheaper wet reflections/drain steam, gradient HUD panels with gilt rule, contract objective banner, SHADOW WORK pin-to-stall, persistent job markers, rebake. Tests 424/424 green, audit:map clean.
 - Bot runs: m4 (vault→marina→boat→island) completed by driving in 85 s; SHADOW WORK reached stage 2 by driving, then stuck (sedan could not be stalled by a bike) → fixed; NINETY SECONDS stage 0 marker loss → fixed, reached stage 1 in 41 s.
+- Night fps, same session back-to-back (swiftshader, 1280x720 high, 23:00): Strip 25.6 → 35.8, downtown 22.7 → 33.8 (7b80db0 → d7cf13633a5e). Phone mode (844x390 low) 286/370 → 303/333 uncapped (both far above 60; noise). 50+ desktop night not reached in this headless renderer.
