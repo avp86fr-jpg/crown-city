@@ -18,6 +18,8 @@ export const EXPANSION_JOBS=[
  {id:'coldsignal',title:'BELOW THE STATIC',contact:'ICE',text:'Recover the mountain distress recording. Verify it at Pinewatch, then give Neural the uncut transmission.',reward:1800,time:540,stages:2},
  {id:'clockwork',title:'BORROWED MINUTES',contact:'STEAMPUNK',text:'Read the station clocks at Midtown and Canal South. Ride the railway and return the timestamps to Steampunk.',reward:1400,time:420,stages:2},
 ];
+const expansionIds=new Set(EXPANSION_JOBS.map(j=>j.id));
+export const isExpansionJob=id=>expansionIds.has(id);
 export const EXPANSION_STEPS={
  ...OPERATION_STEPS,
  airdrop:['Collect Neural’s evidence drives on foot at the airport.','Plane: drop the drive into the Red Mesa receiver zone.','Plane: drop the drive into the Pinewatch receiver zone.','Plane: drop the drive into the Sierra receiver zone.','Land the plane and stop at the east end of the runway.'],

@@ -1,7 +1,7 @@
 import {restoreOperationState,settleOperationState} from './crew_operations.js';
 import {CIRCUIT,CIRCUIT_VERSION} from './circuit_world.js';
 import {recoverRiot} from './vehicle_recovery.js';
-import {EXPANSION_JOBS,EXPANSION_DEBRIEFS} from './expansion_jobs.js';
+import {EXPANSION_JOBS,EXPANSION_DEBRIEFS,isExpansionJob} from './expansion_jobs.js';
 /* Crown City action systems: weapons, stamina, crew work and vehicle workshops. */
 import {STREET_JOBS,STREET_DEBRIEFS,streetJobTarget,tickStreetJob} from './side_jobs.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -70,15 +70,16 @@ export function buyService(G,choice) {
  G.audio?.pickup?.();return true;
 }
 export const CONTRACTS=[
- {id:'courier',title:'NIGHT SHIFT',contact:'NEURAL',text:'Carry a sealed drive from Southside to the loft. 100 seconds. No wanted stars at delivery.',reward:650,time:100},
+ {id:'courier',title:'NIGHT SHIFT',contact:'NEURAL',text:'Carry a sealed drive from Southside to the loft. 100 seconds after pickup. Stop at both markers; no wanted stars or gunfire at delivery.',reward:650,time:100},
  {id:'ghost',title:'GHOST DRIVER',contact:'MASK',text:'Lift a marked black box near Metro, then disappear. Reach the marker and lose two stars.',reward:850,time:150},
  {id:'drift',title:'SMOKE SIGNAL',contact:'FIRE',text:'Bank 1,200 drift points in a car. Keep the speed up. You have 90 seconds.',reward:700,time:90},
  ...STREET_JOBS, ...EXPANSION_JOBS,
 ];
-export const contractClockRunning=c=>!!c&&(!!c.stage||c.id!=='courier'&&!EXPANSION_JOBS.some(j=>j.id===c.id));
+const contractById=new Map(CONTRACTS.map(c=>[c.id,c]));
+export const contractClockRunning=c=>!!c&&(!!c.stage||c.id!=='courier'&&!isExpansionJob(c.id));
 export function startContract(G,id) {
  const A=G.action;if(A.contract)return false;
- const c=CONTRACTS.find(c=>c.id===id);if(!c)return false;
+ const c=contractById.get(id);if(!c)return false;
  G.circuitSession=null;G.parcel=null;
  A.contract={id,t:c.time,progress:0,stage:0};
  message(G,c.contact,id==='courier'?"The drive is at Hunter's garage. Pick it up. The clock starts when you do.":id==='ghost'?'Black box is marked blue. Pick it up, then make the city forget you.':id==='drift'?'Show me a long slide, not an expensive crash.':c.text);
@@ -112,15 +113,16 @@ export function tickAction(G,dt,hooks) {
  A.messageT=Math.max(0,A.messageT-dt);
  if(A.messageT===0&&A.messages.length){const next=A.messages.shift();message(G,next.name,next.text,next.color);}
  if(A.contract){
-  const c=A.contract,def=CONTRACTS.find(d=>d.id===c.id);if(contractClockRunning(c))c.t=Math.max(0,c.t-dt);let done=false;
+  const c=A.contract,def=contractById.get(c.id);if(contractClockRunning(c))c.t=Math.max(0,c.t-dt);let done=false;
   if(c.id==='courier'){
     const a=G.meta.interactions.neural,start=G.meta.spawns.garage;
-    if(!c.stage&&Math.hypot(P.x-start[0],P.y-start[1])<85){c.stage=1;c.t=def.time;G.waypoint={x:a[0],y:a[1]};G.gps=null;message(G,'NEURAL','Drive collected. The clock is running. Bring it to the loft without heat.');}
-    done=c.stage===1&&G.wanted===0&&Math.hypot(P.x-a[0],P.y-a[1])<85;
+    const ready=(P.type==='foot'||!P.dead&&(P.health??100)>0&&!P.def.aircraft&&!P.def.boat)&&(P.type==='veh'?Math.hypot(P.vx||0,P.vy||0):P.speed||0)<10&&!G.input.fire;
+    if(!c.stage&&ready&&Math.hypot(P.x-start[0],P.y-start[1])<85){c.stage=1;c.t=def.time;G.waypoint={x:a[0],y:a[1]};G.gps=null;message(G,'NEURAL','Drive collected. The clock is running. Bring it to the loft without heat.');}
+    done=ready&&c.stage===1&&G.wanted===0&&Math.hypot(P.x-a[0],P.y-a[1])<85;
   }
   if(c.id==='ghost'){const a=G.meta.interactions.pd;if(!c.stage&&Math.hypot(P.x-a[0],P.y-a[1])<100){c.stage=1;G.wanted=Math.max(2,G.wanted);G.seenT=0;G.waypoint=null;G.gps=null;message(G,'MASK','Metro noticed. Find an alley. Do not lead them back to me.');}done=c.stage===1&&G.wanted===0;}
-  if(c.id==='drift'&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
-  if(c.id==='rescue'||c.id==='signal'||c.id==='harbour'||EXPANSION_JOBS.some(j=>j.id===c.id))done=tickStreetJob(G,c,dt,message);
+  if(c.id==='drift'&&P.type==='veh'&&!P.dead&&(P.health??100)>0&&!P.def.boat&&!P.def.aircraft&&!P.def.bike&&P.drifting){const score=Math.hypot(P.vx,P.vy)*dt*.65;c.progress+=score;A.combo+=score;A.comboT=1.2;done=c.progress>=1200;}
+  if(c.id==='rescue'||c.id==='signal'||c.id==='harbour'||isExpansionJob(c.id))done=tickStreetJob(G,c,dt,message);
   if(c.t===0||c.failed)done=false;
   if(done){G.chips+=def.reward;A.reputation+=2;A.completed++;if(!A.completedJobs.includes(c.id))A.completedJobs.push(c.id);message(G,def.contact,'+'+def.reward+' chips. '+(EXPANSION_DEBRIEFS[c.id]||STREET_DEBRIEFS[c.id]||'Contract complete. Your name is travelling.'),'#f2c14e');G.audio?.pickup?.();A.contract=null;G.waypoint=null;G.gps=null;}
   else if(c.t===0||c.failed){message(G,def.contact,c.failed||'Contract missed. No penalty. Take another run when you are ready.');A.contract=null;G.waypoint=null;G.gps=null;}

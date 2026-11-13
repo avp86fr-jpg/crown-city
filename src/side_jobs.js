@@ -1,9 +1,9 @@
-import {expansionJobTarget,tickExpansionJob} from './expansion_jobs.js';
+import {expansionJobTarget,tickExpansionJob,isExpansionJob} from './expansion_jobs.js';
 /* Multi-stage street work. Blue routes remain independent from the campaign. */
 export const STREET_JOBS=[
  {id:'rescue',title:'BORROWED TIME',contact:'HUNTER',text:'Pick up Hunter’s witness near the Crown Loop. Stop a car for three seconds, then bring them to the garage without a tail.',reward:950,time:180},
  {id:'signal',title:'PAPER TRAIL',contact:'VERA',text:'Recover three dead drops on foot. Hold still at each for two seconds. Send the evidence from the loft with no Metro heat.',reward:1100,time:240},
- {id:'harbour',title:'LOW TIDE',contact:'HUNTER',text:'Collect the dock manifest on foot. Upload offshore in a boat, then return to the marina.',reward:1250,time:240}
+ {id:'harbour',title:'LOW TIDE',contact:'HUNTER',text:'Collect the dock manifest on foot. Idle offshore in a working boat for three seconds, then return to the marina on foot. Lose all wanted stars at each stop.',reward:1250,time:240}
 ];
 const point=(p)=>({x:p[0],y:p[1]});
 export function streetJobTarget(G,c){
@@ -18,11 +18,11 @@ export function streetJobTarget(G,c){
 }
 export function restoreStreetRoute(G){const c=G.action?.contract;if(!c)return;const target=streetJobTarget(G,c);if(target){G.waypoint=target;G.gps=null;}}
 export function tickStreetJob(G,c,dt,notify){
- if(expansionJobTarget(G,c))return tickExpansionJob(G,c,dt,notify);
+ if(isExpansionJob(c.id))return tickExpansionJob(G,c,dt,notify);
  const p=G.player,target=streetJobTarget(G,c);if(!target)return false;
  const distance=Math.hypot(p.x-target.x,p.y-target.y),speed=p.type==='veh'?Math.hypot(p.vx,p.vy):p.speed||0;
  if(c.id==='harbour'){
-  const boat=p.type==='veh'&&p.def.boat;
+  const boat=p.type==='veh'&&p.def.boat&&!p.dead&&(p.health??100)>0;
   const safe=distance<85&&speed<10&&G.wanted===0&&!G.input.fire&&(c.stage===1?boat:p.type==='foot');
   c.progress=safe?(c.progress||0)+dt:0;
   if(c.progress>=3){
