@@ -30,3 +30,6 @@
 - f706ceb: sign-face cache, cheaper wet reflections/drain steam, gradient HUD panels with gilt rule, contract objective banner, SHADOW WORK pin-to-stall, persistent job markers, rebake. Tests 424/424 green, audit:map clean.
 - Bot runs: m4 (vault→marina→boat→island) completed by driving in 85 s; SHADOW WORK reached stage 2 by driving, then stuck (sedan could not be stalled by a bike) → fixed; NINETY SECONDS stage 0 marker loss → fixed, reached stage 1 in 41 s.
 - Night fps, same session back-to-back (swiftshader, 1280x720 high, 23:00): Strip 25.6 → 35.8, downtown 22.7 → 33.8 (7b80db0 → d7cf13633a5e). Phone mode (844x390 low) 286/370 → 303/333 uncapped (both far above 60; noise). 50+ desktop night not reached in this headless renderer.
+- Published preview 4760107 (bundle d7cf13633a5e): copy verified (assets 328/328, css 1/1, diff -rq identical, bundle cmp OK), live check desktop+mobile title→VN→play, 0 errors, 0 4xx, no SW, noindex; root untouched (eb08a8621909).
+- Re-run of jobs after fixes: SHADOW WORK reached tail stage in 86 s but the bot then failed to hold tail range (bot limitation, not verified end-to-end); REDLINE EAST and NINETY SECONDS end-to-end not verified this pass.
+- Contact sheet: /workspace/cc_work/contact_pass3b.jpg (432 KB).
