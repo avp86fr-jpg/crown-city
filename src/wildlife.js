@@ -65,15 +65,22 @@ function refreshWildlife(G,W){
 function movingBodies(G,W,dt){
  const movers=W.movers||(W.movers=[]),pool=W.moverPool||(W.moverPool=[]);movers.length=0;
  const add=v=>{
-  if(!landVehicle(v)||v.dead)return;
-  const speed=Math.hypot(v.vx||0,v.vy||0);if(speed<26)return;
-  let dx=v.x-(v.prevX??v.x),dy=v.y-(v.prevY??v.y);
-  // Recovery, mission placement and rail travel are not impacts across the map.
-  if(Math.hypot(dx,dy)>Math.max(200,speed*dt*3+32))dx=dy=0;
+  if(!landVehicle(v))return;
+  const liveSpeed=Math.hypot(v.vx||0,v.vy||0);
+  let dx=v.x-(v.prevX??v.x),dy=v.y-(v.prevY??v.y),distance=Math.hypot(dx,dy);
+  // A wall or body impulse can remove/reverse velocity before wildlife ticks.
+  // Keep genuine movement from this step, but reject recovery/placement jumps.
+  const previousSpeed=Math.abs(v.fwd||0),plausible=Math.max(liveSpeed,previousSpeed,v.def?.max||600);
+  if(distance>Math.max(24,plausible*dt*3+24)){dx=dy=distance=0;}
+  // Ambient mobile traffic moves at 30 Hz. Its stored forward speed avoids
+  // mistaking a double-duration step for twice the impact speed.
+  const sweepSpeed=distance?Math.min(distance/Math.max(.001,dt),Math.max(liveSpeed,previousSpeed||plausible)):0;
+  const speed=Math.max(liveSpeed,sweepSpeed);if(speed<26||v.parked&&!v.loose&&liveSpeed<26)return;
+  const swept=sweepSpeed>liveSpeed+1,vx=swept?dx/distance*speed:v.vx||0,vy=swept?dy/distance*speed:v.vy||0;
   const b=bodySize(v),extent=Math.hypot(b.w,b.l)+14;
   if(!nearPlayer(G.player,v.x,v.y,400)&&!nearPlayer(G.player,v.x-dx,v.y-dy,400))return;
   const m=pool[movers.length]||(pool[movers.length]={});
-  Object.assign(m,{v,dx,dy,speed,x0:Math.min(v.x,v.x-dx)-extent,x1:Math.max(v.x,v.x-dx)+extent,y0:Math.min(v.y,v.y-dy)-extent,y1:Math.max(v.y,v.y-dy)+extent});movers.push(m);
+  Object.assign(m,{v,dx,dy,speed,vx,vy,x0:Math.min(v.x,v.x-dx)-extent,x1:Math.max(v.x,v.x-dx)+extent,y0:Math.min(v.y,v.y-dy)-extent,y1:Math.max(v.y,v.y-dy)+extent});movers.push(m);
  };
  const source=G.nearVehicles||G.vehicles||[];for(const v of source)add(v);
  if(G.player.type==='veh'&&!source.includes(G.player))add(G.player);
@@ -83,14 +90,14 @@ function movingBodies(G,W,dt){
  return movers;
 }
 function strikeAnimal(G,W,a,m){
- const {v,speed}=m,s=SPECIES[a.kind],factor=v.def?.bike?.44:.78;
+ const {v,speed,vx,vy}=m,s=SPECIES[a.kind],factor=v.def?.bike?.44:.78;
  a.hp=(a.hp??HEALTH[a.kind])-speed*factor;
  a.impactT=.85;a.stun=.22;a.flee=4;a.walk=1;a.lift=0;
- a.target=Math.atan2(v.vy||0,v.vx||0);a.angle=a.target;
- a.vx=(v.vx||0)*.38;a.vy=(v.vy||0)*.38;
+ a.target=Math.atan2(vy,vx);a.angle=a.target;
+ a.vx=vx*.38;a.vy=vy*.38;
  if(a.hp<=0){a.dead=true;a.deadAt=W.clock;a.walk=0;a.flee=0;a.fallSide=(a.id&1)?-1:1;W.stats.deaths=(W.stats.deaths||0)+1;}
  W.stats.hits=(W.stats.hits||0)+1;
- bloodImpact(G,a,v.vx,v.vy,clamp(speed/180,.35,1.8)*(s.bird?.5:1),a.dead);
+ bloodImpact(G,a,vx,vy,clamp(speed/180,.35,1.8)*(s.bird?.5:1),a.dead);
  runoverBlood(G,a,v);
  G.audio?.contact?.({source:v,x:a.x,y:a.y,speed:speed*.5,material:'body'});
  G.cityAI?.emit?.('collision',a.x,a.y,{radius:100,duration:.7});

@@ -58,9 +58,12 @@ test('rooftop equipment and night neon stay attached to capped roof edges from e
  for(const core of [false,true])for(const cam of [{x:6200,y:3200,scale:1.2},{x:4200,y:1000,scale:1.8},{x:5140,y:2100,scale:1}]){
   b.core=core;const images=[],translations=[],scales=[],points=[],rects=[];
   const overrides={drawImage:(...v)=>images.push(v),translate:(...v)=>translations.push(v),scale:(...v)=>scales.push(v),moveTo:(...v)=>points.push(v),fillRect:(...v)=>rects.push(v)};
-  const ctx=new Proxy(G.ctx,{get:(o,k)=>overrides[k]||o[k]}),state={...G,bld:B,ctx,cam,settings:{quality:'high',reducedMotion:true},scene:'play',player:{type:'foot',x:0,y:0}};
+  const ctx=new Proxy(G.ctx,{get:(o,k)=>overrides[k]||o[k]}),state={...G,bld:B,ctx,cam,settings:{quality:'high',reducedMotion:false},scene:'play',player:{type:'foot',x:0,y:0}};
   B.draw(ctx,cam,r,1,{x:0,y:-1},{low:false});const [,x,y,w,h]=images.at(-1);
-  drawRoofDetail(state,r);assert.deepEqual(translations[0],[x,y]);assert.deepEqual(scales[0],[w/b.w,h/b.h]);
+  drawRoofDetail(state,r);
+  if(core)assert.equal(translations.length,0,'painted core rooftops must not receive duplicate equipment');
+  else{assert.deepEqual(translations[0],[x,y]);assert.deepEqual(scales[0],[w/b.w,h/b.h]);}
+  translations.length=0;state.settings.reducedMotion=true;drawRoofDetail(state,r);assert.equal(translations.length,0,'static roof equipment is already baked; reduced motion needs no extra pass');
   points.length=0;rects.length=0;drawArchitectureLights(state,r,1);
   assert.deepEqual(points[0],[x+5,y+Math.min(38,h*.25)]);
   assert.deepEqual(rects[0],[x+(w-Math.min(w-16,140))/2,y+h-36,Math.min(w-16,140),24]);

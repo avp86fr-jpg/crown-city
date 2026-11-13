@@ -5,6 +5,8 @@ import {actionState,actionSave,startContract,tickAction,CONTRACTS,contractClockR
 import {operationTarget,tickOperation,operationStatus,SKY_SCANS} from '../src/crew_operations.js';
 import {worldBodyHit} from '../src/collision.js';
 import {restoreStreetRoute} from '../src/side_jobs.js';
+import {expansionJobTarget,tickExpansionJob} from '../src/expansion_jobs.js';
+import {tickDropJob,dropReady} from '../src/airdrop.js';
 const {G,T}=await harness(),hooks={moveFoot:T.moveFoot};
 function reset(){T.startFreeRide(G);G.scene='play';G.wanted=0;G.action=actionState();G.health=100;G.chips=0;G.input.fire=false;G.input.fireP=false;G.input.crewP=false;G.input.dodgeP=false;G.input.x=G.input.y=0;G.vehicles=[];G.cops=[];G.peds=[];G._endT=0;}
 function tick(seconds){for(let t=0;t<seconds;t+=.1)tickAction(G,Math.min(.1,seconds-t),hooks);}
@@ -65,4 +67,30 @@ test('forced ejection from a destroyed carrier cannot preserve the recorder',()=
 
 test('flight guidance uses the same knots as the aircraft speedometer',()=>{
  reset();G.player=T.makeVeh('plane',0,0,0,{altitude:165,vx:230,vy:0});const text=operationStatus(G,{id:'skytrace',stage:1,progress:1.5});assert.match(text,/KTS 45 \[32–60\]/);assert.doesNotMatch(text,/165–310/);
+});
+
+test('same-frame busted recovery settles the last carrier damage before detaching it',()=>{
+ reset();loadCargo();G.player.health=20;T.busted(G);tick(.1);assert.equal(G.action.contract,null);assert.equal(G.chips,0);
+});
+test('a lost scanning plane requires a replacement flight, not taxiing a spare to the return marker',()=>{
+ reset();startContract(G,'skytrace');G.action.contract.stage=3;scan(G.action.contract,2);assert.equal(G.action.contract.stage,4);assert.equal(G.action.contract.returnFlight,true);
+ T.busted(G);atStage('plane');tick(3);assert.equal(G.action.contract.stage,4);assert.equal(G.action.contract.returnFlight,false);
+ G.player.altitude=100;G.player.vx=230;tick(.1);assert.equal(G.action.contract.returnFlight,true);G.player.altitude=0;G.player.vx=0;tick(2.1);assert.equal(G.action.contract.stage,5);
+});
+
+test('pause snapshots and immediate recovery saves settle collision damage exactly once',()=>{
+ reset();loadCargo();T.damageVeh(G,G.player,35,false);const saved=T.snapshot(G);assert.equal(saved.action.contract.integrity,52.75);assert.equal(T.snapshot(G).action.contract.integrity,52.75);
+ T.restoreState(G,saved);tick(.1);assert.equal(G.action.contract.integrity,52.75);
+ reset();loadCargo();T.damageVeh(G,G.player,35,false);T.busted(G);assert.equal(G.action.contract.integrity,52.75);const recovered=T.snapshot(G);T.restoreState(G,recovered);tick(.1);assert.equal(G.action.contract.integrity,52.75);
+});
+
+test('wrecked boats, cars and aircraft cannot validate transport mission checkpoints',()=>{
+ reset();for(const [id,stage,kind] of [['canal',1,'wake'],['ridge',1,'riot'],['airlift',1,'heli']]){const c={id,stage,progress:0},p=expansionJobTarget(G,c);G.player=T.makeVeh(kind,p.x,p.y,0,{dead:true,health:0,altitude:0});tickExpansionJob(G,c,5,()=>{});assert.equal(c.stage,stage,id);assert.equal(c.progress,0);}
+ G.player=T.makeVeh('plane',9600,7500,Math.PI/2,{dead:true,health:0,altitude:0});assert.equal(tickDropJob(G,{id:'airdrop',stage:4,progress:0},3,()=>{}),false);G.action.contract={id:'airdrop',stage:1};assert.equal(dropReady(G),false);
+});
+
+test('the scanning aircraft landing receipt survives a real snapshot restore',()=>{
+ reset();startContract(G,'skytrace');G.action.contract.stage=3;scan(G.action.contract,2);const id=G.world.expansion.aircraft.find(a=>a.kind==='plane').id;G.player.aircraftId=id;G.action.contract.returnAircraft=id;
+ const s=T.snapshot(G);assert.equal(s.action.contract.returnFlight,true);T.restoreState(G,s);assert.equal(G.player.aircraftId,id);assert.equal(G.action.contract.returnAircraft,id);tick(.1);assert.equal(G.action.contract.returnFlight,true);
+ Object.assign(G.player,operationTarget(G,G.action.contract),{altitude:0,vx:0,vy:0,airspeed:0});tick(2.1);assert.equal(G.action.contract.stage,5);
 });

@@ -1,4 +1,4 @@
-import {restoreOperationState} from './crew_operations.js';
+import {restoreOperationState,settleOperationState} from './crew_operations.js';
 import {CIRCUIT,CIRCUIT_VERSION} from './circuit_world.js';
 import {recoverRiot} from './vehicle_recovery.js';
 import {EXPANSION_JOBS,EXPANSION_DEBRIEFS} from './expansion_jobs.js';
@@ -22,7 +22,7 @@ export function actionState(s={}) {
  upgrades:Math.floor(number(s.upgrades,0,0,3)),contract:s.contract&&CONTRACTS.some(c=>c.id===s.contract.id)?{id:s.contract.id,stage:Math.floor(number(s.contract.stage,0,0,EXPANSION_JOBS.find(j=>j.id===s.contract.id)?.stages??(s.contract.id==='signal'?3:s.contract.id==='harbour'?2:1))),t:number(s.contract.t,0,0,CONTRACTS.find(c=>c.id===s.contract.id).time),progress:number(s.contract.progress,0,0,1e6),trainStart:Math.floor(number(s.contract.trainStart,0,0,1e6)),...restoreOperationState(s.contract)}:null,
  messages:[],messageT:0,message:null,combo:0,comboT:0,cover:false};
 }
-export function actionSave(A) {return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
+export function actionSave(A) {settleOperationState(A.contract);return {circuitVersion:CIRCUIT_VERSION,circuitClass:A.circuitClass,circuitRecords:{...A.circuitRecords},circuitBest:A.circuitBest,circuitLaps:A.circuitLaps,weapon:A.weapon,ammo:[...A.ammo],stamina:A.stamina,reputation:A.reputation,completed:A.completed,completedJobs:[...(A.completedJobs||[])],upgrades:A.upgrades,contract:A.contract?{...A.contract}:null};}
 export function message(G,name,text,color='#88dfd8') {
  const A=G.action;if(!A)return;
  if(A.messageT>0){A.messages.push({name,text,color});A.messages=A.messages.slice(-5);return;}

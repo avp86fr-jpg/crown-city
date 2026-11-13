@@ -31,6 +31,15 @@ test('drivers retain their temperament but obey the road they have entered and e
  v.cruise=0;S.step(90);assert.equal(v.tr.spd,0,'service stop cannot be overridden by a road speed refresh');
 });
 
+test('highway traffic brakes before entering a slower local street',()=>{
+ const graph=buildGraph({roads:[{v:false,c:2000,a:100,b:2500,w:280,lanes:2,med:0,k:'highway'},{v:false,c:2000,a:2500,b:6500,w:280,lanes:2,med:0,k:'street'}],signals:[]},{roads:[]}),e=graph.edges.find(e=>e.k==='highway');
+ const G={graph,player:{x:2500,y:2500,type:'foot'},cam:{x:2500,y:2500,scale:1},canvas:{width:800,height:500},ticks:1,vehicles:[],peds:[],audio:{},surfaceAt:()=> 'road'};
+ const v={...edgePoint(e,true,1800,0),kind:'fare',def:{},type:'veh',traffic:true,driverPace:1,cruise:165,vx:165,vy:0,tr:{e,fwd:true,s:1800,lane:0,spd:165,turn:null}};
+ G.vehicles=[v];const traffic=createTraffic(G);traffic.target=0;let entered=false;
+ for(let i=0;i<600;i++){G.ticks++;traffic.tick(1/60);if(v.x>=2500){entered=true;assert.ok(v.tr.spd<=80,`entered a residential street at ${v.tr.spd}`);break;}}
+ assert.ok(entered,'deceleration must not become a permanent stop at the road seam');
+});
+
 test('drivers can pass a wreck that still retains its traffic flags without moving the wreck',()=>{
  const S=street(),wreck=S.car('fare',2100),v=S.car('fare',1600,0,90);wreck.dead=true;wreck.tr.spd=0;
  const x=wreck.x;let indicated=false;

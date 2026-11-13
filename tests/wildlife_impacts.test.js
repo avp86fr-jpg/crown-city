@@ -73,3 +73,19 @@ test('one hundred impacts and offscreen returns keep population, effect and vehi
  assert.ok(G.wildlife.moverPool.length<=1);assert.ok(G.wildlife.moverPool.every(m=>!m.v));
  assert.ok(G.bloodFX.drops.length<=48&&G.bloodFX.stains.length<=32&&G.bloodFX.pool.length<=48);
 });
+
+test('a car that stops or rebounds against a wall still hits wildlife crossed earlier in the step',()=>{
+ for(const finalVelocity of [0,-20]){
+  const a=animal(),v=car({vx:finalVelocity,fwd:400}),G=habitat([a],[v]);tickWildlife(G,.1);
+  assert.equal(a.dead,true);assert.equal(G.wildlife.stats.hits,1);assert.ok(a.vx>0,'knockback follows travel before the wall, not rebound velocity');
+  assert.ok(G.bloodFX.drops.every(d=>d.vx>0));
+ }
+ const a=animal(),v=car({x:800,prevX:-800,vx:0,fwd:0}),G=habitat([a],[v]);tickWildlife(G,.1);assert.ok(!a.dead,'a zero-velocity placement jump must not hit animals between endpoints');
+});
+test('30 Hz traffic movement does not double animal impact damage',()=>{
+ const hp=[];
+ for(const dt of [1/60,1/30]){
+  const a=animal({kind:0}),v=car({x:0,prevX:-2,vx:30,fwd:30}),G=habitat([a],[v]);tickWildlife(G,dt);hp.push(a.hp);
+ }
+ assert.equal(hp[0],hp[1]);assert.ok(hp[0]>0);
+});

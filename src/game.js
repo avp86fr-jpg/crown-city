@@ -3405,6 +3405,9 @@ function drawAimGuide(G){
 function drawStreetWaypoint(G){
   const job=G.action?.contract,p=job?streetJobTarget(G,job)||G.waypoint:G.waypoint;
   if(G.scene!=='play'||!p)return;
+  // These operations draw their own cargo case/scan ring. A second generic
+  // waypoint card hid the aircraft and obscured the scan's centre.
+  if(job?.id==='coldchain'||job?.id==='skytrace')return;
   const c=G.ctx;
   if(Math.hypot(p.x-G.cam.x,p.y-G.cam.y)>1100)return;
   const pulse=G.settings.reducedMotion?1:1+Math.sin(G.ticks*.05)*.08;

@@ -81,8 +81,8 @@ export async function harness({ width = 1280, height = 720, stored = {}, raster 
     constructor() { this.width = this.height = this.naturalWidth = 128; }
     set src(src) {
       this._src = src; calls.push(src);
-      const exists = fs.existsSync(path.join(root, src));
-      if (exists && /\.png$/.test(src)) { const b = fs.readFileSync(path.join(root, src)); this.width = b.readUInt32BE(16); this.height = b.readUInt32BE(20); }
+      const file = src.split('?')[0],exists = fs.existsSync(path.join(root, file));
+      if (exists && /\.png$/.test(file)) { const b = fs.readFileSync(path.join(root, file)); this.width = b.readUInt32BE(16); this.height = b.readUInt32BE(20); }
       if (src === 'assets/city/mask_gray.png') this.width = this.height = 4096;
       queueMicrotask(() => exists ? this.onload?.() : this.onerror?.());
     }
@@ -91,7 +91,7 @@ export async function harness({ width = 1280, height = 720, stored = {}, raster 
   }
   if (raster) {
     class RasterImage extends raster.Image {
-      set src(src) { calls.push(src); super.src = fs.readFileSync(path.join(root, src)); }
+      set src(src) { calls.push(src); super.src = fs.readFileSync(path.join(root, src.split('?')[0])); }
     }
     globalThis.Image = RasterImage;
   } else globalThis.Image = Image;

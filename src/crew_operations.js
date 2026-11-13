@@ -5,12 +5,12 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const finite=(n,d,a,b)=>Number.isFinite(n)?clamp(n,a,b):d;
 const samples=new WeakMap();
 export const OPERATIONS=[
- {id:'coldchain',title:'COLD STORAGE',contact:'VERA',text:'Carry an intact Palace recorder from Crown Air. Verify it at two street checkpoints, then deliver to Hunter. Crashes and long slides damage the recording.',reward:2400,time:600,stages:3},
- {id:'skytrace',title:'SKYLINE GHOST',contact:'NEURAL',text:'Fit a receiver at Crown Air. Scan three towers in a plane at 110–210 altitude and 32–60 knots. Land, lose the heat and deliver the recording on foot.',reward:3200,time:780,stages:5},
+ {id:'coldchain',title:'COLD STORAGE',contact:'VERA',summary:'Protect a fragile recorder on a four-stop car run. Crashes and long drifts damage the evidence.',text:'Carry an intact Palace recorder from Crown Air. Verify it at two street checkpoints, then deliver to Hunter. Crashes and long slides damage the recording.',reward:2400,time:600,stages:3},
+ {id:'skytrace',title:'SKYLINE GHOST',contact:'NEURAL',summary:'Intercept three tower signals in a plane. Land, evade Metro and deliver the recording.',text:'Fit a receiver at Crown Air. Scan three towers in a plane at 110–210 altitude and 32–60 knots. Land, lose the heat and deliver the recording on foot.',reward:3200,time:780,stages:5},
 ];
 export const OPERATION_STEPS={
  coldchain:['Car: stop at Crown Air arrivals to load the recorder. The clock starts after loading.','Car: carry the recorder to Pinewatch Village. Stop for a three-second checksum.','Car: reach the Canal South checkpoint. Stop for a three-second checksum.','Car: return to Hunter Garage. Stop without heat to deliver the intact recording.'],
- skytrace:['On foot: collect Neural’s receiver at Crown Air. The clock starts after pickup.','Plane: scan Sierra. Stay inside the ring for three seconds with level wings.','Plane: scan Pinewatch. Stay inside the ring for three seconds with level wings.','Plane: scan MetaWin. Stay inside the ring for three seconds with level wings.','Land a plane on Crown Air’s runway. Stop at the east marker.','On foot: deliver Neural’s recording at Crown Air. Lose all wanted stars first.'],
+ skytrace:['On foot: collect Neural’s receiver at Crown Air. The clock starts after pickup.','Plane: scan Sierra. Stay inside the ring for three seconds with level wings.','Plane: scan Pinewatch. Stay inside the ring for three seconds with level wings.','Plane: scan MetaWin. Stay inside the ring for three seconds with level wings.','Return your plane to the east runway marker. Stop after landing; a replacement plane must take off first.','On foot: deliver Neural’s recording at Crown Air. Lose all wanted stars first.'],
 };
 export const OPERATION_DEBRIEFS={
  coldchain:'Two independent checksums. One intact recorder. Vera has the original eviction orders and Hunter has a witness who can identify the voice.',
@@ -31,11 +31,22 @@ export function operationTarget(G,c){
 }
 export function restoreOperationState(saved){
  if(!isOperation(saved?.id))return {};
- return {integrity:finite(saved.integrity,100,0,100),warnings:Math.floor(finite(saved.warnings,0,0,3))};
+ return {integrity:finite(saved.integrity,100,0,100),warnings:Math.floor(finite(saved.warnings,0,0,3)),returnFlight:saved.returnFlight===true,returnAircraft:typeof saved.returnAircraft==='string'?saved.returnAircraft.slice(0,80):''};
+}
+export function settleOperationState(c){
+ if(c?.id!=='coldchain'||!c.stage)return;
+ const sample=samples.get(c),carrier=sample?.vehicle;
+ if(carrier?.type!=='veh')return;
+ const health=carrier.health??100;
+ c.integrity=clamp((c.integrity??100)-Math.max(0,sample.health-health)*1.35,0,100);
+ if(carrier.dead||health<=0)c.integrity=0;
+ // Saving and the next simulation tick may both observe the same impact.
+ sample.health=health;
 }
 export function operationStatus(G,c){
  if(c?.id==='coldchain')return c.stage?'RECORDER '+Math.ceil(c.integrity??100)+'% / '+Math.min(2,c.stage-1)+'/2 CHECKSUMS':'LOAD AT ARRIVALS';
  if(c?.id==='skytrace'&&c.stage>0&&c.stage<4){const p=G.player;return 'ALT '+Math.round((p.altitude||0)/5)*5+' [110–210] / KTS '+Math.round(Math.hypot(p.vx||0,p.vy||0)*.1944)+' [32–60] / SCAN '+Math.min(100,Math.floor((c.progress||0)/3*20)*5)+'%';}
+ if(c?.id==='skytrace'&&c.stage===4)return c.returnFlight?'LAND / STOP AT RUNWAY':'REPLACEMENT: TAKE OFF, THEN RETURN';
  return '';
 }
 export function operationHint(G,c){
@@ -50,15 +61,12 @@ function advance(G,c,notify){
 function cargoDamage(G,c,dt,notify){
  const p=G.player;let sample=samples.get(c);
  if(!sample){sample={vehicle:p,health:p.health??100,recovery:G.recoverySerial||0};samples.set(c,sample);}
- if(sample.recovery!==(G.recoverySerial||0)){
-  sample.recovery=G.recoverySerial||0;c.progress=0;sample.vehicle=null;
-  notify(G,'VERA','The last checksum is safe. Find a sound car and finish the marked leg. The recorder has not repaired itself.');
- }
  // Read the previous carrier even after a crash forcibly ejects Chaos.
  // Otherwise abandoning a wreck between frames could preserve its cargo.
- if(sample.vehicle?.type==='veh'){
-  c.integrity=clamp((c.integrity??100)-Math.max(0,sample.health-(sample.vehicle.health??100))*1.35,0,100);
-  if(sample.vehicle.dead||(sample.vehicle.health??100)<=0)c.integrity=0;
+ settleOperationState(c);
+ if(sample.recovery!==(G.recoverySerial||0)){
+  sample.recovery=G.recoverySerial||0;c.progress=0;
+  if(c.integrity>0)notify(G,'VERA','The last checksum is safe. Find a sound car and finish the marked leg. The recorder has not repaired itself.');
  }
  if(p.type==='veh'){
   // A prolonged powered slide shakes the recorder. Ordinary fast driving,
@@ -83,7 +91,13 @@ export function tickOperation(G,c,dt,notify){
   valid=car&&dist<90&&speed<9&&quiet;
   if(c.stage===0&&valid){c.integrity=100;c.warnings=0;}
  }else if(c.stage===0||c.stage===5){valid=p.type==='foot'&&dist<65&&speed<8&&quiet;hold=2;}
- else if(c.stage===4){valid=p.kind==='plane'&&!p.dead&&(p.altitude||0)<3&&speed<10&&onRunway(G,p)&&dist<260;hold=2;}
+ else if(c.stage===4){
+  let sample=samples.get(c);if(!sample){sample={vehicle:p,recovery:G.recoverySerial||0};samples.set(c,sample);}
+  if(sample.vehicle!==p||sample.recovery!==(G.recoverySerial||0)||(c.returnAircraft&&c.returnAircraft!==p.aircraftId))c.returnFlight=false;
+  if(p.kind==='plane'&&!p.dead&&(p.altitude||0)>30){c.returnFlight=true;c.returnAircraft=p.aircraftId||'';}
+  sample.vehicle=p;sample.recovery=G.recoverySerial||0;
+  valid=c.returnFlight&&p.kind==='plane'&&!p.dead&&(p.altitude||0)<3&&speed<10&&onRunway(G,p)&&dist<260;hold=2;
+ }
  else{
   valid=p.kind==='plane'&&!p.dead&&!p.stall&&p.altitude>=110&&p.altitude<=210&&speed>=165&&speed<=310&&Math.abs(p.lean||0)<.18&&dist<target.radius&&!G.input.fire;
  }
@@ -93,7 +107,7 @@ export function tickOperation(G,c,dt,notify){
  const final=c.id==='coldchain'?3:5;if(c.stage===final)return true;
  advance(G,c,notify);
  if(c.id==='coldchain'&&c.stage===1)samples.set(c,{vehicle:p,health:p.health??100,recovery:G.recoverySerial||0});
- if(c.id==='skytrace'&&c.stage===4){G.wanted=Math.max(2,G.wanted);G.seenT=0;notify(G,'NEURAL','MetaWin noticed the intercept. Recordings secured. Bring the plane home, then lose Metro before the handoff.');}
+ if(c.id==='skytrace'&&c.stage===4){c.returnFlight=true;c.returnAircraft=p.aircraftId||'';samples.set(c,{vehicle:p,recovery:G.recoverySerial||0});G.wanted=Math.max(2,G.wanted);G.seenT=0;notify(G,'NEURAL','MetaWin noticed the intercept. Recordings secured. Bring the plane home, then lose Metro before the handoff.');}
  return false;
 }
 export function drawOperationMarkers(G,r){

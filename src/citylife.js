@@ -1,6 +1,7 @@
 /* Cached illustrated street furniture and architecture; anchored to actual walkable city edges. */
 import {hash} from './visuals.js';
 import {loadScenery} from './assets.js';
+import {BAKED_WORLD} from './baked_world_manifest.js';
 import {projectedRoofBounds} from './render_world.js';
 import {roofDetailPlan} from './architecture_art.js';
 import {buildStreetDesign,indexStreetItems,streetItemsInView,frontageSprite,FIXTURE_SIZES} from './street_design.js';
@@ -28,7 +29,7 @@ export function loadStreetArt(G){
  const street=G.street;if(!street)return Promise.resolve();
  if(street.atlas||(street.retryAt||0)>performance.now())return Promise.resolve();
  if(street.loading)return street.loading;
- street.loading=loadScenery('assets/premium/street-furniture.webp',576).then(im=>{
+ street.loading=loadScenery(`assets/premium/street-furniture.webp?v=${BAKED_WORLD.version}`,576).then(im=>{
   street.atlas=im;for(const canvas of street.cache.values())canvas.width=1;street.cache.clear();street.revision++;
  }).catch(()=>{street.retryAt=performance.now()+10000;}).finally(()=>{street.loading=null;});return street.loading;
 }
