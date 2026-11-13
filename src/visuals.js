@@ -54,7 +54,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
   ctx.globalCompositeOperation = 'source-over';
   if (!v.def.bike && !v.def.boat) {
     for (const side of [-1, 1]) for (const front of [-1, 1]) {
-      ctx.save(); ctx.translate(side * w * .39, front * h * .28);
+      ctx.save(); ctx.translate(side * w * (v.kind==='bus'||v.kind==='van'||v.kind==='ambulance'?.32:.39), front * h * .28);
       if (front < 0) ctx.rotate(pose.wheel);
       // Painted tyre: rounded rubber, rolling tread bands, outer sidewall
       // light and a small alloy glint on the outside face.

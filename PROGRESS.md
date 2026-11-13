@@ -62,3 +62,11 @@
 - Density: district character (busy core/Strip 1.15, industrial/harbour .72, island .45, wilderness .36) × clock (small hours .55, late .8, rush 1.2 busy). Multi-lane roads weighted over backstreets; busy districts feed from just off-screen. Mix: taxis downtown/late, buses by day, vans and stitch in industrial, bikes. Peds follow density (flatter). Mobile low budget unchanged.
 - Open world (src/open_world.js): 36 hidden chip caches against walls across ~16 districts (150 each, 2500 for all), 10 speed traps on the longest straights (110+ km/h pays, best kept), taxi fares in free roam (stop a taxi at the kerb), ambient events spawned out of view: buskers with gathering crowds, roadside police stops in parking bays, van deliveries with a courier carrying boxes, beach crowds with parasols. Progress in `crowncity.openworld.v1`. 32 shop/home/office/workshop signs (was 16), shop awning colours vary.
 - Story: marina objective hint says to dock and step ashore.
+
+## Pass 7 — roadmap top items (preview only)
+- ROADMAP.md: 15 prioritised items with impact/effort/why/status.
+- Stunt ramps: 10 painted ramps on open ground (dirt/sand/grass) with a verified clear run-up and landing strip; 230+ px/s and straight on launches the car (held velocity, lifted body, ground shadow), landing pays 40 + 4/m, +200 first time, best per ramp saved.
+- Onboarding: one-time hints the first time a cache, speed trap, ramp or taxi is relevant; pause menu CITY LIFE n/56 shows caches/traps/jumps/fares.
+- Bus livery (teal stripes, gold pinline, panel seams, route board); bus/van tyres pulled inside the body.
+- Economy: PAINT JOB / 300 at workshops (cosmetic). Respray stand-down cops now rejoin traffic instead of parking in lanes.
+- Mobile benchmark: perf.cjs syncs each frame with a canvas readback and supports THROTTLE (CDP CPU throttling); 6× gives 32–51 fps on the mobile low path.

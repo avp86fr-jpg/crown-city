@@ -61,20 +61,23 @@ export const MAX_TUNE=5,TUNE_COSTS=[500,800,1200,1700,2400],ARMOR_COST=400;
 export const tuneCost=A=>TUNE_COSTS[Math.min(TUNE_COSTS.length-1,A?.upgrades||0)];
 // Armour soaks 60% of incoming damage until it is spent.
 export function absorbDamage(G,dmg){const A=G.action;if(!A||!(A.armor>0)||!(dmg>0))return dmg;const soak=Math.min(A.armor,dmg*.6);A.armor-=soak;return dmg-soak;}
+// Cosmetic sink: a paint job changes the car's colour without touching heat.
+export const PAINT_COST=300;
 export function buyService(G,choice) {
  const A=G.action,P=G.player;
  if(choice==='recover')return recoverRiot(G);
- const offers={repair:{cost:120},tune:{cost:tuneCost(A)},supply:{cost:90},respray:{cost:250},armor:{cost:ARMOR_COST}};
+ const offers={repair:{cost:120},tune:{cost:tuneCost(A)},supply:{cost:90},respray:{cost:250},armor:{cost:ARMOR_COST},paint:{cost:PAINT_COST}};
  const offer=offers[choice];if(!offer)return false;
  if(G.wanted>0&&!G.evading){message(G,'HUNTER','Break their line of sight first. I am a mechanic, not a magician.');return false;}
- if(['repair','tune','respray'].includes(choice)&&(P.type!=='veh'||P.def.boat||P.def.aircraft)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
+ if(['repair','tune','respray','paint'].includes(choice)&&(P.type!=='veh'||P.def.boat||P.def.aircraft)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
  if(choice==='armor'&&(A.armor||0)>=100){message(G,'MERCY','Your vest is already fresh. Go get it scratched.');return false;}
  if(choice==='tune'&&A.upgrades>=MAX_TUNE){message(G,'HUNTER','Every street upgrade is fitted. Go make them regret it.');return false;}
  if(G.chips<offer.cost){message(G,'HUNTER','Not enough chips. Crew contracts pay.');return false;}
  G.chips-=offer.cost;
  if(choice==='repair'){P.health=100;P.burning=false;P.wrecked=false;P.burnT=0;}
  if(choice==='tune'){A.upgrades++;P.tune=A.upgrades;message(G,'HUNTER','Stage '+A.upgrades+' fitted: more torque, better brakes, sharper turn-in.');}
- if(choice==='respray'){G.wanted=0;G.seenT=0;G.cops.forEach(c=>{c.chasing=false;c.siren=false;c.ai=false;c.loose=true;c.keep=false;c.ambient=true;});G.cops=[];P.paint=(P.paint||0)+1;}
+ if(choice==='respray'){G.wanted=0;G.seenT=0;G.cops.forEach(c=>{c.chasing=false;c.siren=false;c.ai=false;c.loose=true;c.keep=false;c.ambient=true;c.knocked=true;c.restT=0;});G.cops=[];P.paint=(P.paint||0)+1;}
+ if(choice==='paint'){P.paint=((P.paint||0)+1+Math.floor(Math.random()*4))%6;A.paints=(A.paints||0)+1;message(G,'HUNTER','Fresh coat, same engine. Looks expensive, which is the point.');}
  if(choice==='armor'){A.armor=100;message(G,'MERCY','Plated vest fitted. It soaks most of a firefight, not a bus.');}
  if(choice==='supply'){G.health=100;A.ammo=WEAPONS.map(w=>w.mag);A.reserve=WEAPONS.map(w=>w.reserveMax);A.emptyNote=false;A.reloadT=0;A.stamina=100;}
  G.audio?.pickup?.();return true;

@@ -54,7 +54,7 @@ import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from 
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
-import { initOpenWorld, tickOpenWorld, drawOpenWorld } from './open_world.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail } from './open_world.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
@@ -3449,6 +3449,7 @@ function drawVeh(G, v) {
   ctx.translate(v.x, v.y);
   const pose = vehiclePose(v, G.ticks / 60, G.settings.reducedMotion);
   ctx.rotate(v.rot + pose.roll);
+  if(v.jumpH>0){const k=1+v.jumpH*.32;ctx.scale(k,k);}
   ctx.translate(0, pose.heave);
   ctx.scale(1, pose.pitch);
   const sc = vehScale(v.def);
@@ -3464,7 +3465,18 @@ function drawVeh(G, v) {
     if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
     const length=v.kind==='bus'?150:v.def.bike?82:v.kind==='wake'?133:v.kind==='van'||v.kind==='ambulance'?128:116;
     ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
-    ctx.filter='none';drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
+    ctx.filter='none';
+    // City bus livery over the plain roof: teal waistband stripes, a gold
+    // pinline, roof panel seams, a lit route board and grime toward the rear.
+    if(v.kind==='bus'&&!v.dead&&G.settings.quality!=='low'){
+      ctx.save();ctx.fillStyle='rgba(28,108,112,.92)';ctx.fillRect(-16.5,-44,4,86);ctx.fillRect(12.5,-44,4,86);
+      ctx.fillStyle='#d9b45a';ctx.fillRect(-12.3,-44,1,86);ctx.fillRect(11.3,-44,1,86);
+      ctx.strokeStyle='rgba(70,62,48,.35)';ctx.lineWidth=.7;ctx.beginPath();for(let y=-36;y<44;y+=13){ctx.moveTo(-11,y);ctx.lineTo(11,y);}ctx.stroke();
+      const gr=ctx.createLinearGradient(0,10,0,46);gr.addColorStop(0,'rgba(60,48,32,0)');gr.addColorStop(1,'rgba(60,48,32,.28)');ctx.fillStyle=gr;ctx.fillRect(-11,10,22,36);
+      ctx.fillStyle='#12181c';ctx.fillRect(-8,-49,16,5);ctx.fillStyle=(G.night||0)>.3?'#ffd36a':'#e0a93a';ctx.font='700 4px system-ui';ctx.textAlign='center';ctx.fillText('12 CENTRAL',0,-45.4,15);
+      ctx.restore();
+    }
+    drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
     if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
       drawBikeRider(ctx,v,v===G.player);
     }
@@ -4029,6 +4041,7 @@ function drawPause(G) {
     ["RESUME", () => { G.scene = "play"; }, { primary: true }],
     ["STORY / DOSSIER", () => {G.scene="dossier";G.menuSel=0;}, {}],
     ["CITY MAP", () => { G.scene = "map"; }, {}],
+    ...(G.ow ? [["CITY LIFE " + owProgress(G), () => { G.scene = "play"; G.toast = owDetail(G); G.toastT = 4.5; }, {}]] : []),
     ["CREW / CONTRACTS", () => { G.scene='crew';G.menuSel=0; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
     ["SAVE GAME", () => save(G), {}],

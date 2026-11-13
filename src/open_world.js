@@ -6,12 +6,12 @@ const KEY='crowncity.openworld.v1',TAU=Math.PI*2;
 const FOOT=new Set(['walk','grass','sand','pier','lot','dirt']);
 const hash=(x,y)=>{const s=Math.sin(x*12.9898+y*78.233)*43758.5453;return s-Math.floor(s);};
 const store=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch{return {};}};
-export function owSave(G){try{const o=G.ow;localStorage.setItem(KEY,JSON.stringify({caches:[...o.got],traps:o.best,fares:o.fares}));}catch{}}
+export function owSave(G){try{const o=G.ow;localStorage.setItem(KEY,JSON.stringify({caches:[...o.got],traps:o.best,fares:o.fares,hints:o.hints,jumps:o.jumps}));}catch{}}
 const reward=(G,x,y,amt,text)=>{G.chips+=amt;G.floaters?.push({x,y,text:'+'+amt+' CHIPS',life:1.6,vy:-36,color:'#f2c14e'});G.particles?.push({kind:'flash',x,y,life:.14,a:1});G.audio?.pickup?.();G.toast=text;G.toastT=2.8;};
 const nearRoad=(G,x,y)=>{for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(G.surfaceAt(x+dx*40,y+dy*40)==='road')return true;return false;};
 export function initOpenWorld(G,hooks){
  const s=store();
- const o=G.ow={hooks,got:new Set(s.caches||[]),best:s.traps||{},fares:s.fares||0,caches:[],traps:[],events:[],fare:null,evT:3,stillT:0};
+ const o=G.ow={hooks,got:new Set(s.caches||[]),best:s.traps||{},fares:s.fares||0,hints:s.hints||{},jumps:s.jumps||{},caches:[],traps:[],events:[],fare:null,evT:3,stillT:0};
  // Caches: tucked against building walls (a "build" tile within 26 px),
  // two or three per district so every corner of the map has something.
  const per={};const W=WORLD_W,H=WORLD_H;
@@ -27,7 +27,39 @@ export function initOpenWorld(G,hooks){
  const edges=[...(G.graph?.edges||[])].filter(e=>e.len>420).sort((a,b)=>b.len-a.len);
  for(const e of edges){if(o.traps.length>=10)break;const x=(e.A.x+e.B.x)/2,y=(e.A.y+e.B.y)/2;if(G.surfaceAt(x,y)!=='road')continue;if(o.traps.some(t=>Math.hypot(t.x-x,t.y-y)<900))continue;
   o.traps.push({id:'t'+o.traps.length,x,y,rot:Math.atan2(e.B.x-e.A.x,-(e.B.y-e.A.y)),name:districtAt(x,y)});}
+ // Stunt ramps: open ground (dirt, sand, grass, lots) with a clear run-up
+ // and a clear landing strip, so a jump never ends inside a wall or the sea.
+ o.ramps=[];const OPEN=new Set(['dirt','sand','grass','lot','road']),bad=new Set(['build','water','canal']);
+ for(let i=0;i<20000&&o.ramps.length<10;i++){
+  const x=200+hash(i,7)*(W-400),y=300+hash(i,9)*(H-500),sf=G.surfaceAt(x,y);if(!['dirt','sand','grass'].includes(sf))continue;
+  if(o.ramps.some(r=>Math.hypot(r.x-x,r.y-y)<1300))continue;
+  for(const [hx,hy] of [[0,-1],[1,0],[0,1],[-1,0]]){let ok=true;
+   for(let t=-220;t<=520&&ok;t+=20){const sx=x+hx*t,sy=y+hy*t;const a=G.surfaceAt(sx,sy),b=G.surfaceAt(sx-hy*30,sy+hx*30),c=G.surfaceAt(sx+hy*30,sy-hx*30);if(bad.has(a)||bad.has(b)||bad.has(c)||!OPEN.has(a))ok=false;}
+   if(ok){o.ramps.push({id:'r'+o.ramps.length,x,y,hx,hy,rot:Math.atan2(hx,-hy),name:districtAt(x,y)});break;}
+  }
+ }
  return o;
+}
+// A car that crosses a ramp fast and straight flies: launch velocity is held,
+// the body lifts (drawn larger with a ground shadow), and the landing pays.
+function tickJumps(G,dt){
+ const o=G.ow,P=G.player;
+ if(o.jumpCar&&o.jumpCar!==P){o.jumpCar.jumpT=o.jumpCar.jumpH=0;o.jumpCar=null;}
+ if(P.jumpT>0){
+  P.jumpT-=dt;const k=1-P.jumpT/P.jumpDur;P.jumpH=Math.sin(Math.PI*Math.min(1,k))*P.jumpPeak;
+  P.vx=P.jumpVx;P.vy=P.jumpVy;P.rot=P.jumpRot;P.yaw=0;
+  if(P.jumpT<=0){P.jumpH=0;const r=P.jumpRamp,dist=Math.round(Math.hypot(P.x-P.jumpX,P.y-P.jumpY)/16),air=P.jumpDur.toFixed(1),best=o.jumps[r.id]||0,first=!best;
+   let pay=40+dist*4;if(first)pay+=200;if(dist>best){o.jumps[r.id]=dist;}
+   if(!G.settings?.reducedMotion)G.cam.shake=Math.max(G.cam.shake||0,4);for(let i=0;i<10;i++)G.particles.push({kind:'dust',x:P.x+(Math.random()-.5)*40,y:P.y+(Math.random()-.5)*40,vx:(Math.random()-.5)*60,vy:(Math.random()-.5)*60,life:.7,seed:Math.random()*6});
+   G.audio?.contact?.({speed:220,material:'concrete',source:P,x:P.x,y:P.y});
+   reward(G,P.x,P.y,pay,`STUNT JUMP ${dist} m · ${air} s${first?' · first time':dist>best?' · new best':''}`);owSave(G);}
+  return;
+ }
+ if(P.type!=='veh'||P.def?.boat||P.def?.aircraft||P.def?.bike&&false)return;
+ const sp=Math.hypot(P.vx||0,P.vy||0);if(sp<230)return;
+ for(const r of o.ramps){const dx=P.x-r.x,dy=P.y-r.y,along=dx*r.hx+dy*r.hy,side=Math.abs(dx*r.hy-dy*r.hx);
+  if(along<-6||along>26||side>24)continue;const dot=(P.vx*r.hx+P.vy*r.hy)/sp;if(dot<.82)continue;
+  const dur=Math.min(1.5,.45+sp/520);Object.assign(P,{jumpT:dur,jumpDur:dur,jumpPeak:Math.min(1,sp/600),jumpVx:P.vx,jumpVy:P.vy,jumpRot:P.rot,jumpX:P.x,jumpY:P.y,jumpRamp:r,jumpH:0});o.jumpCar=P;break;}
 }
 const SPOT={performer:['DOWNTOWN','THE STRIP','PALACE ROW','CROWN LOOP','MIDTOWN','CROWN CITY','METAWIN TERRACE'],stop:null,delivery:null,beach:null};
 function pickSpot(G,P,want,tries=40){
@@ -74,6 +106,15 @@ function spawnEvent(G){
 function retire(G,ev){for(const p of ev.peds){const i=G.peds.indexOf(p);if(i>=0)G.peds.splice(i,1);}for(const v of ev.cars||[]){const i=G.vehicles.indexOf(v);if(i>=0&&!v.dead&&G.player!==v)G.vehicles.splice(i,1);else{v.keep=false;v.owEvent=false;}}}
 export function tickOpenWorld(G,dt){
  const o=G.ow;if(!o||G.scene!=='play')return;const P=G.player;
+ // First-time hints teach each activity once, the moment it is relevant.
+ const hint=(k,text)=>{if(o.hints[k]||G.toastT>0.6)return;o.hints[k]=1;G.toast=text;G.toastT=4.2;owSave(G);};
+ if((G.ticks%20)===0){
+  if(o.caches.some(c=>!o.got.has(c.id)&&Math.hypot(P.x-c.x,P.y-c.y)<240))hint('cache','Something glints against that wall. Hidden chip caches are tucked all over the city.');
+  if(P.type==='veh'&&o.traps.some(t=>Math.hypot(P.x-t.x,P.y-t.y)<520))hint('trap','Speed trap ahead: cross the yellow line at 110+ km/h for chips.');
+  if(P.type==='veh'&&o.ramps?.some(r=>Math.hypot(P.x-r.x,P.y-r.y)<560))hint('ramp','Stunt ramp nearby: hit it fast and straight for a jump bonus.');
+  if(P.type==='veh'&&P.kind==='taxi'&&(G.freeRoam||G.mode==='freeride'))hint('taxi','Taxi: stop at the kerb for a couple of seconds to pick up a fare.');
+ }
+ tickJumps(G,dt);
  // caches
  for(const c of o.caches){if(o.got.has(c.id))continue;if(Math.abs(P.x-c.x)<26&&Math.abs(P.y-c.y)<26){o.got.add(c.id);reward(G,c.x,c.y,150,`Hidden chip cache ${o.got.size}/${o.caches.length} found`);if(o.got.size===o.caches.length)reward(G,c.x,c.y,2500,'Every cache in Crown City found!');owSave(G);}}
  // speed traps
@@ -112,6 +153,12 @@ export function drawOpenWorld(G,r){
  for(const tr of o.traps){if(!inR(tr.x,tr.y,90))continue;ctx.save();ctx.translate(tr.x,tr.y);ctx.rotate(tr.rot);
   ctx.fillStyle='rgba(242,193,78,.18)';ctx.fillRect(-34,-4,68,8);ctx.fillStyle='#f2c14e';for(let x=-32;x<32;x+=8)ctx.fillRect(x,-2,4,4);
   for(const s of [-1,1]){ctx.fillStyle='#2a3036';ctx.fillRect(s*40-2,-3,4,6);ctx.fillStyle=(G.ticks%40<20)?'#ff5a4a':'#5a2a26';ctx.fillRect(s*40-1.5,-2,3,2);}ctx.restore();}
+ for(const rp of o.ramps||[]){if(!inR(rp.x,rp.y,90))continue;ctx.save();ctx.translate(rp.x,rp.y);ctx.rotate(rp.rot);
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(-23,-26,50,58);
+  const g=ctx.createLinearGradient(0,30,0,-30);g.addColorStop(0,'#3a4148');g.addColorStop(1,'#8a949c');ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-22,30);ctx.lineTo(22,30);ctx.lineTo(20,-28);ctx.lineTo(-20,-28);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#e8eef2';ctx.fillRect(-20,-30,40,3);ctx.fillStyle='#f2c14e';for(let k=0;k<3;k++){const y=18-k*16;ctx.beginPath();ctx.moveTo(-12,y);ctx.lineTo(0,y-8);ctx.lineTo(12,y);ctx.lineTo(12,y+4);ctx.lineTo(0,y-4);ctx.lineTo(-12,y+4);ctx.closePath();ctx.fill();}
+  ctx.strokeStyle='#22282d';ctx.lineWidth=1.5;ctx.strokeRect(-22,-29,44,59);ctx.restore();}
+ const PJ=G.player;if(PJ.jumpH>0){ctx.save();ctx.fillStyle=`rgba(0,0,0,${.35-PJ.jumpH*.15})`;ctx.beginPath();ctx.ellipse(PJ.x+PJ.jumpH*26,PJ.y+PJ.jumpH*34,30*(1-PJ.jumpH*.2),48*(1-PJ.jumpH*.2),PJ.rot,0,TAU);ctx.fill();ctx.restore();}
  if(o.fare){const f=o.fare;if(inR(f.x,f.y)){ctx.save();ctx.strokeStyle='rgba(242,193,78,.85)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(f.x,f.y,30+Math.sin(t*4)*3,0,TAU);ctx.stroke();ctx.restore();}}
  for(const ev of o.events){if(!inR(ev.x,ev.y,200))continue;
   if(ev.umbrellas)for(const u of ev.umbrellas){ctx.save();ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(u.x+4,u.y+6,19,15,0,0,TAU);ctx.fill();
@@ -123,3 +170,5 @@ export function drawOpenWorld(G,r){
    ctx.fillStyle=on?'rgba(255,60,80,.9)':'rgba(60,120,255,.9)';ctx.beginPath();ctx.arc(c.x+(on?-6:6),c.y,26,0,TAU);ctx.fill();ctx.restore();}
  }
 }
+export function owProgress(G){const o=G.ow;if(!o)return '';const n=o.got.size+Object.keys(o.best).length+Object.keys(o.jumps).length,t=o.caches.length+o.traps.length+(o.ramps||[]).length;return `${n}/${t}`;}
+export function owDetail(G){const o=G.ow;if(!o)return '';return `Caches ${o.got.size}/${o.caches.length} · Speed traps ${Object.keys(o.best).length}/${o.traps.length} · Jumps ${Object.keys(o.jumps).length}/${(o.ramps||[]).length} · Fares ${o.fares}`;}
