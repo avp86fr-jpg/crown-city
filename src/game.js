@@ -47,7 +47,7 @@ import {retireStreetActors,retirementOpacity} from './street_lifecycle.js';
 import {releaseBakedWorld} from './baked_world.js';
 import { buildGraph, createTraffic, createPeds, createNav, edgePoint, lightGreen, streetViewport } from "./traffic.js";
 import { createLighting, ambientAt, darkness, weatherSun, timeLabel, nightMix, LIGHT, tickLightEffects, visibleStreetLights, drawCoreGlow, drawTrafficSignals } from "./lighting.js";
-import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message } from './action.js';
+import { actionState, actionSave, WEAPONS, tickAction, requestShot, servicePoints, nearService, applyTune, message, CONTRACTS } from './action.js';
 import { drawActionHUD, drawCrew, drawWorkshop } from './action_ui.js';
 import { buildStreetScene, drawStreetScene, drawRoofDetail, drawAmbientGesture } from './citylife.js';
 import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from './controls.js';
@@ -3001,7 +3001,7 @@ function renderWorldLayer(G) {
     ctx.restore();
   }
   _ph('w_shadow');
-  drawWetReflections(G, r, nightFactor(G));
+  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));
   drawStreetScene(G,r);
   // 5. ground details
   ctx.lineWidth = 3;
@@ -3056,15 +3056,15 @@ function renderWorldLayer(G) {
     });
     if (hidden) { ctx.save(); ctx.globalAlpha = .38; drawChar(G, G.player); ctx.restore(); }
   }
-  if (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65)) drawHeli(G, nightFactor(G), false);
+  if (!(G.dbg&&G.dbg.noHeli) && (G.heliChase || (nightFactor(G) > 0.25 && cam.scale < 1.65))) drawHeli(G, nightFactor(G), false);
   drawTransitWorld(G,r,true);drawAirborne(G,r);
   _ph('w_bld');
   // 8. light map
   if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
-  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);drawResortLights(G,r,nightFactor(G));
+  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);if(!(G.dbg&&G.dbg.noResort))drawResortLights(G,r,nightFactor(G));
   _ph('w_light');
-  drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
-  drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
+  if(!(G.dbg&&G.dbg.noArch))drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
+  if(!(G.dbg&&G.dbg.noAtmo))drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
   drawParticles(G, r, true);_ph('l_top');
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
@@ -3618,11 +3618,13 @@ function uiFont(px, w = 700, disp = false) { return `${w} ${Math.round(px)}px ${
 function uiPanel(ctx, x, y, w, h, r, opts = {}) {
   ctx.save();
   rounded(ctx, x, y, w, h, r);
-  ctx.fillStyle = opts.fill || "rgba(9,22,28,0.85)";
+  if (opts.fill) ctx.fillStyle = opts.fill;
+  else { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, "rgba(20,38,48,0.9)"); g.addColorStop(1, "rgba(6,15,20,0.9)"); ctx.fillStyle = g; }
   ctx.fill();
   ctx.lineWidth = Math.max(1, r * 0.12);
   ctx.strokeStyle = opts.stroke || "rgba(255,255,255,0.12)";
   ctx.stroke();
+  if (!opts.fill && h > 18) { ctx.save(); rounded(ctx, x, y, w, h, r); ctx.clip(); const hl = ctx.createLinearGradient(x, 0, x + w, 0); hl.addColorStop(0, "rgba(242,193,78,0)"); hl.addColorStop(.5, "rgba(242,193,78,0.55)"); hl.addColorStop(1, "rgba(242,193,78,0)"); ctx.fillStyle = hl; ctx.fillRect(x, y, w, Math.max(1, r * .14)); ctx.restore(); }
   if (opts.accent) { ctx.save(); rounded(ctx, x, y, w, h, r); ctx.clip(); ctx.fillStyle = opts.accent; ctx.fillRect(x, y, Math.max(3, r * 0.3), h); ctx.restore(); }
   ctx.restore();
 }
@@ -3757,10 +3759,12 @@ function drawHUD(G) {
   const midW = narrow ? R - (L + mm + 10 * u) : Math.min(W * 0.46, 460 * u);
   const midX = narrow ? L + mm + 10 * u + midW / 2 : W / 2;
   let oy = narrow ? T + (G.wanted > 0 ? 78 : 58) * u : T;
-  if (G.hint) {
-    const title = G.freeRoam ? "FREE RIDE" : MISSIONS[G.missionIndex]?.title || "";
+  const _ct = G.action?.contract, _cd = _ct && G.expansionHint ? CONTRACTS.find(c => c.id === _ct.id) : null;
+  if (G.hint || _cd) {
+    // An active crew contract owns the objective banner; the free-ride blurb hid the job's next step.
+    const title = _cd ? `CONTRACT · ${_cd.title}` : G.freeRoam ? "FREE RIDE" : MISSIONS[G.missionIndex]?.title || "";
     ctx.font = uiFont(13 * u, 700);
-    const lines = wrapLines(ctx, hintText(G, G.hint), midW - 28 * u);
+    const lines = wrapLines(ctx, _cd ? G.expansionHint : hintText(G, G.hint), midW - 28 * u);
     const ph = (24 + lines.length * 17) * u;
     uiPanel(ctx, midX - midW / 2, oy, midW, ph, 10 * u, { fill: "rgba(10,7,18,0.72)" });
     ctx.textAlign = "center"; ctx.fillStyle = "#f2c14e"; ctx.font = uiFont(9.5 * u, 900);

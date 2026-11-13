@@ -84,16 +84,16 @@ export function drawVehicleFinish(G, v, w, h, pose) {
 export function drawWetReflections(G, r, night) {
   if (G.wet < .08 || night < .1) return;
   const ctx = G.ctx, low = G.settings.quality === 'low';
-  const max = low ? 16 : G.settings.quality === 'med' ? 36 : 60;
+  const max = low ? 16 : G.settings.quality === 'med' ? 28 : 40;
   let count = 0;
   const emit = (x, y, rgb, strength, seed) => {
     if (x < r.x0 - 80 || x > r.x1 + 80 || y < r.y0 - 130 || y > r.y1 || count >= max) return;
     count++;
     const phase = G.settings.reducedMotion ? 0 : G.ticks / 60;
     const length = 55 + hash(seed) * 75, width = 18 + hash(seed + 3) * 15;
-    ctx.save(); ctx.globalCompositeOperation = 'screen';
-    for (let j = 0; j < (low ? 6 : 12); j++) {
-      const k = j / (low ? 6 : 12), yy = y + 9 + k * length;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let j = 0; j < (low ? 6 : 8); j++) {
+      const k = j / (low ? 6 : 8), yy = y + 9 + k * length;
       if (!['road', 'walk', 'lot', 'pier'].includes(G.surfaceAt(x, yy))) continue;
       const wave = Math.sin(phase * 1.6 + k * 18 + seed) * (2 + k * 3);
       const alpha = (1 - k) * G.wet * night * strength * (.4 + hash(seed + j) * .28);
@@ -118,11 +118,13 @@ export function drawAtmosphere(G, r, night) {
     for (let x = Math.floor(r.x0 / step) * step; x < r.x1; x += step) for (let y = Math.floor(r.y0 / step) * step; y < r.y1; y += step) {
       const seed = x * .13 + y * .71;
       if (hash(seed) > .28 || !['road', 'walk'].includes(G.surfaceAt(x, y))) continue;
+      ctx.fillStyle = '#a5c4d4';
       for (let i = 0; i < 3; i++) {
         const age = ((t * .25 + hash(seed + i) + i / 3) % 1);
-        ctx.save(); ctx.globalAlpha = Math.sin(age * Math.PI) * (.045 + night * .04);
-        ctx.fillStyle = '#a5c4d4'; ellipse(ctx, x + Math.sin(t + seed + i) * age * 11, y - age * 55, 7 + age * 17, 4 + age * 8); ctx.restore();
+        ctx.globalAlpha = Math.sin(age * Math.PI) * (.045 + night * .04);
+        ellipse(ctx, x + Math.sin(t + seed + i) * age * 11, y - age * 55, 7 + age * 17, 4 + age * 8);
       }
+      ctx.globalAlpha = 1;
     }
   }
   // Stable world-space rain ripples; no allocation or random flicker per frame.
@@ -231,6 +233,7 @@ export function drawGrade(G) {
   ctx.restore();
 }
 
+const _signs = new Map();
 export function drawArchitectureLights(G, r, night) {
   if (night < .1) return;
   const ctx = G.ctx, time = G.settings.reducedMotion ? 0 : G.ticks / 60;
@@ -244,7 +247,7 @@ export function drawArchitectureLights(G, r, night) {
     const color = b.kind === 'loft' ? '98,208,255' : b.kind === 'garage' ? '255,165,76' : b.kind === 'casino' ? '255,106,194' : ['60,219,232', '244,104,171', '255,193,106'][Math.floor(hash(b.seed) * 3)];
     ctx.save();
     // Corner strips give selected commercial buildings a clear silhouette.
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = `rgba(${color},${night * .65})`; ctx.lineWidth = 1.6;
     if (b.kind !== 'office') {
       ctx.beginPath(); ctx.moveTo(rx + 5, ry + Math.min(38, rh * .25)); ctx.lineTo(rx + 5, ry + 5); ctx.lineTo(rx + Math.min(55, rw * .35), ry + 5); ctx.stroke();
@@ -255,12 +258,16 @@ export function drawArchitectureLights(G, r, night) {
     const label = b.kind === 'loft' ? 'NEURAL' : b.kind === 'garage' ? 'CUSTOMS' : ['AFTER HOURS', 'OPEN 24', 'NIGHT MARKET', 'CROWN CLUB'][Math.floor(hash(b.seed + 1) * 4)];
     const sw = Math.min(rw - 16, 140), sh = 24, sx = rx + (rw - sw) / 2, sy = ry + rh - 36;
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';ctx.globalAlpha=night*.32;
+    ctx.globalCompositeOperation = 'lighter';ctx.globalAlpha=night*.26;
     ctx.drawImage(LIGHT.radial(`rgba(${color},1)`,128),sx-sw*.3,sy-sw*.5,sw*1.6,sw*1.3);ctx.globalAlpha=1;
-    ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#101925'; ctx.fillRect(sx,sy,sw,sh);
-    ctx.strokeStyle = `rgba(${color},${.3 + night * .65})`; ctx.lineWidth = 1; ctx.strokeRect(sx + 1,sy + 1,sw - 2,sh - 2);
-    ctx.fillStyle = `rgb(${color})`; ctx.textAlign = 'center'; ctx.font = '700 10px system-ui, sans-serif';
-    ctx.fillText(label, sx + sw / 2, sy + 16, sw - 10);
+    // Sign face (box, rule, text) is cached per label/colour/width: text raster was a per-frame cost.
+    ctx.globalCompositeOperation = 'source-over';
+    const key = label + color + Math.round(sw) + (night > .6 ? 1 : 0); let face = _signs.get(key);
+    if (!face) { face = document.createElement('canvas'); face.width = Math.ceil(sw) * 2; face.height = sh * 2; const f = face.getContext('2d'); f.scale(2, 2);
+      f.fillStyle = '#101925'; f.fillRect(0, 0, sw, sh); f.strokeStyle = `rgba(${color},${.3 + (night > .6 ? 1 : .6) * .65})`; f.lineWidth = 1; f.strokeRect(1, 1, sw - 2, sh - 2);
+      f.fillStyle = `rgb(${color})`; f.textAlign = 'center'; f.font = '700 10px system-ui, sans-serif'; f.fillText(label, sw / 2, 16, sw - 10);
+      if (_signs.size > 120) _signs.clear(); _signs.set(key, face); }
+    ctx.drawImage(face, sx, sy, sw, sh);
     // A slow travelling trim light, with no random flashing.
     const dot = (time * 12 + b.seed) % (sw - 8);
     ctx.fillStyle = '#e7fcff'; ctx.fillRect(sx + 4 + dot, sy + sh - 3, 4, 1);

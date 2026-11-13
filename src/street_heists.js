@@ -6,7 +6,7 @@ export const HEIST_JOBS=[
 ];
 export const HEIST_STEPS={
  getaway:['On foot: crack the counting-room ledger behind the casino. Hold still three seconds.','Drive to the garage for clean plates before the clock runs out.','Lose the heat, then hand the ledger to Neural on foot.'],
- tail:['Get close to the Palace bagman’s route near the Strip.','Tail the marked sedan. Stay in range, but not too close.','Ram the sedan until it stalls, then take the satchel on foot.'],
+ tail:['Get close to the Palace bagman’s route near the Strip.','Tail the marked sedan. Stay in range, but not too close.','Ram or pin the sedan until it stalls, then take the satchel on foot.'],
  hyper:['Reach the race start.','Get in the Nyx Sixteen Fire left at the line.','Hit every gate to the Roadhouse before the clock runs out.'],
 };
 export const HEIST_DEBRIEFS={
@@ -53,6 +53,7 @@ export function tickHeistJob(G,c,dt,notify){
  const car=P.type==='veh'&&!P.dead&&(P.health??100)>0&&!P.def.boat&&!P.def.aircraft;
  if(!c.vn){c.vn=1;H.vn?.('job_'+c.id);}
  if(c.id==='getaway'){
+  if(!G.waypoint)point(G,c); // keep the job marker alive if anything (map click, arrival) cleared it
   if(st===0){c.progress=P.type==='foot'&&d<60&&sp<8&&quiet?(c.progress||0)+dt:0;if(c.progress>=3){c.stage=1;c.progress=0;c.timer=90;G.wanted=Math.max(G.wanted,3);G.seenT=0;G.audio?.alarm?.();notify(G,'HUNTER','Alarm. Ninety seconds. Garage, now. Any car.');point(G,c);}}
   else if(st===1){c.timer=(c.timer??90)-dt;if(c.timer<=0){c.failed='HUNTER: Too slow. The plates are burned. Walk away and try it again later.';return false;}
    if(car&&d<95){c.stage=2;c.progress=0;G.wanted=Math.min(G.wanted,2);notify(G,'HUNTER','Clean plates on. Metro is still looking for the old ones. Shake them, then walk the ledger to Neural.');point(G,c);}}
@@ -72,10 +73,13 @@ export function tickHeistJob(G,c,dt,notify){
    else if(c.tailT>=35){c.stage=2;notify(G,'VERA','He’s heading for the Palace garage. Box him in now. Ram until he stalls.');}
    return false;
   }
-  if(!c.stalled){if((v.health??100)<60||v.dead){c.stalled=true;v.traffic=false;v.tr=null;v.loose=true;v.ambient=false;notify(G,'VERA','He’s stalled. The satchel is on the back seat. On foot, quick.');}return false;}
+  if(!c.stalled){if(P.type==='veh'&&dv<100){const vs=Math.hypot(v.vx||0,v.vy||0);c.boxT=(c.boxT||0)+dt*(vs<30?1:.3);}else c.boxT=Math.max(0,(c.boxT||0)-dt*.5);
+   // Light bikes barely dent a sedan: pinning it alongside for a few seconds also stalls it.
+   if((v.health??100)<60||v.dead||c.boxT>=4){c.stalled=true;v.traffic=false;v.tr=null;v.loose=true;v.ambient=false;notify(G,'VERA','He’s stalled. The satchel is on the back seat. On foot, quick.');}return false;}
   c.progress=P.type==='foot'&&dv<75&&sp<8?(c.progress||0)+dt:0;return c.progress>=1.5;
  }
  if(c.id==='hyper'){
+  if(!G.waypoint&&(c.stage||0)!==1)point(G,c);
   if(st===0){c.progress=d<110&&sp<12?(c.progress||0)+dt:0;if(c.progress>=.6&&H.spawn){const s=G.meta.spawns.raceStart,v=H.spawn('nyx',s[0],s[1]);if(v){v.keep=true;v.jobId=c.carId=(G.ticks|0)+7;c.stage=1;c.progress=0;notify(G,'FIRE','Keys in the visor. Get in.');point(G,c);}}return false;}
   if(st===1){const v=tailCar(G,c);if(!v){c.stage=0;return false;}if(P===v){c.stage=2;c.gate=0;c.gates=raceGates(G,{x:v.x,y:v.y},ROADHOUSE);let len=0,px=v.x,py=v.y;for(let i=0;i<c.gates.length;i+=2){len+=Math.hypot(c.gates[i]-px,c.gates[i+1]-py);px=c.gates[i];py=c.gates[i+1];}c.timer=Math.round(len/270+15);notify(G,'FIRE',c.timer+' seconds. Go.');point(G,c);}else point(G,c);return false;}
   if(!c.gates){c.stage=1;return false;}

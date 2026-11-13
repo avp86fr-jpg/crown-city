@@ -64,9 +64,10 @@ test('rooftop equipment and night neon stay attached to capped roof edges from e
   if(core)assert.equal(translations.length,0,'painted core rooftops must not receive duplicate equipment');
   else{assert.deepEqual(translations[0],[x,y]);assert.deepEqual(scales[0],[w/b.w,h/b.h]);}
   translations.length=0;state.settings.reducedMotion=true;drawRoofDetail(state,r);assert.equal(translations.length,0,'static roof equipment is already baked; reduced motion needs no extra pass');
-  points.length=0;rects.length=0;drawArchitectureLights(state,r,1);
+  points.length=0;rects.length=0;images.length=0;drawArchitectureLights(state,r,1);
   assert.deepEqual(points[0],[x+5,y+Math.min(38,h*.25)]);
-  assert.deepEqual(rects[0],[x+(w-Math.min(w-16,140))/2,y+h-36,Math.min(w-16,140),24]);
+  // The sign face is a cached bitmap; its destination rect carries the roof-edge geometry.
+  assert.deepEqual(images.find(v=>v.length===5&&v[4]===24)?.slice(1),[x+(w-Math.min(w-16,140))/2,y+h-36,Math.min(w-16,140),24]);
   if(core)assert.deepEqual([x,y,w,h],[b.x,b.y,b.w,b.h]);
  }
 });
