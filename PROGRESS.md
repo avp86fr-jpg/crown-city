@@ -33,3 +33,17 @@
 - Published preview 4760107 (bundle d7cf13633a5e): copy verified (assets 328/328, css 1/1, diff -rq identical, bundle cmp OK), live check desktop+mobile title→VN→play, 0 errors, 0 4xx, no SW, noindex; root untouched (eb08a8621909).
 - Re-run of jobs after fixes: SHADOW WORK reached tail stage in 86 s but the bot then failed to hold tail range (bot limitation, not verified end-to-end); REDLINE EAST and NINETY SECONDS end-to-end not verified this pass.
 - Contact sheet: /workspace/cc_work/contact_pass3b.jpg (432 KB).
+
+# Pass 4 (Nov 13, 21:00-21:50 CET)
+- Commits 268a80f, c2b7c5a (+ PROGRESS). Preview bundle d0b1f1122786 (cc_pages aad4e6e). Root untouched (eb08a8621909).
+- Night perf: desktop world layer renders at 0.78 internal scale when dark (hysteresis, HUD native); vignette folded into the multiply light map (one fewer full-frame composite); vehicle atlases pre-downscaled once (512->224 px cells).
+  Measured back-to-back, swiftshader 1280x720 high, 23:00, 4 runs each (before adbf420 / after c2b7c5a): Strip 37.5/35.7/38.5/40.2 -> 42.2/25.6*/48.8/46.7; Downtown 35.2/34.5/34.1/36.8 -> 39.8/25.4*/39.2/48.5 (*run 2 had 5 bot browsers running). Day unchanged (~43-50). Mobile low uncapped 250-500 fps both.
+  Finding: frame time is raster-bound in the GPU process; JS-side draw timings move to whichever call syncs (removing all chars cut JS render 14->1 ms with ~0 fps change).
+- Missions (bots, low quality): SHADOW WORK complete by driving in 50 s; REDLINE EAST complete (1 harness assist leaving spawn, gate sprint driven 32 s); NINETY SECONDS stages 0-1 driven (garage in 33 s by car), stage 2 not completed by bot; story m0 complete with 2 assists (bot wedged in a pile-up outside Hunter Garage), m1 reached race, then stopped for budget.
+- Lose-heat: 5 + 2.2 s per star (was 7 + 2.5), 1.5x faster once 900+ units from the last sighting.
+- AI/traffic/stalled cars snap back to their last dry spot instead of sitting in the sea (player can still drive off a pier).
+- Smoke: cool contact shadow under pale puffs, slightly brighter smoke; sea swell bolder (wider/stronger trough and crest).
+- Economy: body armour (400, soaks 60% of bullet/blast damage, saved), street tune extended to 5 stages at 500/800/1200/1700/2400 (stages 4-5 add less top speed). Unit test added (425 tests).
+- Load: circuit paint (1.3 MB, 4096 px) now streams only when the camera nears the park on desktop. Desktop transfer 9.1 -> 7.8 MB, JS heap 25 -> 22 MB after 10 s play.
+- Pedestrians: backpacks, briefcases, shoulder bags and totes per wardrobe look (55% carry one).
+- Getaway: on-foot arrival at the garage now tells you to take the Riot in the bay.
