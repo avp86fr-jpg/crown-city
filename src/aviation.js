@@ -3,6 +3,7 @@
 import {vehicleCondition,drawVehicleDamage} from './vehicle_dynamics.js';
 import {bodyContact,bodySize} from './collision.js';
 import { WORLD_W, WORLD_H } from './world.js';
+import { SOUTH } from './alpine.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const num=(v,d,a=-Infinity,b=Infinity)=>Number.isFinite(v)?clamp(v,a,b):d;
 const angle=a=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -130,7 +131,7 @@ export function tickAircraft(G,v,I,dt,hooks={}){
   if(ground&&speed>170&&!onRunway(G,v))notice('Takeoff needs the marked runway.');
  }
  v.verticalSpeed=vertical;v.altitude=clamp(v.altitude+vertical*dt,0,420);
- const edge=helicopter?80:105;let nx=clamp(v.x+v.vx*dt,edge,WORLD_W-edge),ny=clamp(v.y+v.vy*dt,-2816+edge,WORLD_H-edge);
+ const edge=helicopter?80:105;let nx=clamp(v.x+v.vx*dt,edge,WORLD_W-edge),ny=clamp(v.y+v.vy*dt,-2816+edge,WORLD_H+SOUTH-edge);
  const steps=Math.max(1,Math.ceil(Math.hypot(nx-oldX,ny-oldY)/18));let height=0;
  for(let i=1;i<=steps;i++){const q=i/steps,h=aircraftClearance(G,v,oldX+(nx-oldX)*q,oldY+(ny-oldY)*q);if(h&&oldAltitude+(v.altitude-oldAltitude)*q<h+18){height=h;break;}}
  if(height){

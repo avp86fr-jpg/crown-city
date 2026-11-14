@@ -25,6 +25,7 @@ import {drawLocalAtmosphere} from './world_effects.js';
 import {drawRainGround,drawRainOverlay} from './rain.js';
 import {drawGangWorld} from './gangs.js';
 import {drawResortGround,drawResortOverhead,drawResortLights} from './resort.js';
+import {drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall} from './alpine.js';
 const CORE=4096,TILE=1024,OUTER=512;
 function retire(e){e.retired=true;e.job?.return();e.bitmap?.close();if(e.canvas)e.canvas.width=1;if(e.working)e.working.width=1;}
 function seal(e){
@@ -119,7 +120,7 @@ export function drawMobileWorld(G,H) {
   // Zooming back in must release the old wider working set even when all newly
   // visible tiles are warm and no composition call would otherwise trim it.
   if(G.mobileOuter)trim(G.mobileOuter,G._outerLimit);
-  drawWaterMotion(G,r);drawResortGround(G,r);
+  drawWaterMotion(G,r);drawResortGround(G,r);drawAlpineGround(G,r);
   drawStreetGateways(G,r);drawUrbanCourts(G,r);drawCityHubs(G,r);drawCircuitActivity(G,r);drawDropMission(G,r);
   drawExpansionOverhead(G,r);
   drawTransitWorld(G,r);
@@ -139,7 +140,7 @@ export function drawMobileWorld(G,H) {
   if(G.player.type==='foot')actors.push(G.player);
   actors.sort((a,b)=>(a.dead?-1e6:a.y)-(b.dead?-1e6:b.y));
   for(const a of actors)a.def?H.drawVeh(G,a):H.drawChar(G,a);
-  drawWildlife(G,r);drawExpansionPeople(G,r);drawResortOverhead(G,r);drawTransitWorld(G,r,true);H.drawAirborne?.(G,r);
+  drawWildlife(G,r);drawExpansionPeople(G,r);drawResortOverhead(G,r);drawAlpineOverhead(G,r);drawTransitWorld(G,r,true);H.drawAirborne?.(G,r);
   H.drawParticles(G,r,false);
   // One restrained ambient tint, with a small set of additive lights. No full-screen light-map passes.
   c.setTransform(1,0,0,1,0,0);
@@ -158,11 +159,12 @@ export function drawMobileWorld(G,H) {
    c.globalAlpha=.62*night;for(const lamp of visibleStreetLights(G,r,10))c.drawImage(glow,lamp.x-52,lamp.y-52,104,104);
    const rim=LIGHT.radial('rgba(200,220,255,0.6)',64);c.globalAlpha=.35*night;c.drawImage(rim,G.player.x-70,G.player.y-70,140,140);}
   if(!G.dbg?.noVL)drawMobileVehicleLights(G,actors,night);
-  if(!G.dbg?.noResort)drawResortLights(G,r,night);
+  if(!G.dbg?.noResort){drawResortLights(G,r,night);drawAlpineLights(G,r,night);}
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);if(!(G.dbg&&G.dbg.noRain))drawRainGround(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);
-  if(!(G.dbg&&G.dbg.noRain))drawRainOverlay(G);
+  if(!(G.dbg&&G.dbg.noRain)&&!(G.alpineMix>.6))drawRainOverlay(G);
+  drawSnowfall(G);
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,bakedSheets:G.bakedWorld?.sheets.size||0,bakedReady:G.bakedWorld?.ready||0,bakedBytes:G.bakedWorld?.bytes||0,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

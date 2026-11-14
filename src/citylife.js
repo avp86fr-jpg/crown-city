@@ -89,7 +89,7 @@ function* roadArtSteps(G,ix,iy){
  c=document.createElement('canvas');c.width=c.height=size;const x=c.getContext('2d',{willReadFrequently:true});x.scale(size/512,size/512);
  for(let j=0;j<24;j++){yield;
   const seed=ix*138+iy*73+j*9,px=hash(seed)*500,py=hash(seed+4)*500,wx=ix*512+px,wy=iy*512+py;
-  if(!['road','walk','lot'].includes(G.surfaceAt(wx,wy)))continue;
+  if(wy>=10240||!['road','walk','lot'].includes(G.surfaceAt(wx,wy)))continue;
   if(j%4===0){
    oval(x,px+2,py+2,8,6,'rgba(0,0,0,.3)');oval(x,px,py,8,6,'#42454b');x.strokeStyle='#737473';x.lineWidth=.7;x.beginPath();x.ellipse(px,py,6,4,0,0,TAU);x.stroke();
    for(let k=-3;k<=3;k+=2){x.beginPath();x.moveTo(px-4,py+k);x.lineTo(px+4,py+k);x.stroke();}

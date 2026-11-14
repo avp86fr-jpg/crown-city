@@ -33,6 +33,7 @@ import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, d
 import { drawExpansionOverhead } from './expansion_world.js';
 import { drawMobileWorld } from './mobile_renderer.js';
 import {initResort,drawResortGround,drawResortOverhead,drawResortLights,NORTH} from './resort.js';
+import {initAlpine,drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall,alpineGrip,PEAK_CACHES,SOUTH} from './alpine.js';
 import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
 import { drawRainGround, drawRainOverlay } from "./rain.js";
 import { loadImage as loadImg } from "./assets.js";
@@ -106,6 +107,7 @@ function vehScale(def) {
   return 0.283;
 }
 const SURFACE = { 0: "road", 1: "walk", 2: "build", 3: "water", 4: "sand", 5: "grass", 6: "track", 7: "pier", 8: "canal", 9: "lot", 10: "dirt" };
+const SNOWCOL = { 5: [226, 233, 241], 2: [112, 116, 124], 9: [168, 206, 226], 1: [150, 120, 92] };
 const GRIP = { road: 1, walk: 0.8, build: 0.2, water: 0.15, sand: 0.5, grass: 0.6, track: 1.05, pier: 0.75, canal: 0.15, lot: 0.95, dirt: 0.62 };
 const FOOT_PROBES=[[1,0],[.70710678,.70710678],[0,1],[-.70710678,.70710678],[-1,0],[-.70710678,-.70710678],[0,-1],[.70710678,-.70710678]];
 const FOOT_OK = new Set(["road", "walk", "sand", "grass", "track", "pier", "lot", "dirt"]);
@@ -231,7 +233,7 @@ export async function boot() {
   servicePoints(G); buildStreetScene(G);
   G.cityAI = createCityAI(G);
   G.player = makeFoot(G, meta.spawns.player[0], meta.spawns.player[1], 0);
-  initExpansion(G);initTransit(G);initWildlife(G);initCasino(G);initResort(G);
+  initExpansion(G);initTransit(G);initWildlife(G);initCasino(G);initResort(G);initAlpine(G);
   seedPickups(G);
   // Warm the first city tiles without running the city behind the static title.
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
@@ -274,7 +276,7 @@ export async function boot() {
 
 function buildMinimap(G) {
   const S = 8; // world px per minimap px
-  const W = WORLD_W / S, H = (WORLD_H + NORTH) / S, OY = NORTH;
+  const W = WORLD_W / S, H = (WORLD_H + NORTH + SOUTH) / S, OY = NORTH;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
@@ -282,7 +284,8 @@ function buildMinimap(G) {
   const col = { 0: [144, 153, 150], 1: [81, 94, 88], 2: [49, 65, 66], 3: [25, 62, 75], 4: [125, 110, 79], 5: [49, 77, 62], 6: [150, 155, 150], 7: [129, 117, 86], 8: [25, 62, 75], 9: [103, 109, 100], 10: [89, 87, 66] };
   for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) {
     const c0 = G.codeAt(xx * S + 4, y * S + 4 - OY);
-    const k = col[c0] || [0, 0, 0];
+    const wy = y * S + 4 - OY;
+    const k = wy >= WORLD_H ? (SNOWCOL[c0] || col[c0] || [0, 0, 0]) : (col[c0] || [0, 0, 0]);
     const i = (y * W + xx) * 4;
     img.data[i] = k[0]; img.data[i + 1] = k[1]; img.data[i + 2] = k[2]; img.data[i + 3] = 255;
   }
@@ -569,7 +572,7 @@ function canvasMouse(G) {
       const m = G.mapView;
       if (mx >= m.x && my >= m.y && mx <= m.x + m.w && my <= m.y + m.h) {
         G.waypoint = { x: clamp((mx - m.x) / m.k * G.minimap.S, 0, WORLD_W - 1),
-          y: clamp((my - m.y) / m.k * G.minimap.S - (G.minimap.oy||0), -NORTH + 40, WORLD_H - 1) };
+          y: clamp((my - m.y) / m.k * G.minimap.S - (G.minimap.oy||0), -NORTH + 40, WORLD_H + SOUTH - 1) };
         G.gps = null; toast(G, 'Blue waypoint set. Gold marker is your job.');
       }
       return;
@@ -785,7 +788,7 @@ function restoreState(G, d) {
   G.ended = d.ended === true || G.missionIndex >= MISSIONS.length;
   G.race = null; G.jack = null; G.bullets = []; G.seenT = 0;
   const x = finite(d.px, G.meta.spawns.player[0], 40, WORLD_W - 40);
-  const y = finite(d.py, G.meta.spawns.player[1], -NORTH + 40, WORLD_H - 40);
+  const y = finite(d.py, G.meta.spawns.player[1], -NORTH + 40, WORLD_H + SOUTH - 40);
   const rot = finite(d.prot, 0, -Math.PI * 100, Math.PI * 100);
   if (G.player?.type === 'veh') { G.player.driver = null; G.player.loose = true; }
   if (d.ptype === 'veh' && VEH_DEFS[d.vehKind]) {
@@ -807,7 +810,7 @@ function restoreState(G, d) {
   if (G._flow && G._flow.onStart && G._flow.onStart.spawnVan) {
     spawnVan(G);
     if (d.van) {
-      G.van.x = finite(d.van.x, G.van.x, 40, WORLD_W - 40); G.van.y = finite(d.van.y, G.van.y, -NORTH + 40, WORLD_H - 40);
+      G.van.x = finite(d.van.x, G.van.x, 40, WORLD_W - 40); G.van.y = finite(d.van.y, G.van.y, -NORTH + 40, WORLD_H + SOUTH - 40);
       G.van.health = finite(d.van.health, 100, 0, 100); G.van.dead = d.van.dead === true; G.van.loose = d.van.loose === true;
     }
   }
@@ -878,6 +881,7 @@ function seedPickups(G, collected) {
     { x: 2560, y: 2740, v: 15 },
     { x: 1920, y: 720, v: 20 },
     { x: 1180, y: 1560, v: 15 },
+    ...PEAK_CACHES,
   ].map(p => ({ ...p, ...findSafe(G, p.x, p.y, 14, true, true), id: `${p.x}:${p.y}`, got: got.has(`${p.x}:${p.y}`) }));
 }
 
@@ -1516,7 +1520,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  const surfaceGrip=GRIP[surf]??.7,wetGrip=G.wet>.3?.8:1;
+  const surfaceGrip=(GRIP[surf]??.7)*alpineGrip(G,v.x,v.y,surf),wetGrip=G.wet>.3?.8:1;
   const brakeForce=def.brake*condition.brake*(def.boat?1:Math.sqrt(surfaceGrip)*wetGrip);
   let braking=!!input.brake,throttle=braking?0:clamp(input.y||0,0,1),reverse=braking?0:clamp(-(input.y||0),0,1),shiftBraking=false;
   const carPedal=isPlayer&&braking&&!def.boat&&!def.bike&&!def.aircraft;
@@ -3049,7 +3053,7 @@ function renderWorldLayer(G) {
   _ph('w_core');
   // 3. procedural districts
   G.ground.draw(ctx, r, frame);
-  G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);drawResortGround(G,r);
+  G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);drawResortGround(G,r);drawAlpineGround(G,r);
   if (G.wet > 0.15 && r.x0 < CORE && r.y0 < CORE) { ctx.globalAlpha = 0.4 * G.wet; L.puddles.draw(ctx, r, frame); ctx.globalAlpha = 1; }
   _ph('w_ground');
   // 4. sun shadows
@@ -3105,7 +3109,7 @@ function renderWorldLayer(G) {
   _ph('a_sort');const noVeh=G.dbg&&G.dbg.noVeh;for (const a of actors) { if (a.def) {if(!noVeh)drawVeh(G, a);} else drawChar(G, a); }
   _ph('a_draw');drawWildlife(G,r);drawExpansionPeople(G,r);_ph('a_wild');
   drawParticles(G, r, false);_ph('a_part');
-  drawResortOverhead(G,r);
+  drawResortOverhead(G,r);drawAlpineOverhead(G,r);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
   G.bld.trees(ctx, cam, r, { low, time: G.settings.reducedMotion ? 0 : G.ticks / 60,storm:Math.max(G.rainAmt,G.sand) });
@@ -3126,7 +3130,7 @@ function renderWorldLayer(G) {
   _ph('w_bld');
   // 8. light map
   G._lmBaked=false;if (!(G.dbg && G.dbg.noLight)) drawLighting(G, r, S, ox, oy, low);
-  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);if(!(G.dbg&&G.dbg.noResort))drawResortLights(G,r,nightFactor(G));
+  _ph('l_map');worldXform(G, ctx, S, 1, ox, oy);if(!(G.dbg&&G.dbg.noResort)){drawResortLights(G,r,nightFactor(G));drawAlpineLights(G,r,nightFactor(G));}
   _ph('w_light');
   if(!(G.dbg&&G.dbg.noArch))drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
   if(!(G.dbg&&G.dbg.noAtmo))drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
@@ -3141,7 +3145,8 @@ function renderWorldLayer(G) {
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
   _ph('l_misc');if(!G._lmBaked)drawGrade(G);_ph('l_grade');
-  if(!(G.dbg&&G.dbg.noRain))drawRainOverlay(G);
+  if(!(G.dbg&&G.dbg.noRain)&&!(G.alpineMix>.6))drawRainOverlay(G);
+  drawSnowfall(G);
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
@@ -3488,7 +3493,7 @@ function drawVeh(G, v) {
     let clipping=false;
     for(const b of G.world.expansion?.overpasses||[]){
       if(v.x+100<=b.x||v.x-100>=b.x+b.w||v.y+120<=b.y||v.y-120>=b.y+b.h)continue;
-      if(!clipping){ctx.beginPath();ctx.rect(-1000,-NORTH-1000,WORLD_W+2000,WORLD_H+NORTH+2000);clipping=true;}
+      if(!clipping){ctx.beginPath();ctx.rect(-1000,-NORTH-1000,WORLD_W+2000,WORLD_H+NORTH+SOUTH+2000);clipping=true;}
       ctx.rect(b.x,b.y,b.w,b.h);
     }
     if(clipping)ctx.clip('evenodd');

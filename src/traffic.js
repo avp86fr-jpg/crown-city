@@ -5,6 +5,7 @@ import {bodySize,bodyContact,circleBody,worldBodyHit} from './collision.js';
 /* Road graph, lane-following traffic with turns + lights, ambient pedestrians, nav field for cops. */
 import { CORE, WORLD_W, WORLD_H } from "./world.js";
 import { NORTH } from "./resort.js";
+import { SOUTH } from "./alpine.js";
 const TAU = Math.PI * 2;
 const EMPTY=[],CARDINAL=[[1,0],[-1,0],[0,1],[0,-1]],FOOT_SAFE=new Set(['walk','lot','grass','dirt','sand','pier']),bodyRadii=new WeakMap();
 function bodyRadius(v){const b=bodySize(v);let r=bodyRadii.get(b);if(r===undefined){r=Math.hypot(b.w,b.l);bodyRadii.set(b,r);}return r;}
@@ -728,7 +729,7 @@ export function createPeds(G) {
 /* ---------- nav field (cars) ---------- */
 export function createNav(G) {
   let N_raw = null;
-  const C = 32, OY = NORTH, NW = Math.ceil(WORLD_W / C), NH = Math.ceil((WORLD_H + OY) / C);
+  const C = 32, OY = NORTH, NW = Math.ceil(WORLD_W / C), NH = Math.ceil((WORLD_H + OY + SOUTH) / C);
   const pass = new Uint8Array(NW * NH);
   for (let y = 0; y < NH; y++) for (let x = 0; x < NW; x++) {
     let ok = 1;

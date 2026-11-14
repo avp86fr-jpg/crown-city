@@ -4,6 +4,7 @@ import {applyCircuit,inCircuit} from './circuit_world.js';
 import {SLOT_MACHINES} from './slots.js';
 import {applyCityHubs} from './world_hubs.js';
 import {applyResort,resortDistrict,NORTH} from './resort.js';
+import {applyAlpine,peakDistrict,SOUTH} from './alpine.js';
 /* Crown City world: painted core (tiled, streamed) + procedural outer districts.
    One collision grid, one road graph, chunked ground renderer, extruded buildings. */
 import {applyExpansion,terrainRegion} from './expansion_world.js';
@@ -47,6 +48,7 @@ export const CORE_DISTRICTS = [
 ];
 export function districtAt(x, y) {
   if(y<760){const isle=resortDistrict(x,y);if(isle)return isle;}
+  if(y>=WORLD_H)return peakDistrict(x,y);
   if(inCircuit(x,y))return 'CROWN GRAND PRIX';
   const biome=terrainRegion(x,y);if(biome)return biome==='forest'?'PINEWATCH FOREST':biome==='desert'?'RED MESA':'SIERRA CROWN';
   if(x>=6784&&x<=7152&&y>560&&y<6800)return 'CROWN CANAL';
@@ -429,6 +431,7 @@ export function buildWorld(meta, coreMask, coreMS) {
   applyCityHubs(W,meta,CODE);
   for(const m of SLOT_MACHINES)W.fill(m.x-16,m.y-16,32,32,CODE.build);
   applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H});
+  applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H});
   return W;
 }
 
@@ -476,6 +479,7 @@ export function makeCollision(W, coreMask, coreMS) {
   const sc = coreMS / CORE;
   return (x, y) => {
     if (y < 0 && y >= -NORTH && x >= 0 && x < WORLD_W) return W.north[(((y + NORTH) / CELL) | 0) * GW + ((x / CELL) | 0)];
+    if (y >= WORLD_H && y < WORLD_H + SOUTH && x >= 0 && x < WORLD_W) return W.south[(((y - WORLD_H) / CELL) | 0) * GW + ((x / CELL) | 0)];
     if (x < 0 || y < 0 || x >= WORLD_W || y >= WORLD_H) return CODE.build;
     const g = W.grid[((y / CELL) | 0) * GW + ((x / CELL) | 0)];
     if (g !== 255) return g;

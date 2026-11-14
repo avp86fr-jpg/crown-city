@@ -126,3 +126,10 @@
 - Gates: 429 unit tests, `npm run check`, `audit:map` clean (pre-existing capped dead-ends / known join + signal notes only). Browser suites: browser, world, baked-world, materials, mobility, coherence, street-impact — all pass.
 - Local fps (swiftshader): mobile 844×390 low night rain ~225 fps (3.7–4.4 ms); desktop 1280×720 high night rain ~26 fps in a tight render loop (was ~42 without the new overlay on this software rasterizer; real GPU cost is a few pattern fills).
 - Contact sheet: `/workspace/cc_work/contact_pass13_rain.jpg`. Root stays pass 11.
+
+## Pass 14 — Crown Peak alpine region + headlight cones (preview)
+- New 3,072 px annex below the southern frontier (own collision grid `W.south`, `src/alpine.js`). Two entry roads leave the y 9800 frontier road at x 9216 / 10624, form the Frostfall village loop, then one plowed switchback climbs four hairpins to the summit plaza and the Crown Peak observatory (landmark). Guardrails with chevrons on every downhill/outer bend, icy patches, tyre ruts, plowed banks.
+- Frostfall village: 10+ chalets (varied wood, trim, gable/ridge roofs, balconies, chimneys with drifting smoke, warm windows and snow pools at night), boardwalks, fences, props, lamps. Mirror Lake (frozen, drivable, grip .36), pine forests (~1.7k, snow-laden), rock cliffs with snow crests, a chair lift with moving chairs, sea to the west.
+- Painted once into cached 512 px chunks (half-res on low). Snowfall: three (low: two) pre-rendered parallax pattern layers, replaces rain overlay inside the region. Grip: packed snow road .8, ice patches .5, off-road snow .72, lake .36. Minimap/atlas colours the annex as snow; landmarks CROWN PEAK / FROSTFALL / MIRROR LAKE; four chip caches. Peds in the snow get knit hats and scarves (overlay).
+- Mobile night headlights: pre-rendered warm soft cone (additive) replaces the flat grey trapezoid; rain streak sheets slightly denser/brighter, more so by day.
+- Gates: 432 unit tests (new tests/alpine.test.js), check, audit:map clean (coherence H now includes the annex), build reproducible, 7 browser suites pass.

@@ -46,9 +46,9 @@ function art(){
     });
   };
   const angle=Math.atan2(.36,1);
-  const far=sheet(384,70,14,28,.9,.28,11,angle);
-  const mid=sheet(384,46,26,48,1.15,.42,29,angle);
-  const near=sheet(384,22,44,78,1.55,.55,47,angle);
+  const far=sheet(384,78,16,32,1.0,.36,11,angle);
+  const mid=sheet(384,52,28,54,1.25,.54,29,angle);
+  const near=sheet(384,26,48,86,1.7,.68,47,angle);
   const ripple=make(64,40,(ctx,w,h)=>{
     const g=ctx.createRadialGradient(w/2,h/2,1,w/2,h/2,w/2);
     g.addColorStop(0,'rgba(200,224,236,0)');
@@ -194,8 +194,8 @@ export function drawRainOverlay(G){
   // Sheets are baked at a fixed angle; a single rotate keeps them aligned with the wind.
   const spin=dir.angle-sprites.angle;
   const layers=low
-    ?[{key:'far',img:sprites.far,speed:210,alpha:.4+(1-night)*.18},{key:'mid',img:sprites.mid,speed:340,alpha:.52+(1-night)*.16}]
-    :[{key:'far',img:sprites.far,speed:190,alpha:.36+(1-night)*.16},{key:'mid',img:sprites.mid,speed:320,alpha:.5+(1-night)*.14},{key:'near',img:sprites.near,speed:490,alpha:.58+(1-night)*.12}];
+    ?[{key:'far',img:sprites.far,speed:210,alpha:.48+(1-night)*.26},{key:'mid',img:sprites.mid,speed:340,alpha:.62+(1-night)*.24}]
+    :[{key:'far',img:sprites.far,speed:190,alpha:.44+(1-night)*.24},{key:'mid',img:sprites.mid,speed:320,alpha:.60+(1-night)*.22},{key:'near',img:sprites.near,speed:490,alpha:.68+(1-night)*.18}];
   ctx.translate(w*.5,h*.5);ctx.rotate(spin);ctx.translate(-w*.5,-h*.5);
   const pad=sprites.size,pats=sheetPatterns(ctx);
   for(const layer of layers){
