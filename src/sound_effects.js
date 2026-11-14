@@ -36,7 +36,7 @@ export function railMotion(phase,p=0){
 export function impactProfile(speed,material='body'){
  if(!Number.isFinite(speed)||speed<18)return null;
  const strength=limit((speed-18)/240,0,1),kind={body:'crumple',concrete:'bumper',hull:'hull',gravel:'gravel',water:'water'}[material]||'bumper';
- return {kind,volume:.10+Math.sqrt(strength)*.42,rate:1.12-strength*.28,water:material==='hull'&&strength>.22?.07+strength*.13:0};
+ return {kind,volume:.10+Math.sqrt(strength)*.42,rate:1.12-strength*.28,water:material==='hull'&&strength>.22?.07+strength*.13:0,heavy:strength>.6?(strength-.6)*.75:0};
 }
 // Contact manifolds can fire every physics tick. A resting scrape must not turn
 // into a machine gun of crash sounds, or consume the whole effect voice budget.
@@ -47,8 +47,12 @@ export function createContactPlayer(clock,play){
   const t=clock(),source=event.source&&typeof event.source==='object'?event.source:null,previous=source&&bodies.get(source);
   if(t-last<.055||previous&&t-previous.time<.22&&event.speed<previous.speed*1.6)return false;
   const gain=limit(Number.isFinite(event.gain)?event.gain:1,0,1),pan=limit(Number.isFinite(event.pan)?event.pan:0,-1,1);
-  if(gain<.01||play(profile.kind,profile.volume*gain,pan,profile.rate)===false)return false;
+  // Small pitch jitter so repeated hits never sound cloned.
+  const jitter=1+(((t*7919)%1)-.5)*.09;
+  if(gain<.01||play(profile.kind,profile.volume*gain,pan,profile.rate*jitter)===false)return false;
   if(profile.water)play('water',profile.water*gain,pan,.91);
+  // Heavy road crashes get weight: a low second crumple and a glass tail.
+  if(profile.heavy>0&&(event.material==='body'||event.material==='concrete')){play('crumple',profile.heavy*gain,pan,.62*jitter);if(profile.heavy>.12)play('glass',profile.heavy*.55*gain,pan,.9+(((t*104729)%1)*.2));}
   last=t;if(source)bodies.set(source,{time:t,speed:event.speed});return true;
  };
 }

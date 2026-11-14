@@ -46,6 +46,7 @@ export function drawVehicleFinish(G, v, w, h, pose) {
     if(v.fwd< -5&&!v.dead&&!v.def.boat&&!v.def.bike){ctx.fillStyle='#d3f4ff';ctx.fillRect(-w*.24,h*.39,3,2);ctx.fillRect(w*.24-3,h*.39,3,2);}
     ctx.restore();return;
   }
+  // (tyres: see tyreArt)
   // A moving clear-coat highlight follows the car's angle to the city lights.
   ctx.globalCompositeOperation = 'screen';
   // Sixteen cached orientations avoid allocating a gradient for every car/frame.
@@ -58,12 +59,10 @@ export function drawVehicleFinish(G, v, w, h, pose) {
       if (front < 0) ctx.rotate(pose.wheel);
       // Painted tyre: rounded rubber, rolling tread bands, outer sidewall
       // light and a small alloy glint on the outside face.
-      ctx.fillStyle = '#0b1014'; ctx.beginPath(); ctx.roundRect(-2.9, -6.3, 5.8, 12.6, 2.2); ctx.fill();
-      ctx.fillStyle = '#2b343b'; ctx.fillRect(side < 0 ? -2.7 : 1.5, -5.2, 1.2, 10.4);
+      // Cached tyre sprite (side x 6 tread phases): one blit instead of seven
+      // path/rect fills per wheel, the bulk of per-car draw calls.
       const ph = (((v.visualTravel || 0) * .23) % 3 + 3) % 3;
-      ctx.fillStyle = 'rgba(112,124,132,.5)';
-      for (let k = -5.6 + ph; k < 5.4; k += 3) ctx.fillRect(-2.2, k, 4.4, .8);
-      ctx.fillStyle = 'rgba(222,231,238,.85)'; ctx.fillRect(side < 0 ? -2.9 : 2.1, -1.6, .9, 3.2);
+      ctx.drawImage(tyreArt(side, Math.floor(ph * 2) % 6), -3.5, -7, 7, 14);
       ctx.restore();
     }
     // Painted lenses are always present: pale headlamps, dark-red tail lamps
@@ -342,4 +341,15 @@ export function drawSpeedometer(G, x, y, w, h) {
   ctx.fillStyle='#263847';ctx.fillRect(x+70*u,y+39*u,w-82*u,2*u);
   ctx.fillStyle=health>.4?'#86cbb8':'#ff8d75';ctx.fillRect(x+70*u,y+39*u,(w-82*u)*health,2*u);
   ctx.restore();
+}
+
+const TYRES=new Map();
+function tyreArt(side,pi){
+  const key=side*10+pi;let c=TYRES.get(key);if(c)return c;
+  c=document.createElement('canvas');const K=4;c.width=7*K;c.height=14*K;const x=c.getContext('2d');x.scale(K,K);x.translate(3.5,7);
+  x.fillStyle='#0b1014';x.beginPath();x.roundRect(-2.9,-6.3,5.8,12.6,2.2);x.fill();
+  x.fillStyle='#2b343b';x.fillRect(side<0?-2.7:1.5,-5.2,1.2,10.4);
+  const ph=pi/2;x.fillStyle='rgba(112,124,132,.5)';for(let k=-5.6+ph;k<5.4;k+=3)x.fillRect(-2.2,k,4.4,.8);
+  x.fillStyle='rgba(222,231,238,.85)';x.fillRect(side<0?-2.9:2.1,-1.6,.9,3.2);
+  TYRES.set(key,c);return c;
 }

@@ -233,7 +233,9 @@ export function createAudio() {
   // only touch an AudioParam when the value really changes (keeps the automation timeline tiny)
   const set = (p, v, tc = 0.08) => { if (p._v === v || v!==0&&p._v!==undefined&&Math.abs(p._v-v)<Math.max(.002,Math.abs(v)*.01)) return; p._v = v; p.cancelScheduledValues(now()); p.setTargetAtTime(v, now(), tc); };
   // per-class engine character: base pitch, top pitch, filter openness, growl
-  const ENG = { hyper: [55, 230, 3800, 0.6], muscle: [32, 150, 1900, 0.9], sports: [48, 210, 3200, 0.6], sedan: [40, 140, 1500, 0.5], police: [40, 165, 2000, 0.6], bike: [62, 260, 3600, 0.4], boat: [30, 110, 900, 0.7] };
+  const ENG = { hyper: [55, 230, 3800, 0.6], muscle: [32, 150, 1900, 0.9], sports: [48, 210, 3200, 0.6], sedan: [40, 140, 1500, 0.5], police: [40, 165, 2000, 0.6], bike: [62, 260, 3600, 0.4], boat: [30, 110, 900, 0.7], heavy: [26, 96, 1150, 1.0] };
+  // Each model gets its own small, stable detune so two sedans never sound identical.
+  const engDetune=d=>{if(d._det==null){let h=0;for(const ch of String(d.sprite||d.name||""))h=(h*31+ch.charCodeAt(0))>>>0;d._det=1+((h%97)/96-.5)*.09;}return d._det;};
   A.setEngine = (on, rpm = 0.3) => { A._eng = on; A._rpm = rpm; };
   A.setRain = (amt) => { A._rain = amt || 0; };
 
@@ -367,10 +369,10 @@ export function createAudio() {
       set(E.rumble.g.gain,(heli?.15:.095)*rpm,.12);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
     } else if (inCar && A._eng !== false && !P.dead) {
       set(E.blade.gain,1,.15);set(E.bladeDepth.gain,0,.15);
-      const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind] || ENG.sedan;
+      const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind==="sedan"&&(P.def.mass||1)>=1.6 ? "heavy" : P.def.kind] || ENG.sedan;
       // Launches have a continuous propeller load, not four road-car gears.
       const rpm=engineMotion(P,G.input,engineMix).rpm;
-      const f = c[0] + (c[1] - c[0]) * rpm;
+      const f = (c[0] + (c[1] - c[0]) * rpm)*engDetune(P.def);
       set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
       set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
       set(E.g.gain, 0.05 + 0.07 * rpm, 0.08); set(E.rumble.g.gain, 0.12 * c[3], 0.1); set(E.rumble.f.frequency, 120 + 200 * rpm, 0.1);

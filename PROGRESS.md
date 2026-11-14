@@ -104,3 +104,13 @@
   - Strip 1964,3900 signal now attaches to its node.
   - Remaining warnings: 2 unsignalled Strip four-ways, 1 lane-count change at 2800,2620 (Palace Row, 1 lane + median to 2 lanes).
 - Desktop night: warm lamp spill + stronger light-map pools; static light map cached (see ROADMAP 15).
+
+## Pass 11 — optimisation on everything (preview only)
+
+- Desktop night: drawMarquees batches bulbs into one path per state; vehicle tyres use cached 28x56 sprites; warm lamp spill limited to 7 nearest pools. Per Strip night frame: fills 498 -> 101, fillRects 310 -> 92. e_misc 2.06 -> ~0.9 ms.
+- Real rAF loop (headless swiftshader, 16 s/scene): Strip 48.5 -> 53.7-53.9 fps, downtown 58.1 -> 56.6-59.2, midtown 57.3 -> 57.2-59.8. Still not a locked 60 headless; the remaining cost is the light map (l_map ~6.9 ms) and drawImage/save churn.
+- adaptRes: desktop sheds resolution from ~52 fps (phones keep 45) and won't retry a failed scale for 45 s.
+- Traffic: signal at the Strip x 1600 crossing. 4-minute full soak: 57.8 -> 63.6% moving, worst stall 59 -> 34 s. Signalling 2620 as well gridlocked the short link (119 s), so it was not kept.
+- Combat: 55 ms hit-stop on player kills, knockback on flinch (stays off solids/water), shake when hit and on kills.
+- Sound: heavy crashes add a low crumple and a glass tail; contact pitch jitter; vans/buses/ambulance get a heavy engine class; per-model engine detune.
+- Not done this pass: mission pacing, animation frames, centre-art variety, economy sinks.
