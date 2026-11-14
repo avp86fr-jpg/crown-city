@@ -49,10 +49,12 @@ export function createContactPlayer(clock,play){
   const gain=limit(Number.isFinite(event.gain)?event.gain:1,0,1),pan=limit(Number.isFinite(event.pan)?event.pan:0,-1,1);
   // Small pitch jitter so repeated hits never sound cloned.
   const jitter=1+(((t*7919)%1)-.5)*.09;
-  if(gain<.01||play(profile.kind,profile.volume*gain,pan,profile.rate*jitter)===false)return false;
+  // Mass: heavier bodies hit lower and fuller (bus ~1.8 drops ~14%, a bike ~0.6 rises ~13%).
+  const mass=limit(Number.isFinite(event.mass)?event.mass:1,.4,4),weight=Math.pow(mass,-.25),body=Math.min(1.35,.8+.2*mass);
+  if(gain<.01||play(profile.kind,Math.min(1,profile.volume*gain*body),pan,profile.rate*jitter*weight)===false)return false;
   if(profile.water)play('water',profile.water*gain,pan,.91);
   // Heavy road crashes get weight: a low second crumple and a glass tail.
-  if(profile.heavy>0&&(event.material==='body'||event.material==='concrete')){play('crumple',profile.heavy*gain,pan,.62*jitter);if(profile.heavy>.12)play('glass',profile.heavy*.55*gain,pan,.9+(((t*104729)%1)*.2));}
+  if(profile.heavy>0&&(event.material==='body'||event.material==='concrete')){play('crumple',Math.min(1,profile.heavy*gain*body),pan,.62*jitter*weight);if(profile.heavy>.12)play('glass',profile.heavy*.55*gain,pan,.9+(((t*104729)%1)*.2));}
   last=t;if(source)bodies.set(source,{time:t,speed:event.speed});return true;
  };
 }
@@ -115,7 +117,10 @@ export function createEffects(ctx,bus){
  const rate=24000,TAU=Math.PI*2;
  const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.2,smg:.24,shotgun:.62,echo:.9,distant:.7,dryfire:.09,ricochet:.36,metalHit:.22,flesh:.16,hitmark:.07,killmark:.16,casing:.26,glass:.4,skidChirp:.25,backfire:.2,clank:.5,foghorn:2.2,jetFar:2.6,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,stepSnow:.16,stepWater:.2,blowoff:.32,door:.22,doorShut:.18,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
  const varied=new Set(['pistol','smg','shotgun','ricochet','metalHit','flesh','casing','echo','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood','stepSnow','stepWater','door']);
- function sample(kind){
+ // Loudness trims from an offline RMS sweep (tools/sfx-loudness.mjs): footsteps on soft ground and the
+ // casino loss sting sat 4-7 dB under their siblings.
+ const TRIM={stepSnow:1.6,stepWater:1.5,casinoLose:1.8,casinoPush:1.3,blowoff:1.3};
+ function sample(kind){const trim=TRIM[kind]||1;
   const varying=varied.has(kind),variant=varying?(variations.get(kind)||0)%3:0,key=kind+variant;
   if(varying)variations.set(kind,variant+1);if(bank.has(key))return bank.get(key);
   const dur=durations[kind],n=Math.ceil(rate*dur),buffer=ctx.createBuffer(1,n,rate),a=buffer.getChannelData(0);let low=0,seed=4147+variant*977;
@@ -174,7 +179,7 @@ export function createEffects(ctx,bus){
    else if(kind==='deer')x=low*.5*Math.exp(-t*18);
    else if(kind==='water')x=low*1.7*Math.sin(Math.min(1,t/.08)*Math.PI/2)*Math.exp(-t*7);
    else x=(low*.6+Math.sin(t*2*Math.PI*340)*.3)*Math.exp(-t*120);
-   a[i]=Math.tanh(x)*Math.min(1,i/12)*Math.min(1,(n-i)/120);
+   a[i]=Math.tanh(x*trim)*Math.min(1,i/12)*Math.min(1,(n-i)/120);
   }bank.set(key,buffer);return buffer;
  }
  const play=(kind,volume=.4,pan=0,pitch=1)=>{

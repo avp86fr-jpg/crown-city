@@ -69,6 +69,8 @@ export function applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  if(W.expansion?.decor){const near=d=>d.kind==='rock'&&d.y>9850&&[9216,10624].some(x=>Math.abs(d.x-x)<(d.w||0)/2+340);
   for(const d of W.expansion.decor.filter(near))fillAny(d.x-d.w/2-20,d.y-d.h/2-20,d.w+40,d.h+40,CODE.dirt,c=>c===CODE.build);
   W.expansion.decor=W.expansion.decor.filter(d=>!near(d));W.expansion.obstacles=(W.expansion.obstacles||[]).filter(o=>!(o.y>9850&&o.y<10240&&[9216,10624].some(x=>Math.abs(o.x+o.w/2-x)<330)));}
+ // district fit: no cacti in the snow band, desert scrub thins out before the snowline
+ if(W.expansion?.decor)W.expansion.decor=W.expansion.decor.filter(d=>!(d.kind==='cactus'&&d.y>9950||d.kind==='scrub'&&d.y>10080));
  // painted decor is drawn from spatial bins: drop removed items there too
  if(W.expansion?.decorBins){const keep=new Set(W.expansion.decor);for(const [k,arr] of W.expansion.decorBins)W.expansion.decorBins.set(k,arr.filter(p=>keep.has(p)));}
  // lake ice (drivable, slick), then roads, plaza
@@ -77,6 +79,8 @@ export function applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  fillAny(9300,10704,1250,40,CODE.walk);fillAny(9300,10888,1250,40,CODE.walk);
  for(const r of roadRects)fillAny(r.x,r.y,r.w,r.h,CODE.road);
  fillAny(PLAZA.x,PLAZA.y,PLAZA.w,PLAZA.h,CODE.road);
+ // the flagstone viewpoint below the parking apron is a pedestrian terrace
+ fillAny(PLAZA.x+8,PLAZA.y+222,PLAZA.w-16,PLAZA.h-230,CODE.walk); // flagstone strip south of the turnaround road
  const segs=[];const push=(pts)=>{for(let i=1;i<pts.length;i++){const [ax,ay]=pts[i-1],[bx,by]=pts[i];const v=ax===bx;
   segs.push(v?{v:true,c:ax,a:Math.min(ay,by)-(ay===9872||by===9872?72:0),b:Math.max(ay,by),w:RW,lanes:1,med:0,k:'alpine'}:{v:false,c:ay,a:Math.min(ax,bx),b:Math.max(ax,bx),w:RW,lanes:1,med:0,k:'alpine'});}};
  push(LOOP);push(CLIMB);
@@ -108,7 +112,7 @@ export function applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  for(let i=0;i<26;i++)addCliff(5600+rnd()*2600,11400+rnd()*1800,40+rnd()*60,30+rnd()*40);
  // summit observatory (landmark), lift pylons
  fillAny(OBS.x-OBS.r*.8,OBS.y-OBS.r*.8,OBS.r*1.6,OBS.r*1.6,CODE.build);
- A.spots=A.chalets.map(C=>[C.x+C.w/2,C.front==='S'?C.y+C.h+34:C.y-34]).concat([[PLAZA.x+60,PLAZA.y+60],[PLAZA.x+PLAZA.w-60,PLAZA.y+60]]);
+ A.spots=A.chalets.map(C=>[C.x+C.w/2,C.front==='S'?C.y+C.h+34:C.y-34]).concat([[PLAZA.x+80,PLAZA.y+240],[PLAZA.x+PLAZA.w-90,PLAZA.y+245],[PLAZA.x+PLAZA.w/2,PLAZA.y+250],[PLAZA.x+40,PLAZA.y+235]]);
  A.pylons=[];for(let i=1;i<LIFT.length;i++){const [ax,ay]=LIFT[i-1],[bx,by]=LIFT[i];for(let t=0;t<1;t+=.34){const x=ax+(bx-ax)*t,y=ay+(by-ay)*t;if(roadNear(x,y,26)||railNear(x,y,20))continue;A.pylons.push({x,y});fillAny(x-8,y-8,16,16,CODE.build);}}
  const villageR={x:9150,y:10380,w:1560,h:880};
  const pineOK=(x,y)=>{if(y<H0+60||x<coastX(y)+120||x>11800||y>13230)return false;if(roadNear(x,y,48)||railNear(x,y,26)||lakeV(x,y)<1.25)return false;if(inR(x,y,villageR,0)&&!(x<9200||x>10690))return false;
@@ -272,13 +276,22 @@ function snowRoof(c,x,y,w,h,ridgeV,roof,r){
  if(!ridgeV){const ry=y+h*.45,g1=c.createLinearGradient(0,y,0,ry),g2=c.createLinearGradient(0,ry,0,y+h);
   g1.addColorStop(0,'#bccde2');g1.addColorStop(1,'#d9e4f0');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#eaf1f8');
   c.fillStyle=g1;c.fillRect(x+ins,y+ins,w-ins*2,ry-y-ins);c.fillStyle=g2;c.fillRect(x+ins,ry,w-ins*2,y+h-ins-ry);
-  c.fillStyle='rgba(110,132,170,.6)';c.fillRect(x+ins,ry-1.5,w-ins*2,2.5);c.fillStyle='#ffffff';c.fillRect(x+ins,ry+1,w-ins*2,1.5);
+  c.fillStyle='rgba(110,132,170,.6)';c.fillRect(x+ins,ry-1.5,w-ins*2,2.5);c.fillStyle='#ffffff';c.fillRect(x+ins,ry+1,w-ins*2,1.5);snowLoad(c,x+ins,y+ins,w-ins*2,ry-y-ins-3,r,.75);snowLoad(c,x+ins,ry+4,w-ins*2,y+h-ins-ry-4,r,1);
   c.fillStyle=shade(roof,-.1);c.fillRect(x-9,ry-3,6,6);c.fillRect(x+w+3,ry-3,6,6);ridgeCap(c,x+ins-6,ry-3,w-ins*2+12,6,roof,r);bare(c,x+ins,ry+6,w-ins*2,y+h-ins-ry-6,roof,r);return ry;}
  const rx=x+w*.5,g1=c.createLinearGradient(x,0,rx,0),g2=c.createLinearGradient(rx,0,x+w,0);
  g1.addColorStop(0,'#bccde2');g1.addColorStop(1,'#d9e4f0');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#eaf1f8');
  c.fillStyle=g1;c.fillRect(x+ins,y+ins,rx-x-ins,h-ins*2);c.fillStyle=g2;c.fillRect(rx,y+ins,x+w-ins-rx,h-ins*2);
- c.fillStyle='rgba(110,132,170,.6)';c.fillRect(rx-1.5,y+ins,2.5,h-ins*2);c.fillStyle='#fff';c.fillRect(rx+1,y+ins,1.5,h-ins*2);ridgeCap(c,rx-3,y+ins-6,6,h-ins*2+12,roof,r);bare(c,rx+6,y+ins,x+w-ins-rx-6,h-ins*2,roof,r);return null;
+ c.fillStyle='rgba(110,132,170,.6)';c.fillRect(rx-1.5,y+ins,2.5,h-ins*2);c.fillStyle='#fff';c.fillRect(rx+1,y+ins,1.5,h-ins*2);snowLoad(c,x+ins,y+ins,rx-x-ins-3,h-ins*2,r,.75);snowLoad(c,rx+4,y+ins,x+w-ins-rx-4,h-ins*2,r,1);ridgeCap(c,rx-3,y+ins-6,6,h-ins*2+12,roof,r);bare(c,rx+6,y+ins,x+w-ins-rx-6,h-ins*2,roof,r);return null;
 }
+// uneven snow load: deeper drifts (shadowed lee edge), thin crust where wind scoured, and sastrugi ripples,
+// so a roof centre reads as packed snow rather than a flat white card
+function snowLoad(c,x,y,w,h,r,lit){if(w<14||h<14)return;c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
+ const n=2+Math.floor(r()*3);for(let k=0;k<n;k++){const px=x+w*r(),py=y+h*r(),rw=w*(.18+r()*.25),rh=h*(.14+r()*.22),g=c.createRadialGradient(px,py,0,px,py,Math.max(rw,rh));
+  const deep=r()<.55;g.addColorStop(0,deep?`rgba(150,170,205,${(.22*lit).toFixed(2)})`:`rgba(255,255,255,${(.5*lit).toFixed(2)})`);g.addColorStop(1,'rgba(150,170,205,0)');
+  c.fillStyle=g;c.beginPath();c.ellipse(px,py,rw,rh,r()*.6-.3,0,TAU);c.fill();}
+ c.strokeStyle=`rgba(120,142,180,${(.16+.1*(1-lit)).toFixed(2)})`;c.lineWidth=1;const step=7+r()*4,ang=.25+r()*.3;
+ for(let o=-h;o<w+h;o+=step){c.beginPath();const ox=x+o;c.moveTo(ox,y);for(let t=0;t<=1.01;t+=.25)c.lineTo(ox+t*h*ang+Math.sin((t+o)*5)*2,y+t*h);c.stroke();}
+ c.fillStyle='rgba(255,255,255,.55)';for(let k=0;k<w*h/260;k++)c.fillRect(x+r()*w,y+r()*h,1.2,1.2);c.restore();}
 // dark timber ridge beam with snow crumbs
 function ridgeCap(c,x,y,w,h,roof,r){c.fillStyle=shade(roof,-.4);c.fillRect(x,y,w,h);c.fillStyle=shade(roof,.1);c.fillRect(x+1,y+1,w>h?w-2:2,w>h?1.5:h-2);c.fillStyle='rgba(245,249,253,.9)';for(let k=0;k<Math.max(w,h)/14;k++){const t=r();c.fillRect(w>h?x+t*w:x+1,w>h?y+1:y+t*h,3,3);}}
 // wind-scoured patches on the sunny slope where shingles show through

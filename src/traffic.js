@@ -278,16 +278,18 @@ export function createTraffic(G) {
     const dx=p.x-from.x,dy=p.y-from.y;p.x=from.x+dx*blend;p.y=from.y+dy*blend;
     p.rot=Math.atan2(p.dx+dx*6*u*(1-u)/(m.length||140),-(p.dy+dy*6*u*(1-u)/(m.length||140)));return p;
   }
-  function passParked(v,gap){
+  function passParked(v,gap,force=null){
     const tr=v.tr,e=tr.e;
-    if(tr.turn||tr.merge||tr.backoff!=null||tr.reserved!=null||e.lanes<2||gap>240||tr.s<180||e.len-tr.s<300)return;
+    if(tr.turn||tr.merge||tr.backoff!=null||tr.reserved!=null||e.lanes<2||!force&&gap>240||tr.s<180||e.len-tr.s<300)return;
     if((tr.passCheck||0)>G.ticks)return;tr.passCheck=G.ticks+30;
     const hx=tr.fwd?e.dx:-e.dx,hy=tr.fwd?e.dy:-e.dy;
     // Overtake parked/stalled cars and slow heavy traffic (buses, vans) cruising well under our speed.
     const slowHeavy=o=>o.traffic&&o.tr&&o.tr.waitSince==null&&o.tr.reserved==null&&(o.kind==='bus'||o.kind==='van'||o.kind==='gulf')&&Math.hypot(o.vx||0,o.vy||0)<Math.max(20,tr.spd*.6);
     const parked=nearby(v.x+hx*180,v.y+hy*180,240,o=>o!==v&&o.def&&((o.dead||!o.traffic&&!o.ai&&!o.cop)&&Math.hypot(o.vx||0,o.vy||0)<3||slowHeavy(o))&&(o.x-v.x)*hx+(o.y-v.y)*hy>0&&Math.abs((o.x-v.x)*hy-(o.y-v.y)*hx)<bodySize(v).w+bodySize(o).w);
-    if(!parked)return;
-    for(const lane of [tr.lane-1,tr.lane+1]){
+    if(!parked&&!force)return;
+    // Making way for a siren: step to the lane away from its line.
+    const sirenOff=force?laneOff(e,tr.lane)+force.side:0,lanes=force?[tr.lane-1,tr.lane+1].sort((a,b)=>Math.abs(laneOff(e,b)-sirenOff)-Math.abs(laneOff(e,a)-sirenOff)):[tr.lane-1,tr.lane+1];
+    for(const lane of lanes){
       if(lane<0||lane>=e.lanes)continue;
       // A clear lane now can still contain a fast car arriving during the
       // merge. Predict relative motion before indicating or taking its space.
@@ -484,7 +486,12 @@ export function createTraffic(G) {
         // legitimate wait, not gridlock: keep it out of the stuck timer.
         const lead=tr.turn?null:aheadObj;
         v.redQueue=!!(tr.waitSince!=null&&!lightGreen(G,tr.fwd?tr.e.B:tr.e.A,tr.e))||(gap<40&&lead&&lead.traffic&&lead.redQueue&&lead.tr?.e===tr.e);
-        passParked(v,gap);
+        // Emergency vehicles: a siren closing from behind makes the car slow
+        // and move out of its line (lane change when there is a second lane).
+        if(G.ticks!==G._sirenTick){G._sirenTick=G.ticks;G._sirens=G.vehicles.filter(o=>o.siren&&!o.dead&&o!==v&&Math.hypot(o.vx||0,o.vy||0)>60);}
+        let em=null;for(const o of G._sirens){if(o===v)continue;const dx=o.x-v.x,dy=o.y-v.y,along=dx*hx+dy*hy,side=dx*hy-dy*hx;if(along<-30&&along>-380&&Math.abs(side)<70&&((o.vx||0)*hx+(o.vy||0)*hy)>Math.hypot(v.vx||0,v.vy||0)*.8){em={side:-side};break;}}
+        v.yielding=!!em;if(em){want=Math.min(want,cruise*.45);G.aiStats&&(G.aiStats.yields=(G.aiStats.yields||0)+1);}
+        passParked(v,gap,em);
         // Deadlock breaker: two or three cars that block each other nose to
         // nose (a junction knot), or a car stuck behind a stalled non-traffic
         // wreck out of view, briefly ignores the blocker and threads through.

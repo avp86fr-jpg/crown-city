@@ -1650,7 +1650,7 @@ function tickDrive(G, v, input, dt, isPlayer) {
     break;
   }
   if(impact>70 && !(v.impactT>0)){
-    v.impactT=.35;if(isPlayer){recordIncident(G,'collision');if(G.audio.contact)G.audio.contact({speed:impact,material:v.def.boat?'hull':'concrete',source:v,x:v.x,y:v.y});else G.audio.crash();addShake(G,Math.min(9,impact/24));}
+    v.impactT=.35;if(isPlayer){recordIncident(G,'collision');if(G.audio.contact)G.audio.contact({speed:impact,material:v.def.boat?'hull':'concrete',source:v,x:v.x,y:v.y,mass:v.def.mass||1});else G.audio.crash();addShake(G,Math.min(9,impact/24));}
     damageVeh(G,v,impact/(v.def.boat?18:12),isPlayer,impactPoint);
     for(let i=0;i<(G.settings.quality==='low'?3:8);i++)G.particles.push({kind:v.def.boat?'splash':'spark',x:v.x,y:v.y,vx:(Math.random()-.5)*160,vy:(Math.random()-.5)*160,life:.25});
   }
@@ -1761,7 +1761,9 @@ function tickCollisions(G) {
           if(playerImpact>50 && playerImpact>otherImpact)recordIncident(G,'collision');
           const atFault=playerImpact>50&&playerImpact>otherImpact;
           damageVeh(G,a,imp/14,atFault,{x:a.x+best.nx*a.r,y:a.y+best.ny*a.r});damageVeh(G,b,imp/14,atFault,{x:b.x-best.nx*b.r,y:b.y-best.ny*b.r});
-          if (a === P || b === P) { if(G.audio.contact)G.audio.contact({speed:imp,material:a.def.boat||b.def.boat?'hull':'body',source:P,x:(a.x+b.x)/2,y:(a.y+b.y)/2});else G.audio.crash();addShake(G, Math.min(12, imp / 22)); }
+          if (a === P || b === P) { if(G.audio.contact)G.audio.contact({speed:imp,material:a.def.boat||b.def.boat?'hull':'body',source:P,x:(a.x+b.x)/2,y:(a.y+b.y)/2,mass:Math.max(a.def.mass||1,b.def.mass||1)});else G.audio.crash();addShake(G, Math.min(12, imp / 22)); }
+          // AI-on-AI crashes are heard too, positioned (the contact player handles distance and rate limits).
+          else if (imp > 90 && G.audio.contact) G.audio.contact({speed:imp*.8,material:a.def.boat||b.def.boat?'hull':'body',source:a,x:(a.x+b.x)/2,y:(a.y+b.y)/2,mass:Math.max(a.def.mass||1,b.def.mass||1)});
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
           for (let k = 0; k < (G.settings.quality==='low'?3:8); k++) G.particles.push({ kind: a.def.boat||b.def.boat?"splash":"spark", x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.2 });
           // only the player's fault if they were the one ramming (cops pinning you is not a new crime)
@@ -2171,9 +2173,14 @@ function tickCops(G, dt) {
     if (Math.abs(diff) > 1.4 && fwd > 120) y = -0.6;
     // stuck recovery
     c.stuckT = y>0&&!c.crewOut&&!(P.type==="foot"&&los&&dist<180)&&Math.abs(fwd) < 18 ? (c.stuckT || 0) + dt : 0;
-    if (c.stuckT > 1.1) { c.reverseT = 0.9; c.stuckT = 0; }
+    if (c.stuckT > 1.1) { c.reverseT = 0.9; c.stuckT = 0; c.unstick = (c.unstick || 0) + 1; c.unstickAt ??= G.ticks;
+      // Repeated reversing in the same spot: alternate the escape turn, then, out of view, re-route
+      // the unit to the nearest clear road point instead of grinding against the wall.
+      c.reverseSide = c.unstick % 2 ? 1 : -1;
+      if (c.unstick >= 4 && G.ticks - c.unstickAt < 600 && !(Math.abs(c.x - G.cam.x) < 760 && Math.abs(c.y - G.cam.y) < 460)) { const s2 = findSafe(G, c.x, c.y, 12, false); if (s2) { c.x = s2.x; c.y = s2.y; c.vx = c.vy = 0; } c.unstick = 0; c.unstickAt = null; G.aiStats && (G.aiStats.copUnstuck = (G.aiStats.copUnstuck || 0) + 1); } }
+    if (c.unstickAt != null && G.ticks - c.unstickAt > 600) { c.unstick = 0; c.unstickAt = null; }
     let x = clamp(diff * 2.2, -1, 1);
-    if (c.reverseT > 0) { c.reverseT -= dt; y = -0.8; x = -x; }
+    if (c.reverseT > 0) { c.reverseT -= dt; y = -0.8; x = c.unstick > 1 ? c.reverseSide || -x : -x; }
     // on-foot suspect: stop nearby and get out
     const footTarget = P.type === "foot";
     if (footTarget && los && dist < 150) { y = fwd > 20 ? -1 : 0; }
@@ -3049,7 +3056,8 @@ function drawWorld(G) {
   G.canvas=off;G.ctx=off.getContext('2d',{alpha:false});
   G.ctx.setTransform(1,0,0,1,0,0);G.ctx.globalAlpha=1;G.ctx.globalCompositeOperation='source-over';G.ctx.fillStyle='#0b151c';G.ctx.fillRect(0,0,off.width,off.height);
   try{renderWorldLayer(G);}finally{G.canvas=canvas;G.ctx=ctx;}
-  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality=G.settings.quality==='low'?'low':'medium';ctx.drawImage(off,0,0,canvas.width,canvas.height);
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;// a mild downscale (>=70%) upsamples with the cheap bilinear filter; 'medium' only pays off for large ratios
+  ctx.imageSmoothingQuality=G.settings.quality==='low'||G.worldWidth>=canvas.width*.7?'low':'medium';ctx.drawImage(off,0,0,canvas.width,canvas.height);
 }
 function renderWorldLayer(G) {
   if(G.settings.quality==='low')return drawMobileWorld(G,{viewRect,worldXform,drawVeh,drawChar,drawParticles,drawObjectiveGround,drawObjectiveBeacon,drawStreetWaypoint,drawAimGuide,drawHeli,drawAirborne});
@@ -3175,7 +3183,7 @@ function renderWorldLayer(G) {
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
   _ph('l_misc');if(!G._lmBaked)drawGrade(G);_ph('l_grade');
-  if(!(G.dbg&&G.dbg.noRain)&&!(G.alpineMix>.6))drawRainOverlay(G);
+  if(!(G.dbg&&G.dbg.noRain)){const m=G.alpineMix||0;if(m<.6){const ra=G.rainAmt;G.rainAmt=ra*(1-m/.6);try{drawRainOverlay(G);}finally{G.rainAmt=ra;}}} // rain thins into the snowfall across the snowline
   drawSnowfall(G);
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }

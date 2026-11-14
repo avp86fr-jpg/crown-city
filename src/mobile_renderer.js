@@ -163,7 +163,7 @@ export function drawMobileWorld(G,H) {
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);if(!(G.dbg&&G.dbg.noRain))drawRainGround(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);
-  if(!(G.dbg&&G.dbg.noRain)&&!(G.alpineMix>.6))drawRainOverlay(G);
+  if(!(G.dbg&&G.dbg.noRain)){const m=G.alpineMix||0;if(m<.6){const ra=G.rainAmt;G.rainAmt=ra*(1-m/.6);try{drawRainOverlay(G);}finally{G.rainAmt=ra;}}} // rain thins into the snowfall across the snowline
   drawSnowfall(G);
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,bakedSheets:G.bakedWorld?.sheets.size||0,bakedReady:G.bakedWorld?.ready||0,bakedBytes:G.bakedWorld?.bytes||0,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};

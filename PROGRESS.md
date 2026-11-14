@@ -157,3 +157,12 @@
 - Vehicle audio (`src/vehicle_voice.js`): 15 model voices, per-model gear model, load-based tone/engine braking, turbo spool + blow-off, horns per model, tyre voice per surface (asphalt/dirt/sand/snow/ice), 3 spatialised AI engine voices with doppler (2 on low tier), door open/shut, snow/water footsteps, mountain wind and hushed city beds in the snow.
 - Story scoring (`src/story_score.js`): per-job points + S/A/B/C (time, accuracy, stunts/near misses/drifts, heat, damage, collateral), painted results card with count-up and sting, best per job + best total in the story save only, STORY SCORE in pause menu and stats card, end-of-story final score card, live NEAR MISS / DRIFT combo pop-up. Tests in `tests/story_score.test.js`.
 - Mobile audio unlock retries on later gestures until the context is running.
+
+## Pass 18 (preview)
+- Rain overlay fades out above the snowline (alpineMix 0→.6), snow takes over; desktop + mobile renderer.
+- Summit plaza: flagstone half painted as walk surface; plaza ped spots moved onto it. Snow-band cactus/scrub decor filtered (15→1 cacti, 42→31 scrub).
+- Lane-drop tapers at x=10000: tried and reverted — the drops sit inside signalised junctions; a taper overlapped the crosswalk.
+- Emergency right of way: AI cars ahead of a closing siren move to the far lane (passParked force) and slow to 45% cruise (aiStats.yields). Cops stuck 4× within 10 s off-screen are relocated to a safe road point (aiStats.copUnstuck).
+- Collision sounds scale by mass (pitch mass^-.25, body .8+.2·mass); AI-on-AI crashes now audible. Loudness sweep (tools/sfx-loudness.mjs): no sample clips (max peak −0.4 dBFS); soft footsteps, casino loss/push and blow-off trimmed up 2–5 dB.
+- Final world upscale uses the cheap filter when render scale ≥70% (Strip desktop cost).
+- Chalet roof centres: painted snow-load drifts, scoured crust and sastrugi ripples.
