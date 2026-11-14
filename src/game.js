@@ -54,7 +54,7 @@ import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from 
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
-import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail, drawStatsCard } from './open_world.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail, drawStatsCard, drawPrimer } from './open_world.js';
 import { tickPursuit, drawPursuit, drawRadio, laySpikes } from './pursuit.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
@@ -3629,6 +3629,8 @@ function drawPedAccessory(ctx,a,dx,dy,dw,dh,moving){
 const HAT_COL=['#2d3a4f','#a8432f','#d8c9a3','#3e5a3a','#6b4a7a','#1f1f24','#c79b3b','#e8e2d4','#7a2f3f'];
 function drawPedHat(ctx,a,dx,dy,dw,dh){
  if(a.hat===undefined){const h=(Math.abs(Math.sin((a.id||0)*37.3+a.x*.021+a.y*.017)*4517.9))%1;a.hat=h<.38?['cap','sun','beanie','fedora','cap','sun'][Math.floor(h/.38*6)]:'';a.hatCol=HAT_COL[Math.floor(h*731)%HAT_COL.length];}
+ if(a.scarf===undefined){const h2=(Math.abs(Math.sin((a.id||0)*13.7+a.y*.011)*7919.1))%1;a.scarf=h2<.16?HAT_COL[Math.floor(h2*97)%HAT_COL.length]:'';}
+ if(a.scarf){const sx=dx+dw/2,sy=dy+dh*.22,sw=dw*.24;ctx.save();ctx.fillStyle=a.scarf;ctx.strokeStyle='rgba(10,12,16,.45)';ctx.lineWidth=.7;ctx.beginPath();ctx.ellipse(sx,sy,sw,sw*.38,0,0,TAU);ctx.fill();ctx.stroke();const side=(a.id||0)%2?1:-1;ctx.fillRect(sx+side*sw*.35-1.2,sy,2.4,dh*.12);ctx.restore();}
  if(!a.hat)return;
  const cx=dx+dw/2,cy=dy+dh*.115,hx=Math.sin(a.rot||0),hy=-Math.cos(a.rot||0),w=dw*.26;
  ctx.save();ctx.strokeStyle='rgba(10,12,16,.55)';ctx.lineWidth=.8;ctx.fillStyle=a.hatCol;
@@ -3712,7 +3714,7 @@ function drawHitMark(G){
   c.strokeStyle=m.kill?'#ff4d5e':'#fff6df';c.lineWidth=2;c.stroke();c.restore();
 }
 function drawAimGuide(G){
-  drawHitMark(G);drawRadio(G);drawStatsCard(G);
+  drawHitMark(G);drawRadio(G);drawStatsCard(G);drawPrimer(G);
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
   const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);

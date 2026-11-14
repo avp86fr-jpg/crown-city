@@ -48,9 +48,9 @@ export function tickWakes(G,dt){
 function drawWakes(G,r){
  const W=G.wakes;if(!W?.length)return;const foam=foamTex();if(!foam)return;const c=G.ctx;c.save();
  for(const w of W){if(w.x<r.x0-80||w.x>r.x1+80||w.y<r.y0-80||w.y>r.y1+80)continue;
-  const k=w.age/3,a=(1-k)*(1-k)*(.35+.5*w.s),sx=Math.cos(w.rot),sy=Math.sin(w.rot),spread=5+w.age*26*(.5+w.s),sz=8+w.age*9;
+  const k=w.age/3,a=Math.min(1,(1-k)*(1-k)*(.6+.6*w.s)),sx=Math.cos(w.rot),sy=Math.sin(w.rot),spread=6+w.age*30*(.5+w.s),sz=13+w.age*12;
   c.globalAlpha=a*.9;c.drawImage(foam,w.x-sz*.6,w.y-sz*.6,sz*1.2,sz*1.2);
-  c.globalAlpha=a*.75;for(const side of [-1,1]){const x=w.x+sx*spread*side,y=w.y+sy*spread*side,q=6+w.age*5;c.drawImage(foam,x-q/2,y-q/2,q,q);}
+  c.globalAlpha=a*.75;for(const side of [-1,1]){const x=w.x+sx*spread*side,y=w.y+sy*spread*side,q=10+w.age*7;c.drawImage(foam,x-q/2,y-q/2,q,q);}
  }c.restore();
 }
 export function drawWaterMotion(G,r){

@@ -70,3 +70,14 @@
 - Bus livery (teal stripes, gold pinline, panel seams, route board); bus/van tyres pulled inside the body.
 - Economy: PAINT JOB / 300 at workshops (cosmetic). Respray stand-down cops now rejoin traffic instead of parking in lanes.
 - Mobile benchmark: perf.cjs syncs each frame with a canvas readback and supports THROTTLE (CDP CPU throttling); 6× gives 32–51 fps on the mobile low path.
+
+## Pass 8 — every open roadmap item (preview only)
+- Explosions: white-hot core flash, fast shock ring + slower dust ring, tumbling debris that bounces and stays 30 s, painted flame tongues burning 3–5 s on the scorch, cracked scorch decal with embers; water blasts throw a collapsing white column and three spreading rings.
+- Sea: boat foam wakes (bounded stern samples spreading into a V over 3 s).
+- Vehicles: armoured van repainted navy (glass kept dark) with roof ID plate, amber beacons and rear chevrons; bike red/contrast lift.
+- Crowd: caps, sun hats, beanies and fedoras (~38%), scarves (~16%). Chaos: sprint after-image + boot dust, white hit flash, red visor glow at night/while aiming that lights the night pass.
+- Open world: 3 city ramps (Port Royale, Midtown), 30 painted landmarks on empty lawns/lots/sand/dirt (solid to the player, discoverable), 8 properties 1,500–12,500 chips (stand on the marker to buy; safehouse clears heat, rent 3% every 3 min), CITY LIFE stats card with completion %, three-card first-play primer.
+- Cops: spike strips ahead of 3★+ roadblocks (flat tyres: half speed, sparks; repair/respray fixes), dispatch radio line when heat rises.
+- Traffic: deadlock breaker (nose-to-nose / 3-car knots, out-of-view stalled blockers). Strip+downtown at 17:30, 40 s: gridlock>20 s 10→7, stuck>20 s 21→12.
+- Audio: two new original compositions (tools/compose-pass8.py: OPEN ROAD 89.3, TIDE FM 93.5) plus the unused AFTER HOURS track; radio dial 3→6; harbour piece on night beaches/piers.
+- Mobile night: veil folded into the multiply grade, cached headlight beam sprite, 10 lamp pools instead of 22. Synchronous render benchmark (no throttle): night 2.98→2.75 ms median (noisy); throttled rAF fps runs vary 25–45 between identical runs, so not used as evidence.

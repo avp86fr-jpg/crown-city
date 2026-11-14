@@ -128,7 +128,7 @@ export function tickOpenWorld(G,dt){
   if(P.type==='veh'&&o.ramps?.some(r=>Math.hypot(P.x-r.x,P.y-r.y)<560))hint('ramp','Stunt ramp nearby: hit it fast and straight for a jump bonus.');
   if(P.type==='veh'&&P.kind==='taxi'&&(G.freeRoam||G.mode==='freeride'))hint('taxi','Taxi: stop at the kerb for a couple of seconds to pick up a fare.');
  }
- tickJumps(G,dt);tickCityLife(G,dt);
+ tickJumps(G,dt);tickCityLife(G,dt);tickPrimer(G,dt);
  // caches
  for(const c of o.caches){if(o.got.has(c.id))continue;if(Math.abs(P.x-c.x)<26&&Math.abs(P.y-c.y)<26){o.got.add(c.id);reward(G,c.x,c.y,150,`Hidden chip cache ${o.got.size}/${o.caches.length} found`);if(o.got.size===o.caches.length)reward(G,c.x,c.y,2500,'Every cache in Crown City found!');owSave(G);}}
  // speed traps
@@ -299,3 +299,18 @@ export function drawStatsCard(G){
  c.font=`600 ${12*s}px system-ui`;rows.forEach(([k,v],i)=>{const yy=y+(46+i*19)*s;c.fillStyle='#9fb0bc';c.textAlign='left';c.fillText(k,x+16*s,yy);c.fillStyle='#eef2f5';c.textAlign='right';c.fillText(v,x+w-16*s,yy);});
  c.restore();
 }
+// First-run primer: three short cards (moving, the phone/crew board and heat,
+// free-roam activities), mobile or desktop wording, shown once per profile.
+const TUT=m=>[
+ ['WELCOME TO CROWN CITY',m?['Left stick: walk or steer · CAR: get in or out','AIM / FIRE: hold to aim, release to fire · RUN: sprint','MAP top right · pause II for story, crew and settings']:['WASD / arrows: walk or drive · E: get in or out of a car','Mouse: aim and fire · Shift: sprint · Space: drift · Q/X: weapon, reload','M: map · C: crew board · R: radio (six stations) · Esc: pause']],
+ ['HEAT AND THE CREW',['Stars are heat. Break line of sight to let them fade.','Workshops: repair, respray to lose heat, tune, paint and fix spiked tyres.','Roadblocks at 3+ stars may lay spike strips. Owned safehouses clear heat.']],
+ ['CITY LIFE',['Hidden chip caches glint against walls; speed traps pay at 110+ km/h.','Ramps launch you; FOR SALE houses become safehouses that pay rent.','Pause → CITY LIFE shows your stats and completion.']],
+];
+export function tickPrimer(G,dt){const o=G.ow;if(!o||G.scene!=='play')return;
+ if(!o.hints.primer&&!(G.vn?.t>0)&&G.ticks>90){o.hints.primer=1;G.primer={i:0,t:6.5};owSave(G);}
+ const p=G.primer;if(!p)return;p.t-=dt;if(p.t<=0){p.i++;p.t=6.5;if(p.i>=3)G.primer=null;}}
+export function drawPrimer(G){const p=G.primer;if(!p||G.scene!=='play')return;const card=TUT(!!G.touch)[p.i],c=G.ctx,W=G.canvas.width,Hc=G.canvas.height,s=Math.max(1,Math.min(2.2,Math.min(W/760,Hc/460)));
+ const w=Math.min(W-20,440*s),h=(40+card[1].length*20+16)*s,x=(W-w)/2,y=Hc*.18,a=Math.min(1,(6.5-p.t)*3,p.t*2);
+ c.save();c.setTransform(1,0,0,1,0,0);c.globalAlpha=a;c.fillStyle='rgba(10,16,22,.9)';c.fillRect(x,y,w,h);c.fillStyle='#f2c14e';c.fillRect(x,y,4*s,h);
+ c.textAlign='left';c.textBaseline='middle';c.font=`800 ${14*s}px system-ui`;c.fillText(card[0],x+16*s,y+20*s);c.fillStyle='#9fb0bc';c.font=`600 ${10*s}px system-ui`;c.textAlign='right';c.fillText(`${p.i+1} / 3`,x+w-14*s,y+20*s);
+ c.textAlign='left';c.fillStyle='#e8eef4';c.font=`500 ${12*s}px system-ui`;card[1].forEach((t,i)=>c.fillText(t,x+16*s,y+(44+i*20)*s,w-30*s));c.restore();}
