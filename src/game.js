@@ -2158,6 +2158,10 @@ function tickCops(G, dt) {
     const pv = P.type === "veh" ? { x: P.vx, y: P.vy } : { x: 0, y: 0 };
     const los = !airborne(P) && !P.def?.boat && dist < 520 && G.nav.clearLine(c.x, c.y, P.x, P.y);
     if (los) { tx = P.x + pv.x * Math.min(0.8, dist / 400); ty = P.y + pv.y * Math.min(0.8, dist / 400);
+      // From three stars a unit solves for the intercept point (where the suspect will be when the cruiser
+      // gets there) and drives to cut it off, instead of a fixed short lead.
+      if(G.wanted>=3&&P.type==='veh'){const ps=Math.hypot(pv.x,pv.y);if(ps>120){const cs=Math.max(240,Math.hypot(c.vx||0,c.vy||0));let t=dist/cs;for(let k=0;k<3;k++)t=Math.min(1.6,Math.hypot(P.x+pv.x*t-c.x,P.y+pv.y*t-c.y)/cs);
+        const ix=P.x+pv.x*t,iy=P.y+pv.y*t;if(G.nav.clearLine(c.x,c.y,ix,iy)){tx=ix;ty=iy;if(G.aiStats)G.aiStats.intercepts=(G.aiStats.intercepts||0)+1;}}}
       // From two stars, every other unit flanks: it aims for a point beside and
       // ahead of the suspect instead of queueing behind the first cruiser.
       const idx=G.cops.indexOf(c);
@@ -2474,13 +2478,17 @@ function tickPeds(G, dt, playerImpacts=true) {
     if (p.flee > 0) {
       p.flee -= dt;
       const tx = p.threatX ?? pl.x, ty = p.threatY ?? pl.y;
+      // believable flight: a short startle (turn toward the noise, freeze), a personal sprint pace, then
+      // easing into a jog as the scare wears off rather than a constant robotic 3.4x sprint
+      if(!p._fled){p._fled=true;p._startle=.12+Math.random()*.33;p._fleeMul=2.6+Math.random()*1.2;if(G.aiStats)G.aiStats.startles=(G.aiStats.startles||0)+1;}
+      if(p._startle>0){p._startle-=dt;p.rot=Math.atan2(tx-p.x,-(ty-p.y));p.speed=p.vx=p.vy=0;p.cityActivity='startled';if(p.flee<=0)p._fled=false;continue;}
       if(!p._fleeNext||G.ticks>=p._fleeNext){p._fleeHeading=escapeHeading(G,p,{x:tx,y:ty});p._fleeNext=G.ticks+10;}
       const want=p._fleeHeading;
-      const sp = (p.walk || 30) * 3.4;
+      const sp = (p.walk || 30) * (p._fleeMul||3.4) * (p.flee<1.2?.55+.45*Math.max(0,p.flee)/1.2:1);
       const moved=!p._escapeBlocked&&stepPedestrian(G,p,want,sp,dt,{road:true});
       p.cityActivity=moved?'fleeing':'cowering';if(!moved)p.speed=p.vx=p.vy=0;
       p.onRoad=G.surfaceAt(p.x,p.y)==='road';
-      if (p.flee <= 0) {const h=headingVec(p.rot);p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1;p.crossing=false;p.cityActivity=null;p._crossWait=0;}
+      if (p.flee <= 0) {p._fled=false;const h=headingVec(p.rot);p.hx = Math.abs(h.x) > Math.abs(h.y) ? Math.sign(h.x) : 0; p.hy = p.hx ? 0 : Math.sign(h.y) || 1;p.crossing=false;p.cityActivity=null;p._crossWait=0;}
       continue;
     }
     if (G.cityAI?.steerPed(p, dt)) continue;

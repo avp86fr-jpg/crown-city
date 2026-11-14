@@ -166,3 +166,10 @@
 - Collision sounds scale by mass (pitch mass^-.25, body .8+.2·mass); AI-on-AI crashes now audible. Loudness sweep (tools/sfx-loudness.mjs): no sample clips (max peak −0.4 dBFS); soft footsteps, casino loss/push and blow-off trimmed up 2–5 dB.
 - Final world upscale uses the cheap filter when render scale ≥70% (Strip desktop cost).
 - Chalet roof centres: painted snow-load drifts, scoured crust and sastrugi ripples.
+
+## Pass 19 (preview)
+- Chalet roofs: snow load narrowed to a band along the ridge; both pitches show staggered shingle courses with sun/shadow slope shading, an icicle drip line, and a brighter, more varied roof palette (red, green, cedar, slate blue, plum, brown).
+- Desert→snow transition: hard snow ellipses replaced by soft radial-gradient drift patches on world-grid seeds (no chunk seams), coverage rising toward the snowline, frost sparkle, dry scrub tufts poking through; matching sand wash below the snowline so the edge no longer steps.
+- Cops: from 3 stars, non-flanking units solve the intercept point (≤1.6 s ahead) when it is in clear line (aiStats.intercepts).
+- Pedestrian flee: short startle (turn to the noise, freeze .12–.45 s), per-person sprint pace (2.6–3.8× walk), easing to a jog as the scare ends (aiStats.startles).
+- Strip night desktop profile: drawImage time is 58% final world upscale, 36% light-map composite (both full-frame fills under software GL); no further change this pass.

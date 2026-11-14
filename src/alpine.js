@@ -89,7 +89,7 @@ export function applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  // guardrails (thin solid strips)
  for(const R of RAILS)for(let i=1;i<R.length;i++){const [ax,ay]=R[i-1],[bx,by]=R[i];fillAny(Math.min(ax,bx)-6,Math.min(ay,by)-6,Math.abs(bx-ax)+12,Math.abs(by-ay)+12,CODE.build,c=>c!==CODE.road);}
  // chalets around the village street (north and south rows)
- const woods=['#7a4a2a','#8d5a34','#5e3b22','#a36a3c','#6b4a38','#94603a'],trims=['#b23a2e','#2f5d3a','#1f3f66','#d9a43a','#efe9dc','#7b2f4a'],roofs=['#5b2c24','#3b4a3a','#4a3a30','#2f3b4f','#6a4a2a','#3f2f2a'];
+ const woods=['#7a4a2a','#8d5a34','#5e3b22','#a36a3c','#6b4a38','#94603a'],trims=['#b23a2e','#2f5d3a','#1f3f66','#d9a43a','#efe9dc','#7b2f4a'],roofs=['#8a3a2c','#3f5f46','#7a5532','#3a5675','#9b6b3a','#6a3a48'];
  const rows=[{y0:10420,y1:10690,front:'S'},{y0:10950,y1:11230,front:'N'}];let id=0;
  for(const row of rows){let x=9320;while(x<10480){const w=170+Math.floor(rnd()*80),h=Math.min(row.y1-row.y0,170+Math.floor(rnd()*70));if(x+w>10540)break;
   const y=row.front==='S'?row.y1-h:row.y0,gable=rnd()<.4,C={x,y,w,h,fac:Math.round(h*.3),wood:woods[id%6],trim:trims[(id*5+2)%6],roof:roofs[(id*7+1)%6],gable,balcony:rnd()<.6,seed:rnd(),id,front:row.front,chimney:{x:x+w*(.2+rnd()*.6),y:y+h*(.18+rnd()*.25)}};
@@ -263,25 +263,39 @@ function paintPine(c,p,shadow){
 }
 function shade(hex,k){const n=parseInt(hex.slice(1),16),f=v=>Math.max(0,Math.min(255,Math.round(k<0?v*(1+k):v+(255-v)*k)));return '#'+[n>>16,n>>8&255,n&255].map(f).map(v=>v.toString(16).padStart(2,'0')).join('');}
 function snowRoof(c,x,y,w,h,ridgeV,roof,r){
- // timber/shingle eaves showing at the edge of the snow load
- c.fillStyle=shade(roof,-.25);c.fillRect(x-9,y-9,w+18,h+18);
+ // timber eave + shingle courses over the whole roof; the snow load then sits along the ridge only, so both
+ // pitches show readable shingles toward the eaves (more on the sunny south/east slope where it slides off)
+ c.fillStyle=shade(roof,-.3);c.fillRect(x-9,y-9,w+18,h+18);
  c.fillStyle=roof;c.fillRect(x-7,y-7,w+14,h+14);
- c.fillStyle=shade(roof,.18);for(let yy=y-7;yy<y+h+7;yy+=5)for(let xx=x-7+((yy/5|0)%2)*4;xx<x+w+7;xx+=8)c.fillRect(xx,yy,6,1.2);
- // snow mass with a pillowy, overhanging edge
- // shingle courses on the exposed eave band (clearly wood from above)
- c.fillStyle=shade(roof,-.32);for(let yy=y-7;yy<y+h+7;yy+=5)c.fillRect(x-7,yy,w+14,1);
- const ins=13;c.fillStyle='#e2eaf3';c.fillRect(x+ins-2,y+ins-2,w-ins*2+4,h-ins*2+4);
- c.fillStyle='#eef3f9';for(let xx=x+ins;xx<=x+w-ins;xx+=9){c.beginPath();c.arc(xx,y+ins,4.5+r()*2,0,TAU);c.arc(xx,y+h-ins,4.5+r()*2,0,TAU);c.fill();}
- for(let yy=y+ins;yy<=y+h-ins;yy+=9){c.beginPath();c.arc(x+ins,yy,4.5+r()*2,0,TAU);c.arc(x+w-ins,yy,4.5+r()*2,0,TAU);c.fill();}
- if(!ridgeV){const ry=y+h*.45,g1=c.createLinearGradient(0,y,0,ry),g2=c.createLinearGradient(0,ry,0,y+h);
-  g1.addColorStop(0,'#bccde2');g1.addColorStop(1,'#d9e4f0');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#eaf1f8');
-  c.fillStyle=g1;c.fillRect(x+ins,y+ins,w-ins*2,ry-y-ins);c.fillStyle=g2;c.fillRect(x+ins,ry,w-ins*2,y+h-ins-ry);
-  c.fillStyle='rgba(110,132,170,.6)';c.fillRect(x+ins,ry-1.5,w-ins*2,2.5);c.fillStyle='#ffffff';c.fillRect(x+ins,ry+1,w-ins*2,1.5);snowLoad(c,x+ins,y+ins,w-ins*2,ry-y-ins-3,r,.75);snowLoad(c,x+ins,ry+4,w-ins*2,y+h-ins-ry-4,r,1);
-  c.fillStyle=shade(roof,-.1);c.fillRect(x-9,ry-3,6,6);c.fillRect(x+w+3,ry-3,6,6);ridgeCap(c,x+ins-6,ry-3,w-ins*2+12,6,roof,r);bare(c,x+ins,ry+6,w-ins*2,y+h-ins-ry-6,roof,r);return ry;}
- const rx=x+w*.5,g1=c.createLinearGradient(x,0,rx,0),g2=c.createLinearGradient(rx,0,x+w,0);
- g1.addColorStop(0,'#bccde2');g1.addColorStop(1,'#d9e4f0');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#eaf1f8');
- c.fillStyle=g1;c.fillRect(x+ins,y+ins,rx-x-ins,h-ins*2);c.fillStyle=g2;c.fillRect(rx,y+ins,x+w-ins-rx,h-ins*2);
- c.fillStyle='rgba(110,132,170,.6)';c.fillRect(rx-1.5,y+ins,2.5,h-ins*2);c.fillStyle='#fff';c.fillRect(rx+1,y+ins,1.5,h-ins*2);snowLoad(c,x+ins,y+ins,rx-x-ins-3,h-ins*2,r,.75);snowLoad(c,rx+4,y+ins,x+w-ins-rx-4,h-ins*2,r,1);ridgeCap(c,rx-3,y+ins-6,6,h-ins*2+12,roof,r);bare(c,rx+6,y+ins,x+w-ins-rx-6,h-ins*2,roof,r);return null;
+ const R=ridgeV?x+w*.5:y+h*.45;
+ // pitch shading: shadow slope (N / W) darker, sun slope lighter
+ c.fillStyle='rgba(20,24,40,.22)';if(ridgeV)c.fillRect(x-7,y-7,R-x+7,h+14);else c.fillRect(x-7,y-7,w+14,R-y+7);
+ c.fillStyle='rgba(255,236,200,.10)';if(ridgeV)c.fillRect(R,y-7,x+w+7-R,h+14);else c.fillRect(x-7,R,w+14,y+h+7-R);
+ // shingle courses parallel to the ridge, staggered butt joints
+ const L=ridgeV?h+14:w+14,D=ridgeV?w+14:h+14;
+ for(let d=0;d<D;d+=5){const odd=(d/5|0)%2;c.fillStyle=shade(roof,-.38);ridgeV?c.fillRect(x-7+d,y-7,1,L):c.fillRect(x-7,y-7+d,L,1);
+  c.fillStyle=shade(roof,.2);for(let l=odd*4;l<L;l+=8+(r()*3|0))ridgeV?c.fillRect(x-7+d+1,y-7+l,1.3,5):c.fillRect(x-7+l,y-7+d+1,5,1.3);}
+ // snow band around the ridge with a scalloped, pillowy lower edge
+ const e=8;let s0,s1;
+ if(ridgeV){s0=x+w*(.22+r()*.06);s1=x+w*(.66+r()*.08);}else{s0=y+h*(.2+r()*.06);s1=y+h*(.6+r()*.1);}
+ const band=(fill)=>{c.fillStyle=fill;if(ridgeV){c.fillRect(s0,y+e,s1-s0,h-e*2);}else{c.fillRect(x+e,s0,w-e*2,s1-s0);}};
+ c.fillStyle='rgba(70,90,130,.35)';ridgeV?c.fillRect(s0-1,y+e+2,s1-s0+4,h-e*2):c.fillRect(x+e+2,s0-1,w-e*2,s1-s0+4);
+ band('#e4ecf5');c.fillStyle='#eef3f9';
+ if(ridgeV){for(let yy=y+e;yy<=y+h-e;yy+=8){c.beginPath();c.arc(s0,yy,3.5+r()*2.5,0,TAU);c.arc(s1,yy,3.5+r()*3,0,TAU);c.fill();}}
+ else{for(let xx=x+e;xx<=x+w-e;xx+=8){c.beginPath();c.arc(xx,s0,3.5+r()*2.5,0,TAU);c.arc(xx,s1,3.5+r()*3,0,TAU);c.fill();}}
+ // icicle drip line under the lower snow edge
+ c.fillStyle='rgba(225,240,252,.9)';if(ridgeV){for(let yy=y+e+3;yy<y+h-e;yy+=6+r()*5)c.fillRect(s1+4,yy,2+r()*4,1);}else{for(let xx=x+e+3;xx<x+w-e;xx+=6+r()*5)c.fillRect(xx,s1+4,1,2+r()*4);}
+ if(!ridgeV){const g1=c.createLinearGradient(0,s0,0,R),g2=c.createLinearGradient(0,R,0,s1);
+  g1.addColorStop(0,'#c4d3e6');g1.addColorStop(1,'#dbe5f1');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#e6eef7');
+  c.fillStyle=g1;c.fillRect(x+e,s0,w-e*2,R-s0);c.fillStyle=g2;c.fillRect(x+e,R,w-e*2,s1-R);
+  snowLoad(c,x+e,s0,w-e*2,R-s0-3,r,.75);snowLoad(c,x+e,R+4,w-e*2,s1-R-4,r,1);
+  c.fillStyle='rgba(110,132,170,.6)';c.fillRect(x+e,R-1.5,w-e*2,2.5);c.fillStyle='#fff';c.fillRect(x+e,R+1,w-e*2,1.5);
+  c.fillStyle=shade(roof,-.1);c.fillRect(x-9,R-3,6,6);c.fillRect(x+w+3,R-3,6,6);ridgeCap(c,x+e-4,R-3,w-e*2+8,6,roof,r);bare(c,x+e,R+6,w-e*2,s1-R-6,roof,r);return R;}
+ const g1=c.createLinearGradient(s0,0,R,0),g2=c.createLinearGradient(R,0,s1,0);
+ g1.addColorStop(0,'#c4d3e6');g1.addColorStop(1,'#dbe5f1');g2.addColorStop(0,'#fbfdff');g2.addColorStop(1,'#e6eef7');
+ c.fillStyle=g1;c.fillRect(s0,y+e,R-s0,h-e*2);c.fillStyle=g2;c.fillRect(R,y+e,s1-R,h-e*2);
+ snowLoad(c,s0,y+e,R-s0-3,h-e*2,r,.75);snowLoad(c,R+4,y+e,s1-R-4,h-e*2,r,1);
+ c.fillStyle='rgba(110,132,170,.6)';c.fillRect(R-1.5,y+e,2.5,h-e*2);c.fillStyle='#fff';c.fillRect(R+1,y+e,1.5,h-e*2);ridgeCap(c,R-3,y+e-4,6,h-e*2+8,roof,r);bare(c,R+6,y+e,s1-R-6,h-e*2,roof,r);return null;
 }
 // uneven snow load: deeper drifts (shadowed lee edge), thin crust where wind scoured, and sastrugi ripples,
 // so a roof centre reads as packed snow rather than a flat white card
@@ -353,6 +367,29 @@ function paintObservatory(c,A,m){const O=OBS;if(!inR(O.x,O.y,m,200))return;
  c.fillStyle='#f2c14e';c.beginPath();c.moveTo(O.x+138,O.y-18);c.lineTo(O.x+142,O.y-27);c.lineTo(O.x+147,O.y-20);c.lineTo(O.x+152,O.y-27);c.lineTo(O.x+156,O.y-18);c.closePath();c.fill();
  c.fillStyle='#24303c';c.fillRect(O.x-110,O.y+O.r+16,220,30);c.fillStyle='#f2c14e';c.font='900 18px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText('CROWN PEAK  2,914 M',O.x,O.y+O.r+31);
 }
+// desert -> snow: soft drifted patches on world-grid seeds (continuous across chunk edges), coverage rising
+// toward the snowline, frost sparkle, and dry scrub tufts poking through the thin snow. below=true paints
+// sand/scrub showing through the first few hundred px of the snow field instead.
+function snowPatches(c,x0,y0,w,h,below){if(h<=0)return;const C=56,Y0=9880,Y1=H0+300;
+ for(let gy=Math.floor((y0-150)/C);gy<=Math.ceil((y0+h+150)/C);gy++)for(let gx=Math.floor((x0-150)/C);gx<=Math.ceil((x0+w+150)/C);gx++){
+  const r=rng(gx*7919+gy*104729+3),cx=gx*C+r()*C,cy=gy*C+r()*C,k=Math.max(0,Math.min(1,(cy-Y0)/(Y1-Y0)));
+  if(below){if(cy<H0||cy>H0+200||r()>(1-k)*.55)continue;
+   // a scoured bare patch: warm sand-grey wash with dark dry tufts
+   const rad=14+r()*30,g=c.createRadialGradient(cx,cy,0,cx,cy,rad);g.addColorStop(0,'rgba(176,156,120,.42)');g.addColorStop(.6,'rgba(186,170,140,.22)');g.addColorStop(1,'rgba(200,190,170,0)');
+   c.fillStyle=g;c.beginPath();c.ellipse(cx,cy,rad*1.5,rad,-.3+r()*.6,0,TAU);c.fill();
+   c.strokeStyle='rgba(96,78,50,.65)';c.lineWidth=1.1;for(let t=0;t<2+r()*3;t++){const tx=cx+(r()-.5)*rad,ty=cy+(r()-.5)*rad*.6;c.beginPath();for(let b=0;b<4;b++){c.moveTo(tx,ty);c.lineTo(tx+(r()-.5)*7,ty-3-r()*4);}c.stroke();}
+   continue;}
+  if(cy>H0+20||r()>k*1.25)continue;
+  const n=2+Math.floor(r()*3),base=12+k*44+r()*16;
+  for(let i=0;i<n;i++){const px=cx+(r()-.5)*base*1.4,py=cy+(r()-.5)*base*.7,rad=base*(.5+r()*.6),g=c.createRadialGradient(px,py,0,px,py,rad);
+   const a=.5+k*.42;g.addColorStop(0,`rgba(244,248,252,${a.toFixed(2)})`);g.addColorStop(.55,`rgba(234,241,248,${(a*.75).toFixed(2)})`);g.addColorStop(1,'rgba(226,235,245,0)');
+   c.fillStyle=g;c.beginPath();c.ellipse(px,py,rad*1.6,rad,-.25+r()*.5,0,TAU);c.fill();}
+  // lee-side blue shadow under the larger drifts
+  if(base>30){c.fillStyle='rgba(120,145,185,.10)';c.beginPath();c.ellipse(cx+4,cy+base*.35,base*1.3,base*.25,-.2,0,TAU);c.fill();}
+  // frost sparkle and scrub poking through
+  c.fillStyle='rgba(255,255,255,.8)';for(let i=0;i<4+k*8;i++)c.fillRect(cx+(r()-.5)*base*2,cy+(r()-.5)*base,1.2,1.2);
+  if(k<.75&&r()<.5){c.strokeStyle='rgba(104,86,56,.7)';c.lineWidth=1.1;const tx=cx+(r()-.5)*base,ty=cy;c.beginPath();for(let b=0;b<5;b++){c.moveTo(tx,ty);c.lineTo(tx+(r()-.5)*9,ty-3-r()*5);}c.stroke();}
+ }}
 function hillshade(ix,iy,SZ){
  const N=33,img=canvas(N-1,N-1),x=img.getContext('2d'),id=x.createImageData(N-1,N-1),st=SZ/(N-1);
  for(let j=0;j<N-1;j++)for(let i=0;i<N-1;i++){const wx=ix*SZ+(i+.5)*st,wy=iy*SZ+(j+.5)*st;const h=height(wx,wy),hx=height(wx+st,wy)-h,hy=height(wx,wy+st)-h;
@@ -366,8 +403,8 @@ export function* alpineChunkSteps(G,ix,iy,scale){
  const A=G.world.alpine;yield {canvas:cv};
  const land=y0+SZ>H0;
  if(y0<H0&&y0+SZ>9880){const top=Math.max(y0,9880),bot=Math.min(y0+SZ,H0);c.save();c.beginPath();c.rect(Math.max(x0,coastX(H0)-40),top,SZ,bot-top);c.clip();
-  const g=c.createLinearGradient(0,9880,0,H0);g.addColorStop(0,'rgba(233,239,246,0)');g.addColorStop(.55,'rgba(233,239,246,.35)');g.addColorStop(1,'rgba(233,239,246,.9)');c.fillStyle=g;c.fillRect(x0,top,SZ,bot-top);
-  const r=rng(ix*57+iy*13+1);for(let i=0;i<120;i++){const x=x0+r()*SZ,y=9890+Math.sqrt(r())*(H0-9890);if(y<top||y>bot)continue;const k=(y-9890)/(H0-9890);c.fillStyle=`rgba(${r()<.5?'246,249,252':'214,226,240'},${.25+k*.6})`;c.beginPath();c.ellipse(x,y,8+r()*26*k+4,3+r()*8*k+2,-.35+r()*.3,0,TAU);c.fill();}
+  const g=c.createLinearGradient(0,9880,0,H0);g.addColorStop(0,'rgba(233,239,246,0)');g.addColorStop(.55,'rgba(233,239,246,.3)');g.addColorStop(1,'rgba(233,239,246,.72)');c.fillStyle=g;c.fillRect(x0,top,SZ,bot-top);
+  snowPatches(c,x0,top,SZ,bot-top);
   c.restore();}
  if(land){
   const top=Math.max(y0,H0);c.save();c.beginPath();c.rect(x0,top,SZ,y0+SZ-top);c.clip();
@@ -381,8 +418,8 @@ export function* alpineChunkSteps(G,ix,iy,scale){
   // hill shading for relief
   c.imageSmoothingEnabled=true;c.drawImage(hillshade(ix,iy,SZ),x0,y0,SZ,SZ);
   // beach to snow transition below the frontier
-  if(y0<H0+300){const g=c.createLinearGradient(0,H0,0,H0+260);g.addColorStop(0,x0<8800?'rgba(214,190,140,.28)':'rgba(150,128,96,.25)');g.addColorStop(1,'rgba(233,239,246,0)');c.fillStyle=g;c.fillRect(Math.max(x0,coastX(H0)),H0,SZ,260);
-   c.fillStyle='rgba(255,255,255,.75)';const r=rng(ix*91+7);for(let i=0;i<40;i++){const x=x0+r()*SZ,y=H0+40+r()*200;c.beginPath();c.ellipse(x,y,6+r()*18,3+r()*6,0,0,TAU);c.fill();}}
+  if(y0<H0+300){const g=c.createLinearGradient(0,H0,0,H0+260);g.addColorStop(0,x0<8800?'rgba(214,186,138,.3)':'rgba(150,128,96,.28)');g.addColorStop(.45,x0<8800?'rgba(214,186,138,.12)':'rgba(150,128,96,.1)');g.addColorStop(1,'rgba(233,239,246,0)');c.fillStyle=g;c.fillRect(Math.max(x0,coastX(H0)),H0,SZ,260);
+   snowPatches(c,x0,Math.max(y0,H0),SZ,Math.min(y0+SZ,H0+300)-Math.max(y0,H0),true);}
   // wind drifts: long soft blue-shadowed ridges
   {const r=rng(ix*733+iy*177+5);for(let i=0;i<10;i++){const x=x0+r()*SZ,y=Math.max(top,y0)+r()*SZ,l=40+r()*90,w=8+r()*12;c.save();c.translate(x,y);c.rotate(-.35);
    c.fillStyle='rgba(120,148,190,.3)';c.beginPath();c.moveTo(-l/2,0);c.quadraticCurveTo(0,w*1.6,l/2,0);c.quadraticCurveTo(0,w*.5,-l/2,0);c.fill();
