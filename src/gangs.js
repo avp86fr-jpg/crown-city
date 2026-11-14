@@ -57,6 +57,7 @@ export function tickGangs(G,dt,hooks){
     const head=want>0?face+strafe*.25:want<0?face+Math.PI:face+Math.PI/2*(strafe>=0?1:-1);
     stepPedestrian(G,m,head,want===0?40:118,dt,{road:true});m.rot=face;m.cityActivity=null;
     m.shotWait-=dt;
+    if(los&&d<380&&!m._los)m.shotWait=Math.max(m.shotWait,.35);m._los=los&&d<380;if(m._los&&m.shotWait<.25)m.tellT=G.ticks;
     if(los&&d<380&&m.shotWait<=0){m.shotWait=.75+Math.random()*.7;m.burst=(m.burst||0)+1;if(m.burst%3===0)m.shotWait+=.9;
      const a=face+(Math.random()-.5)*(.18+(P.type==='veh'?.08:0)),h={x:Math.sin(a),y:-Math.cos(a)};
      G.bullets.push({x:m.x+h.x*14,y:m.y+h.y*14,vx:h.x*500,vy:h.y*500,life:.85,friend:false,gang:true});

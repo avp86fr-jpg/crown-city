@@ -1396,6 +1396,7 @@ function tickWeather(G, dt, effects=true) {
     G.lightningT -= dt;
     if (G.lightningT <= 0) {
       G.lightning = G.settings.reducedMotion ? .08 : .45;
+      G.audio.thunder?.();
       if (!G.settings.reducedMotion) G.cam.shake = Math.max(G.cam.shake, 10);
       G.lightningT = 6 + Math.random() * 10;
     }
@@ -1433,7 +1434,7 @@ function headingVec(rot) { return { x: Math.sin(rot), y: -Math.cos(rot) }; }
 function rightVec(rot) { return { x: Math.cos(rot), y: Math.sin(rot) }; }
 
 function tickPlayer(G, dt) {
-  if(G.input.fire)G.player.aimRot=playerAim(G,G.player).rot;
+  if(G.input.fire||G.touch&&G.input.touchAim?.aiming){const aim=playerAim(G,G.player);if(G.input.fire)G.player.aimRot=aim.rot;if(aim.target){G.aimLock=aim.target;G.aimLockT=G.ticks;}}
   if(G.circuitSession?.running&&G.circuitSession.countdown>0){G.player.vx=G.player.vy=0;return;}
   if(G.player.type==='foot' && G.action?.dodgeT>0) return;
   if (G.player.type === "veh") {
@@ -1948,7 +1949,7 @@ function shoot(G, from, onFoot) {
 const blastHooks={damageVeh,killPed,wasted,scare:scarePeds,shake:addShake,blood:bloodImpact,incident:recordIncident};
 function tickRockets(G,dt){updateRockets(G,dt,blastHooks);}
 
-function bridgeAt(G,x,y){const E=G.world?.expansion;if(!E)return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||E.riverBridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
+function bridgeAt(G,x,y){if(G.world?.resort?.underBridge?.(x,y))return true;const E=G.world?.expansion;if(!E)return false;return E.bridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||E.riverBridges?.some(r=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)||false;}
 
 function bulletLayerMatches(G,b,target){return !bridgeAt(G,target.x,target.y)||!!b.waterLevel===!!target.def?.boat;}
 function tickBullets(G, dt) {
@@ -2281,6 +2282,9 @@ function tickCops(G, dt) {
       if (p.grabT > 0.7) {busted(G);return;}
     } else p.grabT = Math.max(0, p.grabT - dt);
     p.shotWait=Math.max(0,(p.shotWait??.9)-dt);
+    // telegraph + fairness: a unit that just gained sight raises its weapon (.3 s) before the first shot,
+    // and shows a brief sight glint for the last .25 s of every wait
+    {const can=P.type==="foot"&&G.wanted>=3&&d<300&&G.nav.clearLine(p.x,p.y,P.x,P.y);if(can&&!p._los)p.shotWait=Math.max(p.shotWait,.3);p._los=can;if(can&&p.shotWait<.25)p.tellT=G.ticks;}
     if (P.type === "foot" && G.wanted >= 3 && d < 300 && G.nav.clearLine(p.x, p.y, P.x, P.y) && p.shotWait<=0) {
       p.shotWait=.9+Math.random()*.65;
       const a = Math.atan2(dx, -dy) + (Math.random() - 0.5) * 0.25, hv = headingVec(a);
@@ -3055,6 +3059,16 @@ function drawBuildingHeight(G, cam) {
   }
 }
 
+// Soft-lock highlight: corner brackets on the threat the aim assist is pulling toward (touch and keyboard
+// aim), so assisted shots read as intentional. Fades 1/3 s after the lock is released.
+function drawShotTells(G){const c=G.ctx,P=G.player;c.save();c.lineCap='round';
+ for(const p of G.peds){if(!p.tellT||G.ticks-p.tellT>2||p.dead)continue;const dx=P.x-p.x,dy=P.y-p.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+  c.strokeStyle='rgba(255,70,60,.55)';c.lineWidth=1.4;c.beginPath();c.moveTo(p.x+ux*14,p.y+uy*14);c.lineTo(p.x+ux*60,p.y+uy*60);c.stroke();
+  c.fillStyle='rgba(255,230,200,.9)';c.beginPath();c.arc(p.x+ux*14,p.y+uy*14,2.2,0,Math.PI*2);c.fill();}
+ c.restore();}
+function drawAimLock(G){const t=G.aimLock,age=G.ticks-(G.aimLockT??-99);if(!t||t.dead||age>20||G.player.type!=='foot')return;
+ const c=G.ctx,k=1-age/20,s=15+2*Math.sin(G.ticks*.3),y=t.y-14;c.save();c.globalAlpha*=.85*k;c.strokeStyle='#ff4a5a';c.lineWidth=2;c.lineCap='round';c.beginPath();
+ for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){c.moveTo(t.x+sx*s,y+sy*(s-6));c.lineTo(t.x+sx*s,y+sy*s);c.lineTo(t.x+sx*(s-6),y+sy*s);}c.stroke();c.restore();}
 function drawWorld(G) {
   const canvas=G.canvas,ctx=G.ctx;
   if(!G.worldWidth || G.worldWidth===canvas.width && G.worldHeight===canvas.height)return renderWorldLayer(G);
@@ -3154,7 +3168,7 @@ function renderWorldLayer(G) {
   actors.sort((a, b) => (a.dead ? -1e5 : 0) + (a.def ? -1 : 0) - (b.dead ? -1e5 : 0) - (b.def ? -1 : 0) || a.y - b.y);
   _ph('a_sort');const noVeh=G.dbg&&G.dbg.noVeh;for (const a of actors) { if (a.def) {if(!noVeh)drawVeh(G, a);} else drawChar(G, a); }
   _ph('a_draw');drawWildlife(G,r);drawExpansionPeople(G,r);_ph('a_wild');
-  drawParticles(G, r, false);_ph('a_part');
+  drawParticles(G, r, false);drawAimLock(G);drawShotTells(G);_ph('a_part');
   drawResortOverhead(G,r);drawAlpineOverhead(G,r);
   _ph('w_actors');
   // 7. trees + extruded buildings (rise toward the camera)
@@ -3542,6 +3556,8 @@ function drawVeh(G, v) {
       if(!clipping){ctx.beginPath();ctx.rect(-1000,-NORTH-1000,WORLD_W+2000,WORLD_H+NORTH+SOUTH+2000);clipping=true;}
       ctx.rect(b.x,b.y,b.w,b.h);
     }
+    // the resort's long sea bridge: boats pass beneath its deck too
+    const RB=G.world.resort?.bridgeDeck;if(RB&&!(v.x+100<=RB.x||v.x-100>=RB.x+RB.w||v.y+120<=RB.y||v.y-120>=RB.y+RB.h)){if(!clipping){ctx.beginPath();ctx.rect(-1000,-NORTH-1000,WORLD_W+2000,WORLD_H+NORTH+SOUTH+2000);clipping=true;}ctx.rect(RB.x,RB.y,RB.w,RB.h);}
     if(clipping)ctx.clip('evenodd');
   }
   ctx.translate(v.x, v.y);
@@ -3790,6 +3806,9 @@ function drawChar(G,a){
   if(pass&&(G.ticks%6===0)&&G.particles.length<400)G.particles.push({kind:'dust',x:a.x-Math.sin(a.rot||0)*8,y:a.y+Math.cos(a.rot||0)*8+6,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.45,maxLife:.45,size:.6});}
  // Chaos's coat hem swings with the gait: the lower third of the frame is
  // sheared side to side with the stride (procedural, on top of the painted frame).
+ // aiming up-screen (away from the camera) the weapon sits in front of the body, so it is layered behind the sprite
+ const gunShown=a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0),gunAway=gunShown&&Math.cos(a.aimRot??a.rot)>.5;
+ if(gunAway)drawHeldWeapon(G,a,a.aimRot??a.rot);
  if((a.sprite||'chaos')==='chaos'&&moving&&!a.dead&&!G.settings.reducedMotion&&G.settings.quality!=='low'){
   const sp=.62,ph=Math.sin((a.dist||0)*.085),k=ph*(running?.2:.12),y0=dy+dh*sp;
   ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h*sp,dx,dy,dw,dh*sp+.6);
@@ -3806,7 +3825,7 @@ function drawChar(G,a){
  }
  if(crowd&&!a.dead&&G.settings.quality!=='low'&&!a.copPed&&!a.gang&&a.cityActivity!=='cowering')drawPedHat(ctx,a,dx,dy,dw*(a.build||1),dh);
  if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
- if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
+ if(gunShown&&!gunAway)drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
  if(a.gang)drawGangMark(ctx,a);
  if(a!==G.player&&G.settings.quality!=='low'&&!a.gang)drawAmbientGesture(G,a);

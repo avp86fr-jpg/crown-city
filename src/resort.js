@@ -151,6 +151,7 @@ export function applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
   if(Math.abs(x-B.x)<=B.deck/2+2&&y>B.span[0]&&y<B.span[1])return B.pylons.some(p=>Math.abs(y-p)<26)&&Math.abs(x-B.x)>B.road/2-4?null:'water';
   if(y<0)return null;return prevBoat?prevBoat(x,y):null;
  };
+ R.bridgeDeck={x:B.x-B.deck/2,y:B.span[0],w:B.deck,h:B.span[1]-B.span[0]};
  R.underBridge=(x,y)=>Math.abs(x-B.x)<=B.deck/2+2&&y>B.span[0]&&y<B.span[1];
  W.limits={x:0,y:-NORTH,w:WORLD_W,h:WORLD_H+NORTH};
  if(W.expansion){W.expansion.obstacles.push({x:deckX,y:B.y0,w:B.deck,h:B.y1-B.y0,hgt:44,kind:'bridge'});for(const H of R.hotels)W.expansion.obstacles.push({x:H.x,y:H.y,w:H.w,h:H.h,hgt:H.tower?150:90});

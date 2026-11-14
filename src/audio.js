@@ -241,6 +241,10 @@ export function createAudio() {
     L.surf = loopNoise(brownBuf, "lowpass", 900, 0.5, amb, 0);
     L.wind = loopNoise(noiseBuf, "highpass", 3000, 0.4, amb, 0);
     L.rain = loopNoise(noiseBuf, "highpass", 2400, 0.6, amb, 0);
+    // rain layers branch off the same noise source (no extra sources): a mid "wash" that swells over water,
+    // and a low roof/body drum that dominates from inside a car
+    const branch=(type,f,q)=>{const fl=ctx.createBiquadFilter(),g=ctx.createGain();fl.type=type;fl.frequency.value=f;fl.Q.value=q;g.gain.value=0;L.rain.s.connect(fl);fl.connect(g);g.connect(amb);return {f:fl,g};};
+    L.rainWash=branch('bandpass',1100,.7);L.rainDrum=branch('lowpass',420,.9);
   }
   // only touch an AudioParam when the value really changes (keeps the automation timeline tiny)
   const set = (p, v, tc = 0.08) => { if (p._v === v || v!==0&&p._v!==undefined&&Math.abs(p._v-v)<Math.max(.002,Math.abs(v)*.01)) return; p._v = v; p.cancelScheduledValues(now()); p.setTargetAtTime(v, now(), tc); };
@@ -250,6 +254,8 @@ export function createAudio() {
   const engDetune=d=>{if(d._det==null){let h=0;for(const ch of String(d.sprite||d.name||""))h=(h*31+ch.charCodeAt(0))>>>0;d._det=1+((h%97)/96-.5)*.09;}return d._det;};
   A.setEngine = (on, rpm = 0.3) => { A._eng = on; A._rpm = rpm; };
   A.setRain = (amt) => { A._rain = amt || 0; };
+  // distant thunder after a lightning flash: a slowed, panned blast rolling in .4-2.2 s later (heavy rain only)
+  A.thunder=()=>{if(!ctx||!(A._thunderGate>.35))return;const d=.4+Math.random()*1.8,pan=Math.random()*1.4-.7;setTimeout(()=>{fx('explosion',.09*A._thunderGate,pan,.32+Math.random()*.08);if(!lite)setTimeout(()=>fx('explosion',.05*A._thunderGate,-pan*.6,.26),260+Math.random()*300);},d*1000);};
 
   /* ---------------- dynamic music ---------------- */
   let musLevel = 1, style = "score", nextStyle = "score", seqT = 0, step = 0, timer = null, stems = {};
@@ -451,7 +457,14 @@ export function createAudio() {
      if(isle.district==='CROWN BAY BRIDGE'&&P.type==='veh'&&!P.def?.boat&&!P.def?.aircraft){const k=Math.floor((P.y+370)/240);if(jointY!==null&&k!==jointY&&Math.hypot(P.vx||0,P.vy||0)>60)fx('bumper',.12,0,.72);jointY=k;}else jointY=null;
     }set(L.surf.f.frequency,canal?470:900,.8);
     set(L.wind.g.gain,play&&audible?(airHeight>10?.06+Math.min(.13,(P.airspeed||0)/4000):/AIRFIELD|SUNSET|MESA|SIERRA/.test(dist)?.045:dist.includes('FOREST')?.028:.008):0,.6);
-    set(L.rain.g.gain,play&&audible?(A._rain||0)*.2:0,.3);
+    // rain: intensity follows rainAmt, fades with the weather, goes quiet above the snowline (snow falls silent);
+    // in a car the hiss is muffled and the roof drum takes over; over water the wash is fuller
+    {const snowK=Math.max(0,1-(G.alpineMix||0)/.6),R=play&&audible?Math.min(1,(A._rain||0))*snowK:0,cabin=inCar&&!P.def?.boat&&!P.def?.aircraft,wet=Math.min(1,water*1.4+canal);
+     set(L.rain.g.gain,R*(cabin?.07:.2),1.2);set(L.rainWash.g.gain,R*(cabin?.03:.05+.08*wet),1.2);set(L.rainDrum.g.gain,R*(cabin?.2:.035),.9);
+     set(L.rainDrum.f.frequency,cabin?380+Math.min(1,Math.hypot(P.vx||0,P.vy||0)/400)*260:520,.6);
+     // sparse droplet patter on roofs / bodywork when on foot in heavy rain (skipped on the low tier: voice cap)
+     if(R>.45&&!cabin&&!lite&&(A._patT=(A._patT??0)-dt)<0){A._patT=.09+Math.random()*.22/R;fx('stepWater',.018*R,Math.random()*1.6-.8,1.6+Math.random()*.8);}
+     A._thunderGate=R;}
     // District beds: Ironside machinery hum, Port Royale harbour drone, Midtown
     // traffic wash, quiet hills. Plus sparse, panned one-shots per district.
     {const D=/IRONSIDE/.test(dist)?[.07,140,'clank',6]:/PORT|HARBOUR/.test(dist)?[.05,110,'foghorn',22]:/MIDTOWN|DOWNTOWN|EASTSIDE|STRIP|PALACE|LOOP/.test(dist)?[.035,520,'horn',9]:/AIRFIELD/.test(dist)?[.03,240,'jetFar',18]:/SUNSET|OLD TOWN/.test(dist)?[.012,700,'dog',14]:[0,300,null,0];
@@ -481,7 +494,7 @@ export function createAudio() {
   // low tier: drop the convolution reverb (the costliest node on weak phones)
   let lite = false;
   A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if(!lite)verbSend.connect(reverb()); };
-  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?23:0,aiVoices:L.ai?.filter(v=>v.v).length||0,turboLevel:L.turbo?.g.gain.value||0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
+  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?23:0,aiVoices:L.ai?.filter(v=>v.v).length||0,turboLevel:L.turbo?.g.gain.value||0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,rainDrum:L.rainDrum?.g.gain._v||0,rainWash:L.rainWash?.g.gain._v||0,rainHiss:L.rain?.g.gain._v||0,windLevel:L.wind?.g.gain.value||0});
   // capture tap for recording demos (tests only)
   A.tap = () => { ensure(); const d = ctx.createMediaStreamDestination(); master.connect(d); return d.stream; };
   return A;
