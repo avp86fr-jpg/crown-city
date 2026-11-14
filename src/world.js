@@ -182,6 +182,11 @@ export function buildWorld(meta, coreMask, coreMS) {
     if (b.c >= a.a - 1 && b.c <= a.b + 1 && a.c >= b.a - 1 && a.c <= b.b + 1) nodes.push({ x: a.c, y: b.c, vs: a, hs: b });
   }
   W.inter = nodes;
+  // The Strip's busiest crossing (casino boulevard x 1600 avenue) was left to gap
+  // acceptance. Signalling it lifts flow (57.8 -> 63.6% moving, worst stall 59 -> 34 s
+  // in the 4-minute soak). Also signalling 2620 gridlocks the 1020 px link between
+  // the two lights (119 s stalls), so 2620 stays priority-controlled.
+  for (const y of [1600]) W.signals.push({ x: 1964, y, r: 200, gen: true, strip: true });
   for (const n of nodes) {
     // crosswalk-friendly intersection: signals on bigger roads
     if (n.vs.w >= 200 && n.hs.w >= 200 && !(n.x < CORE && n.y < CORE)) W.signals.push({ x: n.x, y: n.y, r: Math.max(n.vs.w, n.hs.w) / 2 + 60, gen: true });

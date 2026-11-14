@@ -933,7 +933,11 @@ function tick(G, dt) {
   else if (G.scene === "transit") {if(G.input.pauseP)cancelTransit(G);else menuKeys(G);}
   else if (['pause','map','crew','garage','dossier'].includes(G.scene)) tickPause(G, dt);
   else if (G.scene === "brief") tickBrief(G, dt);
-  else tickPlay(G, dt);
+  else {
+    // Hit-stop: a player kill freezes the world for a few frames to sell the impact.
+    if(G.hitStopT>0){G.hitStopT-=dt;dt*=.2;}
+    tickPlay(G, dt);
+  }
   if ((G.ticks & 7) === 0 || G._lastScene !== G.scene) { G._syncTouch && G._syncTouch(); G._lastScene = G.scene; }
   G._auT = (G._auT || 0) + 1;
   if ((G._auT & 3) === 0 && G.audio.update) G.audio.update(G, dt * 4);
@@ -1934,11 +1938,11 @@ function tickBullets(G, dt) {
     if(first>1)continue;b.life=0;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
-    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
+    if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;addShake(G,3.5);G.hurtDir=Math.atan2(-b.vy,-b.vx);bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
     if(target){target.hp=(target.hp??30)-projectileDamage(b);target.flee=4;target.threatX=G.player.x;target.threatY=G.player.y;G.hitConfirmT=.14;G.audio.impact?.('flesh',b.x,b.y,.3);
-      G.hitMark={x:target.x,y:target.y-22,t:target.hp<=0?.4:.22,kill:target.hp<=0};G.audio.hitmark?.(target.hp<=0);if(target.hp>0){target.flinch=.18;target.flinchX=b.vx/Math.hypot(b.vx,b.vy);target.flinchY=b.vy/Math.hypot(b.vx,b.vy);}
+      G.hitMark={x:target.x,y:target.y-22,t:target.hp<=0?.4:.22,kill:target.hp<=0};G.audio.hitmark?.(target.hp<=0);if(target.hp>0){target.flinch=.18;target.flinchX=b.vx/Math.hypot(b.vx,b.vy);target.flinchY=b.vy/Math.hypot(b.vx,b.vy);const kb=Math.min(10,4+projectileDamage(b)*.2),nx=target.x+target.flinchX*kb,ny=target.y+target.flinchY*kb;if(!solidAtSafe(G,nx,ny,8)&&G.surfaceAt(nx,ny)!=='water'){target.x=nx;target.y=ny;}}
       if(target.gang)gangHit(G,target);else if(!target.copPed){recordIncident(G,'civilian_harm');crime(G,1,target.x,target.y,false,3);}
-      if(target.hp<=0){target.vx=b.vx*.035;target.vy=b.vy*.035;killPed(G,target,true);}else bloodImpact(G,target,b.vx,b.vy,projectileDamage(b)/24);
+      if(target.hp<=0){target.vx=b.vx*.035;target.vy=b.vy*.035;killPed(G,target,true);if(b.friend){G.hitStopT=Math.max(G.hitStopT||0,.055);addShake(G,2.2);}}else bloodImpact(G,target,b.vx,b.vy,projectileDamage(b)/24);
     }
   }
   G.bullets=G.bullets.filter(b=>b.life>0);
@@ -2743,8 +2747,11 @@ function adaptRes(G, dt) {
   A.cooldown=Math.max(0,(A.cooldown||0)-elapsed);
   A.goodFor=avg<1/58?(A.goodFor||0)+elapsed:0;
   let nr = r;
-  if (avg > 1 / 45 && r > floor) nr = Math.max(floor, r - (avg > 1 / 28 ? 0.15 : 0.08));
-  else if (A.goodFor>=8&&!A.cooldown&&r<1){nr=Math.min(1,r+.05);A.goodFor=0;}
+  // Desktop aims for a locked 60: shed resolution from ~52 fps (phones keep 45).
+  // A scale that already failed is not retried for 45 s, so it cannot oscillate.
+  const slow=G.touch?1/45:1/52;A.capT=Math.max(0,(A.capT||0)-elapsed);
+  if (avg > slow && r > floor) {nr = Math.max(floor, r - (avg > 1 / 28 ? 0.15 : 0.06));A.cap=r;A.capT=45;}
+  else if (A.goodFor>=8&&!A.cooldown&&r<1&&!(A.capT>0&&r+.05>=A.cap-.001)){nr=Math.min(1,r+.05);A.goodFor=0;}
   // Raising resolution every two good seconds produced repeated canvas
   // reallocations during a long session. Recover only after sustained headroom.
   if(nr<r){A.cooldown=10;A.goodFor=0;}
@@ -2893,18 +2900,17 @@ function drawMarquees(G, cam, view, lit) {
     const n = Math.max(2, (len / step) | 0);
     const dx = (M.x2 - M.x1) / n, dy = (M.y2 - M.y1) / n;
     const head = (t * 0.22 + m * 3) | 0;
-    for (let i = 0; i <= n; i++) {
-      const on = ((i + head) % 4) === 0;
-      const x = M.x1 + dx * i, y = M.y1 + dy * i;
-      ctx.globalAlpha = (on ? 0.95 : 0.32) * lit;
-      ctx.fillStyle = M.color;
-      ctx.beginPath(); ctx.arc(x, y, on ? 2.6 : 1.7, 0, TAU); ctx.fill();
-      if (on) {
-        ctx.globalAlpha = 0.85 * lit;
-        ctx.fillStyle = "#fff6e0";
-        ctx.beginPath(); ctx.arc(x, y, 1.1, 0, TAU); ctx.fill();
-      }
+    // Batched: one path per bulb state instead of a fill per bulb (~390 path
+    // fills a night frame on the Strip were the largest single draw cost).
+    ctx.fillStyle = M.color;
+    for (const on of [false, true]) {
+      ctx.beginPath();
+      for (let i = 0; i <= n; i++) { if ((((i + head) % 4) === 0) !== on) continue; const x = M.x1 + dx * i, y = M.y1 + dy * i, rr = on ? 2.6 : 1.7; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); }
+      ctx.globalAlpha = (on ? 0.95 : 0.32) * lit; ctx.fill();
     }
+    ctx.fillStyle = "#fff6e0"; ctx.beginPath();
+    for (let i = 0; i <= n; i++) { if (((i + head) % 4) !== 0) continue; const x = M.x1 + dx * i, y = M.y1 + dy * i; ctx.moveTo(x + 1.1, y); ctx.arc(x, y, 1.1, 0, TAU); }
+    ctx.globalAlpha = 0.85 * lit; ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
@@ -3255,7 +3261,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     for(const Lm of lamps)if(Lm.expanded)ctx.drawImage(bulb,Lm.bulbX-7,Lm.bulbY-7,14,14);
     // Warm sodium spill on the nearest lamps: the light map can only lift the
     // darkness back to day colour, this adds the glow a lit street reads by.
-    if(!low&&!(G.dbg&&G.dbg.noPool)){const pool=LIGHT.radial('rgba(255,176,96,0.9)',64);let n=0;ctx.globalAlpha=.2*lit;for(const Lm of visibleStreetLights(G,r,14)){const rad=(Lm.radius||120)*.62;ctx.drawImage(pool,Lm.x-rad,Lm.y-rad,rad*2,rad*2);if(++n>=14)break;}ctx.globalAlpha=lit;}
+    if(!low&&!(G.dbg&&G.dbg.noPool)){const pool=LIGHT.radial('rgba(255,176,96,0.9)',64);let n=0;ctx.globalAlpha=.24*lit;for(const Lm of visibleStreetLights(G,r,7)){const rad=(Lm.radius||120)*.52;ctx.drawImage(pool,Lm.x-rad,Lm.y-rad,rad*2,rad*2);if(++n>=7)break;}ctx.globalAlpha=lit;}
     const sl = G._sigLit || [];
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
     if (lit > 0.3) drawSearchlights(G, cam, lit);_lp('e_misc');
