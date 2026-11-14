@@ -61,6 +61,9 @@ export function applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  const B=BRIDGE,deckX=B.x-B.deck/2,roadX=B.x-B.road/2;
  fillAny(deckX,B.y0,B.deck,B.y1-B.y0,CODE.walk,c=>c===CODE.water||c===CODE.sand||c===CODE.grass);
  fillAny(roadX,B.y0,B.road,B.y1-B.y0+40,CODE.road,c=>c!==CODE.build);
+ // Approach: the island grid stops ~100 px short of the deck; pave the beach gap
+ // so the bridge road actually meets the resort road instead of a strip of sand.
+ fillAny(roadX,B.y0-112,B.road,114,CODE.road,c=>c!==CODE.build);
  for(const y of B.pylons)for(const x of [deckX-4,B.x+B.deck/2-12])fillAny(x,y-12,16,24,CODE.build);
  const segs=[];
  for(const s of ROADS){const q={...s,w:200,lanes:2,med:0,k:'resort'};segs.push(q);
@@ -308,6 +311,7 @@ function paintBridge(c,G){
  const a=pat(G,c,'asphalt');c.fillStyle=C.asphalt;c.fillRect(rx,B.y0,B.road,B.y1-B.y0);if(a){c.globalAlpha=.4;c.fillStyle=a;c.fillRect(rx,B.y0,B.road,B.y1-B.y0);c.globalAlpha=1;}
  c.fillStyle='#f2c94c';c.fillRect(B.x-5,B.y0,3,B.y1-B.y0);c.fillRect(B.x+2,B.y0,3,B.y1-B.y0);
  c.fillStyle='rgba(255,255,255,.8)';for(let y=B.y0;y<B.y1;y+=60){c.fillRect(B.x-52,y,3,30);c.fillRect(B.x+49,y,3,30);}
+ {const y=B.y0-112,h=112;c.fillStyle='#c9c1ae';c.fillRect(rx-14,y,14,h);c.fillRect(rx+B.road,y,14,h);c.fillStyle='#8f8a80';c.fillRect(rx-2,y,2,h);c.fillRect(rx+B.road,y,2,h);c.fillStyle=C.asphalt;c.fillRect(rx,y,B.road,h);if(a){c.globalAlpha=.4;c.fillStyle=a;c.fillRect(rx,y,B.road,h);c.globalAlpha=1;}c.fillStyle='#f2c94c';c.fillRect(B.x-5,y,3,h);c.fillRect(B.x+2,y,3,h);c.fillStyle='rgba(255,255,255,.8)';for(let yy=y+10;yy<B.y0;yy+=60){c.fillRect(B.x-52,yy,3,30);c.fillRect(B.x+49,yy,3,30);}}
  c.fillStyle='rgba(255,255,255,.9)';c.fillRect(rx+6,B.y0,3,B.y1-B.y0);c.fillRect(B.x+B.road/2-9,B.y0,3,B.y1-B.y0);
  c.fillStyle='rgba(0,0,0,.25)';for(let y=B.y0+100;y<B.y1;y+=240)c.fillRect(dx,y,B.deck,3);
  for(const side of [dx,B.x+B.deck/2-6]){c.fillStyle='#e7e1d1';c.fillRect(side,B.y0,6,B.y1-B.y0);c.fillStyle='#6d6a64';for(let y=B.y0;y<B.y1;y+=20)c.fillRect(side,y,6,3);}

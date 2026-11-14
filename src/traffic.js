@@ -112,10 +112,12 @@ export function buildGraph(W, meta) {
   // signals
   const sigs = (meta.signals || []).concat(W.signals || []);
   for (const s of sigs) {
-    let best = null, bd = 60;
+    // 100 px: the Strip's wide junctions put the authored head 80 px off the node.
+    let best = null, bd = 100;
     for (const n of nodes) { const d = Math.hypot(n.x - s.x, n.y - s.y); if (d < bd) { bd = d; best = n; } }
     if (best && best.edges.length >= 3) best.sig = true;
   }
+
   return { nodes:nodes.filter(n=>n.edges.length), edges };
 }
 

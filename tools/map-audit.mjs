@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import {harness} from '../tests/harness.js';
 import {worldBodyHit,bodyContact} from '../src/collision.js';
 import {edgePoint,trimAt} from '../src/traffic.js';
+import {roadCoherence} from './road-coherence.mjs';
+import {roadEnds} from '../src/open_world.js';
+import {WORLD_W,WORLD_H} from '../src/world.js';
 let seed=77123;Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 const {G,T}=await harness();T.startFreeRide(G);
 const report={roads:[],surfaces:[],parked:[],overlaps:[],counts:{edges:G.graph.edges.length,vehicles:G.vehicles.length,hullSamples:0}};
@@ -21,5 +24,9 @@ for(let a=0;a<G.vehicles.length;a++)for(let b=a+1;b<G.vehicles.length;b++){
  const A=G.vehicles[a],B=G.vehicles[b];if(Math.abs(A.x-B.x)>160||Math.abs(A.y-B.y)>160||!!A.def.boat!==!!B.def.boat)continue;
  const c=bodyContact(A,B);if(c?.pen>1)report.overlaps.push({a:{kind:A.kind,x:A.x,y:A.y},b:{kind:B.kind,x:B.x,y:B.y},pen:c.pen});
 }
+// Road-network coherence: dead ends, joins, signals, unjoined crossings, paving gaps.
+const coh=roadCoherence(G,{W:WORLD_W,H:WORLD_H},roadEnds(G));report.coherence=coh;
 fs.mkdirSync('.qa/sustained',{recursive:true});fs.writeFileSync('.qa/sustained/map-audit.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
-if(report.roads.length||report.surfaces.length||report.parked.length||report.overlaps.length)process.exitCode=1;
+// Hard failures: uncapped dead ends, edges crossing without a junction, gaps in the paving.
+// Lane-count joins and unsignalled junctions are reported as warnings.
+if(coh.stats.uncapped||coh.crossings.length||coh.offRoad.length||report.roads.length||report.surfaces.length||report.parked.length||report.overlaps.length)process.exitCode=1;

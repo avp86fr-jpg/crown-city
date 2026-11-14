@@ -157,7 +157,34 @@ export function tickOpenWorld(G,dt){
  }
  if(o.evT<=0){o.evT=6+Math.random()*6;if(o.events.length<3&&!G.missionState?.scramblerT)spawnEvent(G);}
 }
+// Dead-end roads that stop at open ground (not the map edge) get a proper
+// terminus: a kerb, a red/white end-of-road barrier and boulders. Shared with
+// the road-coherence audit, which fails on any uncapped dead end.
+export function roadEnds(G){
+ if(G._roadEnds&&G._roadEnds.g===G.graph)return G._roadEnds.list;
+ const list=[],deg=new Map();for(const e of G.graph?.edges||[])for(const n of [e.A,e.B]){const d=deg.get(n);if(d)d.push(e);else deg.set(n,[e]);}
+ for(const [n,es] of deg){if(es.length!==1)continue;const e=es[0],o=e.A===n?e.B:e.A,ux=(n.x-o.x)/e.len,uy=(n.y-o.y)/e.len;
+  if(n.x<150||n.x>WORLD_W-150||n.y>WORLD_H-150)continue;
+  const at=(k)=>G.surfaceAt(n.x+ux*e.w*.5*k,n.y+uy*e.w*.5*k);if(at(1)==='road')continue;
+  list.push({x:n.x,y:n.y,ux,uy,w:e.w,node:n.id});}
+ G._roadEnds={g:G.graph,list};return list;
+}
+function drawRoadEnds(G,r){
+ const c=G.ctx;for(const q of roadEnds(G)){if(q.x<r.x0-200||q.x>r.x1+200||q.y<r.y0-200||q.y>r.y1+200)continue;
+  c.save();c.translate(q.x,q.y);c.rotate(Math.atan2(q.uy,q.ux));const h=q.w/2;
+  // kerb cap and verge
+  c.fillStyle='#b9b2a0';c.fillRect(-6,-h-10,22,q.w+20);c.fillStyle='#8f8a80';c.fillRect(-6,-h-10,3,q.w+20);
+  // end-of-road barrier: posts and a red/white chevron board
+  c.fillStyle='rgba(0,0,0,.25)';c.fillRect(-18,-h+14,10,q.w-28);
+  c.fillStyle='#f4f1e8';c.fillRect(-22,-h+12,10,q.w-24);c.fillStyle='#c8322c';for(let y=-h+12;y<h-12;y+=24)c.fillRect(-22,y,10,12);
+  c.fillStyle='#3a3d40';for(const y of [-h+16,0,h-20])c.fillRect(-14,y,4,6);
+  // boulders behind
+  c.fillStyle='#6f6a5f';for(const [x,y,s] of [[30,-h*.6,11],[34,0,13],[28,h*.6,10]]){c.beginPath();c.ellipse(x,y,s,s*.8,0,0,6.283);c.fill();}
+  c.fillStyle='#9a9384';for(const [x,y,s] of [[28,-h*.6-2,6],[32,-2,7],[26,h*.6-2,5]]){c.beginPath();c.ellipse(x,y,s,s*.7,0,0,6.283);c.fill();}
+  c.restore();}
+}
 export function drawOpenWorld(G,r){
+drawRoadEnds(G,r);
  const o=G.ow;if(!o)return;const ctx=G.ctx,t=G.ticks/60,inR=(x,y,m=60)=>x>r.x0-m&&x<r.x1+m&&y>r.y0-m&&y<r.y1+m;
  drawCityLife(G,r);
  for(const c of o.caches){if(o.got.has(c.id)||!inR(c.x,c.y))continue;const pulse=.5+.5*Math.sin(t*3+c.id);
@@ -204,8 +231,8 @@ function lmArt(kind){
   c.beginPath();c.moveTo(cx-13,cy+8);c.lineTo(cx-13,cy-6);c.lineTo(cx-6,cy+1);c.lineTo(cx,cy-11);c.lineTo(cx+6,cy+1);c.lineTo(cx+13,cy-6);c.lineTo(cx+13,cy+8);c.closePath();c.fill();c.strokeStyle='#4a3a1a';c.lineWidth=1;c.stroke();
   for(const [x,y] of [[-13,-6],[0,-11],[13,-6]])disc(cx+x,cy+y,2.4,'#ff6a6a','#4a3a1a');for(const [x,y] of [[-30,-30],[30,-30],[-30,30],[30,30]]){disc(cx+x,cy+y,5,'#3f6b38');disc(cx+x-1,cy+y-1,3,'#5d9150');}}
  else if(kind==='gazebo'){shadow(cx,cy,46,44);c.fillStyle='#cdbf9f';c.beginPath();for(let i=0;i<8;i++){const a=i/8*TAU+TAU/16;c.lineTo(cx+Math.cos(a)*48,cy+Math.sin(a)*48);}c.fill();
-  for(let i=0;i<8;i++){const a0=i/8*TAU+TAU/16,a1=(i+1)/8*TAU+TAU/16;c.fillStyle=i%2?'#8c3b34':'#a8483f';c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a0)*42,cy+Math.sin(a0)*42);c.lineTo(cx+Math.cos(a1)*42,cy+Math.sin(a1)*42);c.fill();}
-  c.strokeStyle='rgba(255,236,200,.55)';c.lineWidth=1;for(let i=0;i<8;i++){const a=i/8*TAU+TAU/16;c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a)*42,cy+Math.sin(a)*42);c.stroke();}disc(cx,cy,5,'#e7c66a','#5a4220');}
+  for(let i=0;i<8;i++){const a0=i/8*TAU+TAU/16,a1=(i+1)/8*TAU+TAU/16;c.fillStyle=i%2?'#3d6a5b':'#4f806d';c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a0)*42,cy+Math.sin(a0)*42);c.lineTo(cx+Math.cos(a1)*42,cy+Math.sin(a1)*42);c.fill();}
+  c.strokeStyle='rgba(255,236,200,.55)';c.lineWidth=1;for(let i=0;i<8;i++){const a=i/8*TAU+TAU/16;c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a)*42,cy+Math.sin(a)*42);c.stroke();}c.strokeStyle='#efe6cf';c.lineWidth=2.2;c.beginPath();for(let i=0;i<=8;i++){const a=i/8*TAU+TAU/16;c.lineTo(cx+Math.cos(a)*42,cy+Math.sin(a)*42);}c.stroke();disc(cx,cy,5,'#e7c66a','#5a4220');}
  else if(kind==='tower'){shadow(cx,cy,40,38);c.strokeStyle='#5a5148';c.lineWidth=3;for(const [x,y] of [[-30,-30],[30,-30],[-30,30],[30,30]]){c.beginPath();c.moveTo(cx+x,cy+y);c.lineTo(cx+x*.45,cy+y*.45);c.stroke();}
   const g=c.createRadialGradient(cx-10,cy-10,4,cx,cy,34);g.addColorStop(0,'#e9e2d2');g.addColorStop(1,'#9a9284');disc(cx,cy,32,g,'#5a5148');c.strokeStyle='rgba(90,81,72,.6)';c.lineWidth=1;for(let i=0;i<12;i++){const a=i/12*TAU;c.beginPath();c.moveTo(cx+Math.cos(a)*10,cy+Math.sin(a)*10);c.lineTo(cx+Math.cos(a)*31,cy+Math.sin(a)*31);c.stroke();}
   disc(cx,cy,9,'#b8b0a0','#5a5148');c.fillStyle='#2f5f8a';c.font='900 9px system-ui';c.textAlign='center';c.fillText('CROWN',cx,cy+22);}

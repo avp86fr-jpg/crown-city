@@ -93,3 +93,14 @@
 - Chaos coat hem sway (procedural).
 - Real-input checks: boat wake (107 wake samples at 224 speed), spike strip flattens a keyboard-driven car.
 - Not done: save unification (reverted, conflicts with tested design), desktop night lighting look, rooftop/kerb variety, painted walk frames.
+
+## Pass 10 — audit, road coherence, light-map cache (promoted to root)
+- Audit: 16 districts x day/night x desktop/mobile screenshots (cc_work/audit10.cjs). Worst: flat dark desktop nights away from the core, forest bandstand reading as a stop sign, roads ending in grass.
+- Road coherence (tools/road-coherence.mjs, now part of audit:map; fails on uncapped dead ends, unjoined crossings and paving gaps; warns on lane-count joins and unsignalled major junctions):
+  - Canal: every bridge deck left a 16 px promenade strip across the road at both banks (7 roads); deck now spans the cleared bank.
+  - Lucky Isle bridge: a 100 px sand/promenade gap between the island grid and the deck; paved approach with kerbs and centre lines.
+  - Frontier: later roads' dirt shoulders cut stripes across earlier roads at junctions; shoulders now cleared before paving.
+  - Three dead ends at y 6800 stop at open grass: end-of-road terminus drawn on desktop and mobile.
+  - Strip 1964,3900 signal now attaches to its node.
+  - Remaining warnings: 2 unsignalled Strip four-ways, 1 lane-count change at 2800,2620 (Palace Row, 1 lane + median to 2 lanes).
+- Desktop night: warm lamp spill + stronger light-map pools; static light map cached (see ROADMAP 15).

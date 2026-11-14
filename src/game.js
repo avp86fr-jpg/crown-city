@@ -3171,30 +3171,42 @@ function drawLighting(G, r, S, ox, oy, low) {
   G._lmBaked=needMap&&!(G.dbg&&(G.dbg.noMap||G.dbg.noMul));
   if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
     G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
-    lx.setTransform(1, 0, 0, 1, 0, 0);
-    lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
-    lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
-    lx.fillRect(0, 0, lt.cv.width, lt.cv.height);
-    lx.globalCompositeOperation = "lighter";
-    worldXform(G, lx, S, lt.div, ox, oy);
     const lit = clamp(dark * 1.6, 0, 1);
-    if (lit > 0.02) {
-      const warm = LIGHT.radial("rgba(255,196,120,0.9)");
-      // street lamps
-      const lamp = (x, y, rad, a) => { lx.globalAlpha = a * lit; lx.drawImage(warm, x - rad, y - rad, rad * 2, rad * 2); };
-      _lp('m_fill');for(const Lm of lamps)lamp(Lm.x,Lm.y,Lm.radius,Lm.expanded?.9:.75);_lp('m_lamps');
-      // neon washes from the casino strip
-      if (r.x0 < CORE && r.y0 < CORE) {
-        lx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(lx, r, G.ticks);
-        for (const N of G.meta.neons) {
-          const nx = N.x + N.w * 0.5, ny = N.y + N.h + 16;
-          if (nx < r.x0 || nx > r.x1 || ny < r.y0 || ny > r.y1) continue;
-          const spr = LIGHT.radial(hexA(N.color || "#ff2d9b", 0.85));
-          const rad = Math.max(70, Math.min(N.w * 0.6, 160));
-          lx.globalAlpha = lit * (0.85 + 0.15 * Math.sin(G.ticks * 0.1 + N.x));
-          lx.drawImage(spr, nx - rad, ny - rad * 0.6, rad * 2, rad * 1.2);
+    // Static light (ambient fill, street-lamp pools, neon washes) lives in a
+    // world-aligned base with a margin, re-used while the camera pans inside it
+    // (rebuilt at most every 24 frames for the neon flicker). A light-map rebuild
+    // then only copies the base and adds the moving lights.
+    const M=48,LB=G._lmBase||(G._lmBase={cv:document.createElement('canvas'),at:-1e9}),bw=lt.cv.width+M*2,bh=lt.cv.height+M*2;
+    const key=`${S}|${cam.rot}|${ox}|${oy}|${ar|0},${ag|0},${ab|0}|${(lit*40)|0}|${r.x0<CORE&&r.y0<CORE}`;
+    const shift=()=>{const dx=(LB.cam.x-cam.x)*S/lt.div,dy=(LB.cam.y-cam.y)*S/lt.div,c=Math.cos(cam.rot),sn=Math.sin(cam.rot);return [dx*c+dy*sn,-dx*sn+dy*c];};
+    let sh0=LB.cam?shift():[1e9,1e9];
+    if((G.dbg&&G.dbg.noBase2)||LB.key!==key||LB.cv.width!==bw||LB.cv.height!==bh||Math.abs(sh0[0])>M*.6||Math.abs(sh0[1])>M*.6||G.ticks-LB.at>24||G.ticks<LB.at){
+      const bc=LB.cv;if(bc.width!==bw||bc.height!==bh){bc.width=bw;bc.height=bh;}const bx=LB.x||(LB.x=bc.getContext('2d'));
+      bx.setTransform(1,0,0,1,0,0);bx.globalCompositeOperation='source-over';bx.globalAlpha=1;bx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;bx.fillRect(0,0,bw,bh);
+      if(lit>.02){
+        bx.globalCompositeOperation='lighter';bx.setTransform(1,0,0,1,0,0);bx.translate(M+G.canvas.width/2/lt.div+ox/lt.div,M+G.canvas.height/2/lt.div+oy/lt.div);bx.scale(S/lt.div,S/lt.div);bx.rotate(-cam.rot);bx.translate(-cam.x,-cam.y);
+        const e=M*lt.div/S*1.5,rE={...r,x0:r.x0-e,y0:r.y0-e,x1:r.x1+e,y1:r.y1+e};
+        const warm = LIGHT.radial("rgba(255,196,120,0.9)");
+        _lp('m_fill');if(dark>.012)for(const Lm of visibleStreetLights(G,rE)){const rad=Lm.radius*1.22;bx.globalAlpha=(Lm.expanded?1:.92)*lit;bx.drawImage(warm,Lm.x-rad,Lm.y-rad,rad*2,rad*2);}_lp('m_lamps');
+        if (r.x0 < CORE && r.y0 < CORE) {
+          bx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(bx, rE, G.ticks);
+          for (const N of G.meta.neons) {
+            const nx = N.x + N.w * 0.5, ny = N.y + N.h + 16;
+            if (nx < rE.x0 || nx > rE.x1 || ny < rE.y0 || ny > rE.y1) continue;
+            const spr = LIGHT.radial(hexA(N.color || "#ff2d9b", 0.85));
+            const rad = Math.max(70, Math.min(N.w * 0.6, 160));
+            bx.globalAlpha = lit * (0.85 + 0.15 * Math.sin(G.ticks * 0.1 + N.x));
+            bx.drawImage(spr, nx - rad, ny - rad * 0.6, rad * 2, rad * 1.2);
+          }
         }
       }
+      LB.key=key;LB.cam={x:cam.x,y:cam.y};LB.at=G.ticks;sh0=[0,0];G._lmBaseBuilds=(G._lmBaseBuilds||0)+1;
+    }
+    lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='copy';lx.globalAlpha=1;
+    lx.drawImage(LB.cv,-M+sh0[0],-M+sh0[1]);
+    lx.globalCompositeOperation = "lighter";
+    worldXform(G, lx, S, lt.div, ox, oy);
+    if (lit > 0.02) {
       // the hero always has a little rim of light
       const P = G.player;
       _lp('m_neon');lx.globalAlpha = 0.55 * lit; lx.drawImage(LIGHT.radial("rgba(200,220,255,0.7)"), P.x - 80, P.y - 80, 160, 160);
@@ -3233,17 +3245,20 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lit = G.dbg&&G.dbg.noEmis?0:clamp(dark * 1.7, 0, 1);
   if (lit > 0.03) {
     if (r.x0 < CORE && r.y0 < CORE) {
-      drawCoreGlow(G,ctx,r,G.ticks,lit);
+      _lp('e_pre');drawCoreGlow(G,ctx,r,G.ticks,lit);_lp('e_glow');
       ctx.globalAlpha = 1;
-      drawMarquees(G, cam, 900 / cam.scale, lit);
+      drawMarquees(G, cam, 900 / cam.scale, lit);_lp('e_marq');
     }
-    if (!low || lit > 0.5) G.bld.drawLit(ctx, cam, r, lit);
+    if (!low || lit > 0.5) G.bld.drawLit(ctx, cam, r, lit);_lp('e_lit');
     const bulb = LIGHT.radial("rgba(255,230,180,1)", 32);
     ctx.globalAlpha = lit;
     for(const Lm of lamps)if(Lm.expanded)ctx.drawImage(bulb,Lm.bulbX-7,Lm.bulbY-7,14,14);
+    // Warm sodium spill on the nearest lamps: the light map can only lift the
+    // darkness back to day colour, this adds the glow a lit street reads by.
+    if(!low&&!(G.dbg&&G.dbg.noPool)){const pool=LIGHT.radial('rgba(255,176,96,0.9)',64);let n=0;ctx.globalAlpha=.2*lit;for(const Lm of visibleStreetLights(G,r,14)){const rad=(Lm.radius||120)*.62;ctx.drawImage(pool,Lm.x-rad,Lm.y-rad,rad*2,rad*2);if(++n>=14)break;}ctx.globalAlpha=lit;}
     const sl = G._sigLit || [];
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
-    if (lit > 0.3) drawSearchlights(G, cam, lit);
+    if (lit > 0.3) drawSearchlights(G, cam, lit);_lp('e_misc');
   }
   const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;G.night=night;
   if (night > 0.3 && G.codeAt && !G.settings.reducedMotion) {
