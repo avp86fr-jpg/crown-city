@@ -32,7 +32,7 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
   const b={x:canal.x-80,y:s.c-s.w/2-32,w:canal.w+160,h:s.w+64,walk:32,roadWidth:s.w,lanes:s.lanes,med:s.med,roadKind:s.k,roadStart:s.a,clearance:36};E.bridges.push(b);fill(b.x,b.y,b.w,b.h,CODE.walk);fill(b.x,b.y+b.walk,b.w,s.w,CODE.road);
  }
  E.dockPiers=E.docks.map(d=>({x:d.x<canal.x?canal.x-65:canal.x+canal.w-25,y:d.y-32,w:90,h:64,id:d.id,side:d.x<canal.x?-1:1}));
- const riverStubs=W.roads.filter(s=>s.v&&s.b>W.river[0]&&s.b<=W.river[1]&&s.a<W.river[0]).map(s=>({x:s.c-s.w/2-8,y:W.river[0]-4,w:s.w+16}));E.riverStubs=riverStubs;
+ const riverStubs=W.roads.filter(s=>s.v&&s.b>W.river[0]&&s.b<=W.river[1]&&s.a<W.river[0]).map(s=>({x:s.c-s.w/2-44,y:W.river[0]-4,w:s.w+88}));E.riverStubs=riverStubs;
  W.boatSurfaceAt=(x,y)=>{
   if(x<0||x>=WORLD_W||y<0||y>=WORLD_H)return null;
   // road stubs that run out over the river and stop (no far bank) stand on solid quay fill: boats can't pass under them
