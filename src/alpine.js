@@ -66,6 +66,11 @@ export function applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H}){
  const touching=p=>{const r=p.r||0,w=p.w||r*2||1,h=p.h||r*2||1,a={x:p.x-r,y:p.y-r,w,h},b={x:p.x-w/2,y:p.y-h/2,w,h};return clearZone.some(z=>hits(z,a)||hits(z,b));};
  for(const key of ['buildings','trees','parking','lots','features','lamps','pools','props'])if(Array.isArray(W[key]))W[key]=W[key].filter(p=>p.y<9700||!touching(p));
  if(W.expansion){for(const key of ['decor','obstacles'])if(Array.isArray(W.expansion[key]))W.expansion[key]=W.expansion[key].filter(p=>p.y<9700||!touching(p));}
+ if(W.expansion?.decor){const near=d=>d.kind==='rock'&&d.y>9850&&[9216,10624].some(x=>Math.abs(d.x-x)<(d.w||0)/2+220);
+  for(const d of W.expansion.decor.filter(near))fillAny(d.x-d.w/2-20,d.y-d.h/2-20,d.w+40,d.h+40,CODE.dirt,c=>c===CODE.build);
+  W.expansion.decor=W.expansion.decor.filter(d=>!near(d));W.expansion.obstacles=(W.expansion.obstacles||[]).filter(o=>!(o.y>9850&&o.y<10240&&[9216,10624].some(x=>Math.abs(o.x+o.w/2-x)<330)));}
+ // painted decor is drawn from spatial bins: drop removed items there too
+ if(W.expansion?.decorBins){const keep=new Set(W.expansion.decor);for(const [k,arr] of W.expansion.decorBins)W.expansion.decorBins.set(k,arr.filter(p=>keep.has(p)));}
  // lake ice (drivable, slick), then roads, plaza
  for(let y=LAKE.cy-LAKE.ry;y<LAKE.cy+LAKE.ry;y+=CELL)for(let x=LAKE.cx-LAKE.rx;x<LAKE.cx+LAKE.rx;x+=CELL)if(lakeV(x+8,y+8)<1)fillAny(x,y,CELL,CELL,CODE.lot);
  // village pavements: boardwalks either side of the main street
@@ -336,6 +341,10 @@ export function* alpineChunkSteps(G,ix,iy,scale){
  const cv=canvas(Math.ceil(SZ*scale),Math.ceil(SZ*scale)),c=cv.getContext('2d');c.setTransform(scale,0,0,scale,-x0*scale,-y0*scale);
  const A=G.world.alpine;yield {canvas:cv};
  const land=y0+SZ>H0;
+ if(y0<H0&&y0+SZ>9880){const top=Math.max(y0,9880),bot=Math.min(y0+SZ,H0);c.save();c.beginPath();c.rect(Math.max(x0,coastX(H0)-40),top,SZ,bot-top);c.clip();
+  const g=c.createLinearGradient(0,9880,0,H0);g.addColorStop(0,'rgba(233,239,246,0)');g.addColorStop(.55,'rgba(233,239,246,.35)');g.addColorStop(1,'rgba(233,239,246,.9)');c.fillStyle=g;c.fillRect(x0,top,SZ,bot-top);
+  const r=rng(ix*57+iy*13+1);for(let i=0;i<120;i++){const x=x0+r()*SZ,y=9890+Math.sqrt(r())*(H0-9890);if(y<top||y>bot)continue;const k=(y-9890)/(H0-9890);c.fillStyle=`rgba(${r()<.5?'246,249,252':'214,226,240'},${.25+k*.6})`;c.beginPath();c.ellipse(x,y,8+r()*26*k+4,3+r()*8*k+2,-.35+r()*.3,0,TAU);c.fill();}
+  c.restore();}
  if(land){
   const top=Math.max(y0,H0);c.save();c.beginPath();c.rect(x0,top,SZ,y0+SZ-top);c.clip();
   // sea and its icy shore
@@ -348,7 +357,7 @@ export function* alpineChunkSteps(G,ix,iy,scale){
   // hill shading for relief
   c.imageSmoothingEnabled=true;c.drawImage(hillshade(ix,iy,SZ),x0,y0,SZ,SZ);
   // beach to snow transition below the frontier
-  if(y0<H0+300){const g=c.createLinearGradient(0,H0,0,H0+260);g.addColorStop(0,x0<8800?'rgba(214,190,140,.95)':'rgba(150,128,96,.9)');g.addColorStop(1,'rgba(233,239,246,0)');c.fillStyle=g;c.fillRect(Math.max(x0,coastX(H0)),H0,SZ,260);
+  if(y0<H0+300){const g=c.createLinearGradient(0,H0,0,H0+260);g.addColorStop(0,x0<8800?'rgba(214,190,140,.28)':'rgba(150,128,96,.25)');g.addColorStop(1,'rgba(233,239,246,0)');c.fillStyle=g;c.fillRect(Math.max(x0,coastX(H0)),H0,SZ,260);
    c.fillStyle='rgba(255,255,255,.75)';const r=rng(ix*91+7);for(let i=0;i<40;i++){const x=x0+r()*SZ,y=H0+40+r()*200;c.beginPath();c.ellipse(x,y,6+r()*18,3+r()*6,0,0,TAU);c.fill();}}
   // wind drifts: long soft blue-shadowed ridges
   {const r=rng(ix*733+iy*177+5);for(let i=0;i<10;i++){const x=x0+r()*SZ,y=Math.max(top,y0)+r()*SZ,l=40+r()*90,w=8+r()*12;c.save();c.translate(x,y);c.rotate(-.35);
@@ -408,7 +417,7 @@ export function drawAlpineGround(G,r){
  const A=G.world.alpine;if(!A||!A.cache||r.y1<PEAK_BOUNDS.y0)return;const c=G.ctx,SZ=512;
  const ix0=Math.max(0,Math.floor(r.x0/SZ)),ix1=Math.min(23,Math.floor(r.x1/SZ)),iy0=Math.max(Math.floor(PEAK_BOUNDS.y0/SZ),Math.floor(r.y0/SZ)),iy1=Math.min(Math.floor((PEAK_BOUNDS.y1-1)/SZ),Math.floor(r.y1/SZ));
  const low=G.settings.quality==='low',budget={until:performance.now()+(low?3:5),used:false};
- const list=[];for(let iy=iy0;iy<=iy1;iy++)for(let ix=ix0;ix<=ix1;ix++){const by=iy*SZ,bx=ix*SZ;if(by+SZ<=H0&&!(bx<10760&&bx+SZ>9100))continue;list.push({ix,iy,d:(bx+256-G.cam.x)**2+(by+256-G.cam.y)**2});}
+ const list=[];for(let iy=iy0;iy<=iy1;iy++)for(let ix=ix0;ix<=ix1;ix++){const by=iy*SZ,bx=ix*SZ;if(by+SZ<=9880||by+SZ<=H0&&(bx+SZ<4600||bx>11900))continue;list.push({ix,iy,d:(bx+256-G.cam.x)**2+(by+256-G.cam.y)**2});}
  list.sort((a,b)=>a.d-b.d);let pending=0;
  for(const {ix,iy} of list){const im=chunk(G,ix,iy,budget);if(im&&A.cache.get(ix+':'+iy)?.done)c.drawImage(im,ix*SZ,iy*SZ,SZ,SZ);else{pending++;if(iy*SZ+SZ>H0){c.fillStyle=ix*SZ<5200?SN.sea:SN.base;c.fillRect(ix*SZ,Math.max(H0,iy*SZ),SZ,SZ);}}}
  A.pending=pending;trimCache(G,Math.max(low?18:26,list.length+6));
@@ -418,11 +427,11 @@ const BEANIE=['#c8312c','#2f6fb2','#e0b040','#2f8f5a','#7d3cc8','#f4f4f4'];
 export function drawAlpineOverhead(G,r){
  const A=G.world.alpine;if(!A||r.y1<H0-100)return;const c=G.ctx,t=G.settings.reducedMotion?0:G.ticks/60;
  // winter-dressed pedestrians: knit hats and scarves on everyone in the snow
- for(const p of G.peds){if(p.dead||p.y<H0-200||p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;const k=((p.x*7+(p.id||0)*13)|0)&7,col=BEANIE[(p.sprite?.length||k)%6];
+ for(const p of G.peds){if(p.dead||p.y<H0-40||p.x<r.x0||p.x>r.x1||p.y<r.y0||p.y>r.y1)continue;const k=((p.x*7+(p.id||0)*13)|0)&7,col=BEANIE[(p.sprite?.length||k)%6];
   // standing sprites are ~50 px tall with feet at p.y: the hat sits on the head, the scarf at the neck
-  const hx=p.x,hy=p.y-45;c.fillStyle=BEANIE[(k+2)%6];c.fillRect(hx-5.5,hy+7,11,3.2);c.fillRect(hx+1,hy+9,3,6);
-  c.fillStyle=col;c.beginPath();c.ellipse(hx,hy,6,5,0,Math.PI,TAU);c.fill();c.fillRect(hx-6.2,hy-.5,12.4,3);
-  c.fillStyle='rgba(255,255,255,.35)';c.fillRect(hx-6.2,hy+.3,12.4,1);c.fillStyle='#f4f4f4';c.beginPath();c.arc(hx,hy-5.5,2.4,0,TAU);c.fill();}
+  const hx=p.x,hy=p.y-45;c.fillStyle=BEANIE[(k+2)%6];c.fillRect(hx-4,hy+6.5,8,2.2);c.fillRect(hx+1.5,hy+8,2,3.5);
+  c.fillStyle=col;c.beginPath();c.ellipse(hx,hy,4.8,4.2,0,Math.PI,TAU);c.fill();c.fillRect(hx-5,hy-.4,10,2.4);
+  c.fillStyle='rgba(255,255,255,.35)';c.fillRect(hx-5,hy+.3,10,.9);c.fillStyle='#f4f4f4';c.beginPath();c.arc(hx,hy-4.6,1.9,0,TAU);c.fill();}
  // chimney smoke drifting with the wind
  const img=puff();
  for(const C of A.chalets){const ch=C.chimney;if(ch.x<r.x0-200||ch.x>r.x1+100||ch.y<r.y0-100||ch.y>r.y1+200)continue;

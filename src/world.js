@@ -432,6 +432,9 @@ export function buildWorld(meta, coreMask, coreMS) {
   for(const m of SLOT_MACHINES)W.fill(m.x-16,m.y-16,32,32,CODE.build);
   applyResort(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H});
   applyAlpine(W,{CELL,GW,GH,CODE,WORLD_W,WORLD_H});
+  // Kerb trees whose trunk landed on the carriageway step back onto the pavement.
+  {const g=(x,y)=>W.grid[((y/CELL)|0)*GW+((x/CELL)|0)];
+   for(const t of W.trees){if(!t.street||g(t.x,t.y)!==CODE.road)continue;for(const [dx,dy] of [[0,-1],[0,1],[-1,0],[1,0]])if(g(t.x+dx*20,t.y+dy*20)===CODE.walk){t.x+=dx*12;t.y+=dy*12;break;}}}
   return W;
 }
 

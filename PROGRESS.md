@@ -142,3 +142,9 @@
 - Textures: wind-sculpted drifts (sastrugi), sparkle, natural branch snow clumps on pines, broken stratified snow ledges on rocks, frozen lake skate loops and cracks.
 - Winter hats/scarves now sit on the head/neck of the standing sprites (was drawn at the feet). Snowfall over the open sea reduced to 12%.
 - Measured grip (dart, 0.45 s right steer at ~295 px/s): city asphalt slip 9°, snow road 11°, frozen lake 23°.
+
+## Pass 16 — world global coherence (preview only)
+- New `tools/world-coherence.mjs` wired into `npm run audit:map`: trees/buildings/decor on roads, pickups/spawn reachability, boats on land, cars in water. First run found 14 kerb trees on carriageway + 2 compounds (exempted as paved); now 0.
+- Snowline gradient across the frontier strip (y 9880–10240), reduced sand band on the annex top.
+- Desert rocks removed within 220 px of the snow entry roads (decor, decorBins, obstacles, collision). Known: mobile baked sheet 4_4 still shows two rock clusters near x 8850–9580 — source not yet traced.
+- Kerb trees nudged off the road; winter hats only in snow, smaller beanie/scarf; snowfall over the sea at 12%.

@@ -4,6 +4,7 @@ import {harness} from '../tests/harness.js';
 import {worldBodyHit,bodyContact} from '../src/collision.js';
 import {edgePoint,trimAt} from '../src/traffic.js';
 import {roadCoherence} from './road-coherence.mjs';
+import {worldCoherence} from './world-coherence.mjs';
 import {roadEnds} from '../src/open_world.js';
 import {WORLD_W,WORLD_H} from '../src/world.js';
 import {SOUTH} from '../src/alpine.js';
@@ -27,7 +28,8 @@ for(let a=0;a<G.vehicles.length;a++)for(let b=a+1;b<G.vehicles.length;b++){
 }
 // Road-network coherence: dead ends, joins, signals, unjoined crossings, paving gaps.
 const coh=roadCoherence(G,{W:WORLD_W,H:WORLD_H+SOUTH},roadEnds(G));report.coherence=coh;
+const world=worldCoherence(G);report.world=world;
 fs.mkdirSync('.qa/sustained',{recursive:true});fs.writeFileSync('.qa/sustained/map-audit.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 // Hard failures: uncapped dead ends, edges crossing without a junction, gaps in the paving.
 // Lane-count joins and unsignalled junctions are reported as warnings.
-if(coh.stats.uncapped||coh.crossings.length||coh.offRoad.length||report.roads.length||report.surfaces.length||report.parked.length||report.overlaps.length)process.exitCode=1;
+if(world.stats.treesOnRoad||world.buildingsOnRoad.length||world.decorOnRoad.length||world.pickups.length||world.spawn||world.boatsOnLand.length||world.carsInWater.length||coh.stats.uncapped||coh.crossings.length||coh.offRoad.length||report.roads.length||report.surfaces.length||report.parked.length||report.overlaps.length)process.exitCode=1;
