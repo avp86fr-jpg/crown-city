@@ -2113,6 +2113,9 @@ function tickWanted(G, dt) {
 
 function tickCops(G, dt) {
   const P = G.player;
+  // PIT manoeuvre in progress: the suspect's tail is being shoved round.
+  if(P.pitT>0){P.pitT-=dt;if(P.type==='veh'){P.rot+=P.pitDir*2.4*dt;P.yaw=P.pitDir*2.4;}}
+  if(G._pitCool>0)G._pitCool-=dt;
   for (const c of G.cops) {
     if (!c || c === P || c.dead) continue;
     const dist = Math.hypot(P.x - c.x, P.y - c.y);
@@ -2151,8 +2154,19 @@ function tickCops(G, dt) {
     // A cruiser holds position while its officers are outside. It must not
     // reverse into the crowd simply because it is intentionally stationary.
     if(c.crewOut){x=0;y=0;c.reverseT=c.stuckT=0;c._avoidBrake=true;}
+    // PIT: from three stars a cruiser that draws level with the suspect's rear
+    // quarter at speed steers into it and spins the tail out (with a cooldown).
+    let pitting=false;
+    if(G.wanted>=3&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&!c.crewOut&&!(G._pitCool>0)&&los&&dist<160){
+      const ph=headingVec(P.rot),pr=rightVec(P.rot),rx=c.x-P.x,ry=c.y-P.y,along=rx*ph.x+ry*ph.y,side=rx*pr.x+ry*pr.y;
+      const ps=P.vx*ph.x+P.vy*ph.y,bs=bodySize(P),cs=bodySize(c);
+      if(ps>150&&fwd>140&&Math.cos(c.rot-P.rot)>.8&&along<-bs.l*.1&&along>-bs.l*1.6&&Math.abs(side)<bs.w+cs.w+46){
+        pitting=true;x=side<0?.6:-.6;y=Math.max(y,.85);
+        if(Math.abs(side)<bs.w+cs.w+10){P.pitT=.5;P.pitDir=side<0?-1:1;G._pitCool=7;G.cam.shake=Math.max(G.cam.shake||0,6);G.audio.contact?.({speed:260,material:'body',source:P,x:P.x,y:P.y});G.radioMsg={text:'Unit attempting PIT. Spin him out.',t:2.6};G.pits=(G.pits||0)+1;}
+      }
+    }
     let trafficBrake=false;
-    for(const other of localStreetVehicles(G,c.x,c.y)){
+    if(!pitting)for(const other of localStreetVehicles(G,c.x,c.y)){
       if(other===c||other.def.boat||airborne(other))continue;
       const dx=other.x-c.x,dy=other.y-c.y,hx=Math.sin(c.rot),hy=-Math.cos(c.rot);
       if(dx*hx+dy*hy>0&&dx*hx+dy*hy<bodySize(c).l+bodySize(other).l+25+Math.max(0,fwd)*.45&&Math.abs(dx*hy-dy*hx)<bodySize(c).w+bodySize(other).w+4){trafficBrake=true;y=0;break;}
@@ -2203,7 +2217,17 @@ function tickCops(G, dt) {
       if (p.car && !p.car.dead) { const cd = Math.hypot(p.car.x - p.x, p.car.y - p.y); if (cd < 30) { p.dead = true; p.removed = true; p.car.crewOut = false; continue; } p.rot = Math.atan2(p.car.x - p.x, -(p.car.y - p.y)); }
       else { p.speed=0;p.grabT=0;continue; }
     } else { const target=G.nav.clearLine(p.x,p.y,P.x,P.y)?P:G.nav.next(p.x,p.y,2,true)||G.policeTarget||p;p.rot=Math.atan2(target.x-p.x,-(target.y-p.y)); }
-    const sp = G.wanted >= 3 && d < 260 ? 40 : 120;
+    let sp = G.wanted >= 3 && d < 260 ? 40 : 120;
+    // Cover: in a firefight (3+ stars, suspect on foot) an officer runs to the far
+    // side of a nearby stopped car, holds there and fires over it, then advances.
+    if(P.type==='foot'&&G.wanted>=3&&d<420){
+      if(!p.coverAt||G.ticks>=p.coverAt){p.coverAt=G.ticks+40;p.cover=null;
+        if(p.coverHold>4)p.coverHold=-3;else if(!(p.coverHold<0)){let best=null,bd=170;for(const v of localStreetVehicles(G,p.x,p.y)){if(v===P||v.dead||v.def.boat||airborne(v)||Math.hypot(v.vx||0,v.vy||0)>20)continue;const vd=Math.hypot(v.x-P.x,v.y-P.y);if(vd<90)continue;
+          const ux=(v.x-P.x)/vd,uy=(v.y-P.y)/vd,cx=v.x+ux*(bodySize(v).w+14),cy=v.y+uy*(bodySize(v).w+14),cd=Math.hypot(cx-p.x,cy-p.y);if(cd<bd&&G.surfaceAt(cx,cy)!=='build'){bd=cd;best={x:cx,y:cy};}}
+          p.cover=best;}}
+      if(p.cover){const cd=Math.hypot(p.cover.x-p.x,p.cover.y-p.y);if(cd>8){p.rot=Math.atan2(p.cover.x-p.x,-(p.cover.y-p.y));sp=Math.min(130,cd/Math.max(dt,.001));p.coverHold=0;}else{sp=0;p.rot=Math.atan2(dx,-dy);p.coverHold=(p.coverHold||0)+dt;p.inCover=true;}}
+      else{p.inCover=false;if(p.coverHold<0)p.coverHold+=dt;}
+    }else{p.cover=null;p.inCover=false;}
     const h = headingVec(p.rot);
     const px=p.x,py=p.y;
     if(P.type==="veh"||G.wanted===0)stepPedestrian(G,p,p.rot,95,dt,{road:true});else moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
@@ -2690,6 +2714,8 @@ function viewRect(G) {
 // Night frames are dark and soft-lit: on desktop the world layer renders at
 // a lower internal scale there (HUD stays native). Hysteresis on darkness
 // keeps the canvas from reallocating around dusk.
+// Dev profiling: force the canvas to raster so section timings include drawing.
+let _pf=null;function profFlush(G){if(!_pf){const c=document.createElement('canvas');c.width=c.height=1;_pf=c.getContext('2d',{willReadFrequently:true});}_pf.drawImage(G.canvas,0,0,1,1);_pf.getImageData(0,0,1,1);}
 export function nightResTarget(G){
   if(G.touch||G.settings?.quality==='low'||G.scene!=='play')return 1;
   if(G.dbg&&G.dbg.nightRes!=null)return G.dbg.nightRes;
@@ -3008,7 +3034,7 @@ function renderWorldLayer(G) {
   if (r.x0 < 0 || r.y0 < 0 || r.x1 > CORE || r.y1 > CORE) {
     ctx.fillStyle='#173e4b';ctx.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
   }
-  let _pt = performance.now(); const _ph = (k) => { const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
+  let _pt = performance.now(); const _ph = (k) => { if(G._profSync)profFlush(G); const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
   _ph('w_water');
   // 2. painted core
   if (r.x0 < CORE && r.y0 < CORE) {
@@ -3037,8 +3063,8 @@ function renderWorldLayer(G) {
     ctx.restore();
   }
   _ph('w_shadow');
-  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));
-  drawStreetScene(G,r);
+  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));_ph('d_wet');
+  drawStreetScene(G,r);_ph('d_street');
   // 5. ground details
   ctx.lineWidth = 3;
   for (const s of G.skids) {
@@ -3061,9 +3087,9 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
-  drawOpenWorld(G, r);drawPursuit(G, r);
+  _ph('d_props');drawOpenWorld(G, r);drawPursuit(G, r);_ph('d_ow');
   drawRouteChevrons(G);
-  drawObjectiveGround(G);
+  drawObjectiveGround(G);_ph('d_route');
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
   drawStreetGateways(G,r);_ph('a_gate');drawUrbanCourts(G,r);_ph('a_courts');drawCityHubs(G,r);_ph('a_hubs');drawCircuitActivity(G,r);drawDropMission(G,r);_ph('a_circ');drawExpansionOverhead(G,r);_ph('a_exp');drawTransitWorld(G,r);_ph('a_transit');drawCasinoWorld(G,r);drawGangWorld(G,r);_ph('a_casino');
@@ -3133,6 +3159,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lamps=dark>.012?visibleStreetLights(G,r):[];
   const hasFlash = G.flashes.length > 0;
   const lt = G.light, lx = lt.lx;
+  let _lt=performance.now();const _lp=k=>{if(!G._profSync)return;lx.getImageData(0,0,1,1);profFlush(G);const t=performance.now();prof(G,k,t-_lt);_lt=t;};
   // Near-white daylight multiply is invisible but cost a full-frame composite.
   const needMap = Math.min(ar, ag, ab) < 238;
   // low tier: rebuild the light map every other frame (the multiply still runs every frame)
@@ -3155,7 +3182,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       const warm = LIGHT.radial("rgba(255,196,120,0.9)");
       // street lamps
       const lamp = (x, y, rad, a) => { lx.globalAlpha = a * lit; lx.drawImage(warm, x - rad, y - rad, rad * 2, rad * 2); };
-      for(const Lm of lamps)lamp(Lm.x,Lm.y,Lm.radius,Lm.expanded?.9:.75);
+      _lp('m_fill');for(const Lm of lamps)lamp(Lm.x,Lm.y,Lm.radius,Lm.expanded?.9:.75);_lp('m_lamps');
       // neon washes from the casino strip
       if (r.x0 < CORE && r.y0 < CORE) {
         lx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(lx, r, G.ticks);
@@ -3170,7 +3197,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       }
       // the hero always has a little rim of light
       const P = G.player;
-      lx.globalAlpha = 0.55 * lit; lx.drawImage(LIGHT.radial("rgba(200,220,255,0.7)"), P.x - 80, P.y - 80, 160, 160);
+      _lp('m_neon');lx.globalAlpha = 0.55 * lit; lx.drawImage(LIGHT.radial("rgba(200,220,255,0.7)"), P.x - 80, P.y - 80, 160, 160);
     }
     // vehicles: headlights, tail/brake, sirens
     const night = clamp(dark * 1.4 + G.fog * 0.5 + G.rainAmt * 0.3, 0, 1);
@@ -3178,7 +3205,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       if (v.x < r.x0 - 200 || v.x > r.x1 + 200 || v.y < r.y0 - 200 || v.y > r.y1 + 200) continue;
       vehLights(G, lx, v, night, true);
     }
-    if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, lx, G.player, night, true);
+    if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, lx, G.player, night, true);_lp('m_veh');
     // muzzle flashes, explosions, fire
     for (const f of G.flashes) { if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;const k = f.max ? f.life / f.max : 1; lx.globalAlpha = clamp(k, 0, 1); const sp = LIGHT.radial(f.col); lx.drawImage(sp, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2); }
     for (const p of G.particles) if (p.kind === "fire" || p.kind === "boom") { lx.globalAlpha = 0.5; const rr = p.kind === "boom" ? 200 : 60; lx.drawImage(LIGHT.radial("rgba(255,150,60,0.9)"), p.x - rr, p.y - rr, rr * 2, rr * 2); }
@@ -3189,7 +3216,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     // Fold the screen vignette into the multiply map: one full-frame
     // composite instead of two (the grade pass is skipped while it is baked).
     lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='multiply';lx.globalAlpha=1;
-    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';
+    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';_lp('m_rest');
   }
   if (needMap && !(G.dbg&&G.dbg.noMul)) {
     // multiply onto the frame
@@ -3198,7 +3225,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     const sh=reuse&&G._lmCam?{x:(G._lmCam.x-cam.x)*S,y:(G._lmCam.y-cam.y)*S}:{x:0,y:0};
     ctx.drawImage(lt.cv, sh.x, sh.y, canvas.width, canvas.height);
     if(sh.x||sh.y){ctx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;if(sh.x>0)ctx.fillRect(0,0,Math.ceil(sh.x),canvas.height);else if(sh.x<0)ctx.fillRect(canvas.width+Math.floor(sh.x),0,-Math.floor(sh.x),canvas.height);if(sh.y>0)ctx.fillRect(0,0,canvas.width,Math.ceil(sh.y));else if(sh.y<0)ctx.fillRect(0,canvas.height+Math.floor(sh.y),canvas.width,-Math.floor(sh.y));}
-    ctx.restore();
+    ctx.restore();_lp('m_mul');
   }
   // emissive pass (additive, unaffected by darkness)
   worldXform(G, ctx, S, 1, ox, oy);
@@ -3688,7 +3715,13 @@ function drawChar(G,a){
  // Chaos sprint: a faint purple after-image trails the run, and boots kick up dust.
  if(heroFX&&running&&!G.settings.reducedMotion){const vx=a.vx??Math.sin(a.rot||0)*a.speed,vy=a.vy??-Math.cos(a.rot||0)*a.speed;ctx.save();ctx.globalAlpha*=.2;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.045,dy-vy*.045,dw,dh);ctx.globalAlpha*=.5;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.09,dy-vy*.09,dw,dh);ctx.restore();
   if(pass&&(G.ticks%6===0)&&G.particles.length<400)G.particles.push({kind:'dust',x:a.x-Math.sin(a.rot||0)*8,y:a.y+Math.cos(a.rot||0)*8+6,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.45,maxLife:.45,size:.6});}
- ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ // Chaos's coat hem swings with the gait: the lower third of the frame is
+ // sheared side to side with the stride (procedural, on top of the painted frame).
+ if((a.sprite||'chaos')==='chaos'&&moving&&!a.dead&&!G.settings.reducedMotion&&G.settings.quality!=='low'){
+  const sp=.62,ph=Math.sin((a.dist||0)*.085),k=ph*(running?.2:.12),y0=dy+dh*sp;
+  ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h*sp,dx,dy,dw,dh*sp+.6);
+  ctx.save();ctx.transform(1,0,k,1,-k*y0,0);ctx.drawImage(img,frame.x,frame.y+frame.h*sp,frame.w,frame.h*(1-sp),dx,y0,dw,dh*(1-sp));ctx.restore();
+ }else ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
  if(heroFX){
   // Hit reaction: the sprite flares white-hot for a beat when Chaos is hurt.
   if(G.hurtT>.2){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.7,(G.hurtT-.2)*1.6);ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);ctx.restore();}

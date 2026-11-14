@@ -81,3 +81,15 @@
 - Traffic: deadlock breaker (nose-to-nose / 3-car knots, out-of-view stalled blockers). Strip+downtown at 17:30, 40 s: gridlock>20 s 10→7, stuck>20 s 21→12.
 - Audio: two new original compositions (tools/compose-pass8.py: OPEN ROAD 89.3, TIDE FM 93.5) plus the unused AFTER HOURS track; radio dial 3→6; harbour piece on night beaches/piers.
 - Mobile night: veil folded into the multiply grade, cached headlight beam sprite, 10 lamp pools instead of 22. Synchronous render benchmark (no throttle): night 2.98→2.75 ms median (noisy); throttled rAF fps runs vary 25–45 between identical runs, so not used as evidence.
+
+## Pass 9 — weak spots + optimisation (preview only)
+- Profiling: CDP CPU profile (mobile night: 71% idle, JS <2%); new section profiler (G._profSync flushes the canvas per section) and interleaved A/B bench (cc_work/dbgbench.cjs, secprof.cjs).
+- Street fixtures: sprite canvases trimmed to footprint (less overdraw); dev dbg toggles on mobile (noBase, noMulM, noLampM, noVL, noResort).
+- Landmarks by place category, core city first (8 city landmarks), car parks excluded.
+- Property marker: name, price and rent card within 300 px; owned shows SAFEHOUSE + rent.
+- Bike livery: white twin stripes + gold pinstripes.
+- Traffic: backoff for nose-to-nose pairs, junction owner release at 6 s.
+- Cops: PIT from 3 stars, cover-seeking foot cops.
+- Chaos coat hem sway (procedural).
+- Real-input checks: boat wake (107 wake samples at 224 speed), spike strip flattens a keyboard-driven car.
+- Not done: save unification (reverted, conflicts with tested design), desktop night lighting look, rooftop/kerb variety, painted walk frames.

@@ -226,22 +226,24 @@ function lmArt(kind){
  LM_ART.set(kind,{cv,w:W,h:H});return LM_ART.get(kind);
 }
 const LM_NAME={fountain:'Crown Fountain',statue:'Monument',gazebo:'Bandstand',tower:'Water Tower',billboard:'Billboard',lifeguard:'Lifeguard Post',picnic:'Picnic Lawn',wheel:'Pier Wheel',mast:'Radio Mast',market:'Market Stalls'};
+// Kinds that belong in each kind of place: no fountains in the pines or on
+// the airfield apron, plazas and statues in the city, lookouts in the wild.
+const LM_KINDS={urban:['fountain','statue','gazebo','market','fountain','statue'],beach:['wheel','lifeguard','market','lifeguard'],forest:['picnic','tower','gazebo','picnic'],desert:['tower','mast','billboard'],air:['mast','billboard','tower'],track:['billboard','statue'],edge:['billboard','market','tower','statue']};
+function lmCategory(dn,sf,core){if(sf==='sand'&&!/MESA|DESERT|SIERRA/.test(dn))return 'beach';if(/FOREST/.test(dn))return 'forest';if(/MESA|DESERT|SIERRA/.test(dn))return 'desert';if(/AIRFIELD/.test(dn))return 'air';if(/GRAND PRIX/.test(dn))return 'track';return core||/IRONSIDE|EASTSIDE|MIDTOWN|TERRACE|PALACE|OLD TOWN|SOUTHSIDE|DOWNTOWN/.test(dn)?'urban':'edge';}
 function placeLandmarks(G,o){
- o.landmarks=[];const W=WORLD_W,H=WORLD_H,ok=new Set(['grass','dirt','sand','lot']);
- const cells=[];for(let y=260;y<H-200;y+=180)for(let x=200;x<W-200;x+=180)cells.push([x+(hash(x,y)-.5)*80,y+(hash(y,x)-.5)*80]);
- cells.sort((a,b)=>hash(a[0]*.37,a[1]*.11)-hash(b[0]*.37,b[1]*.11));
- let wheel=false;
- for(const [x,y] of cells){if(o.landmarks.length>=30)break;const sf=G.surfaceAt(x,y);if(!ok.has(sf))continue;
-  let clear=true;for(let dy=-80;dy<=80&&clear;dy+=40)for(let dx=-80;dx<=80;dx+=40){const s=G.surfaceAt(x+dx,y+dy);if(s!==sf&&!(ok.has(s)&&sf!=='sand')){clear=false;break;}}
-  if(!clear)continue;if(o.landmarks.some(l=>Math.hypot(l.x-x,l.y-y)<820))continue;if(o.ramps.some(r=>Math.hypot(r.x-x,r.y-y)<600))continue;const rail=G.world?.transit?.rail;if(rail&&Math.abs(x-rail.x)<200&&y>rail.y0-200&&y<rail.y1+200)continue;
-  const dn=districtAt(x,y),desert=/MESA|DESERT|SIERRA|AIRFIELD|OUTSKIRTS/.test(dn);
-  const h=hash(x*.7,y*.3);let kind;
-  if(sf==='sand')kind=desert?['tower','mast','billboard'][Math.floor(h*3)]:!wheel&&h<.3?'wheel':h<.65?'lifeguard':'market';
-  else if(sf==='grass')kind=['fountain','statue','gazebo','picnic','market','billboard'][Math.floor(h*6)];
-  else if(sf==='dirt')kind=['tower','billboard','mast','tower'][Math.floor(h*4)];
-  else kind=['market','billboard','statue'][Math.floor(h*3)];
-  if(kind==='wheel')wheel=true;
-  const a=lmArt(kind);o.landmarks.push({x,y,kind,r:kind==='wheel'?52:kind==='billboard'?28:kind==='picnic'||kind==='market'?0:36,district:districtAt(x,y)});
+ o.landmarks=[];const W=WORLD_W,H=WORLD_H,ok=new Set(['grass','dirt','sand','lot']),perD={};
+ const CITY=/DOWNTOWN|STRIP|MIDTOWN|PALACE|CROWN LOOP|OLD TOWN|EASTSIDE|SOUTHSIDE|PORT|CROWN CITY/;
+ const cells=[];for(let y=260;y<H-200;y+=180)for(let x=200;x<W-200;x+=180){const cx=x+(hash(x,y)-.5)*80,cy=y+(hash(y,x)-.5)*80;cells.push([cx,cy,CITY.test(districtAt(cx,cy))]);}
+ // the painted core is checked first so the city gets its plazas before the wilds fill the quota
+ cells.sort((a,b)=>(b[2]-a[2])||hash(a[0]*.37,a[1]*.11)-hash(b[0]*.37,b[1]*.11));
+ let wheel=false;const rail=G.world?.transit?.rail;
+ for(const [x,y,core] of cells){if(o.landmarks.length>=32)break;const sf=G.surfaceAt(x,y);if(!ok.has(sf)&&!(core&&sf==='walk'))continue;if(core&&sf==='lot')continue; // city lots are car parks
+  let clear=true;const R=core?60:80,st=core?30:40;for(let dy=-R;dy<=R&&clear;dy+=st)for(let dx=-R;dx<=R;dx+=st){const s=G.surfaceAt(x+dx,y+dy);if(s!==sf&&!(ok.has(s)&&sf!=='sand'&&sf!=='walk')){clear=false;break;}}
+  if(!clear)continue;if(o.landmarks.some(l=>Math.hypot(l.x-x,l.y-y)<(core?520:820)))continue;if(o.ramps.some(r=>Math.hypot(r.x-x,r.y-y)<600))continue;if(rail&&Math.abs(x-rail.x)<200&&y>rail.y0-200&&y<rail.y1+200)continue;
+  const dn=districtAt(x,y),cat=lmCategory(dn,sf,core);if((perD[dn]||0)>=(cat==='track'?1:core?4:3))continue;
+  const h=hash(x*.7,y*.3),list=LM_KINDS[cat].filter(k=>k!=='wheel'||!wheel);const kind=list[Math.floor(h*list.length)];
+  if(kind==='wheel')wheel=true;perD[dn]=(perD[dn]||0)+1;
+  o.landmarks.push({x,y,kind,r:kind==='wheel'?52:kind==='billboard'?28:kind==='picnic'||kind==='market'?0:36,district:dn});
  }
 }
 const PROP_NAMES=['Flat','Studio','Loft','Garage','Townhouse','Penthouse','Villa','Estate'];
@@ -284,7 +286,14 @@ export function drawCityLife(G,r){
   c.fillStyle='rgba(0,0,0,.25)';c.beginPath();c.ellipse(2,3,18,9,0,0,TAU);c.fill();
   c.strokeStyle=owned?'rgba(110,220,150,.9)':'rgba(242,193,78,.9)';c.lineWidth=2;c.setLineDash([5,4]);c.beginPath();c.arc(0,0,22+Math.sin(G.ticks/20)*1.5,0,TAU);c.stroke();c.setLineDash([]);
   c.fillStyle=owned?'#3f9a5e':'#c9932e';c.beginPath();c.moveTo(-9,2);c.lineTo(0,-8);c.lineTo(9,2);c.lineTo(9,10);c.lineTo(-9,10);c.closePath();c.fill();c.fillStyle='#f4eee0';c.fillRect(-2.5,4,5,6);
-  c.font='800 8px system-ui';c.textAlign='center';c.fillStyle='rgba(10,14,18,.75)';const label=owned?p.name.toUpperCase():`FOR SALE ${p.price}`;const tw=c.measureText(label).width+8;c.fillRect(-tw/2,-26,tw,11);c.fillStyle=owned?'#9ff0bf':'#f2c14e';c.fillText(label,0,-17.5);c.restore();}
+  const near=Math.hypot(G.player.x-p.x,G.player.y-p.y)<300,rent=Math.round(p.price*.03);
+  // Info card before buying: name, price and rent (near), a compact tag (far).
+  const l1=owned||near?p.name.toUpperCase():`FOR SALE ${p.price.toLocaleString()}`,l2=owned?(near?`SAFEHOUSE · +${rent} / 3 MIN`:''):near?`${p.price.toLocaleString()} CHIPS · RENT ${rent} / 3 MIN`:'';
+  c.textAlign='center';c.font='800 8px system-ui';let tw=c.measureText(l1).width;c.font='700 7px system-ui';if(l2)tw=Math.max(tw,c.measureText(l2).width);tw+=10;const hh=l2?21:11;
+  c.fillStyle='rgba(10,14,18,.8)';c.fillRect(-tw/2,-16-hh,tw,hh);c.fillStyle=owned?'#9ff0bf':'#f2c14e';c.fillRect(-tw/2,-16-hh,2,hh);
+  c.font='800 8px system-ui';c.fillStyle=l2&&!owned?'#f4eee0':owned?'#9ff0bf':'#f2c14e';c.fillText(l1,0,-hh-16+8.5);
+  if(l2){c.font='700 7px system-ui';c.fillStyle=owned?'#bfe9cf':'#f2c14e';c.fillText(l2,0,-hh-16+18);}
+  c.restore();}
 }
 let _dot=null;function LIGHTDOT(){if(_dot)return _dot;const cv=document.createElement('canvas');cv.width=cv.height=32;const x=cv.getContext('2d'),g=x.createRadialGradient(16,16,0,16,16,16);g.addColorStop(0,'rgba(255,80,80,1)');g.addColorStop(1,'rgba(255,80,80,0)');x.fillStyle=g;x.fillRect(0,0,32,32);return _dot=cv;}
 const fmtTime=s=>{const h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h?`${h} h ${m} min`:`${m} min`;};
