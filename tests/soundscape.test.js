@@ -54,7 +54,7 @@ test('casino, station, footsteps and explosive weapons create finite reusable PC
 }));
 
 test('Performance audio creates no reverb impulse until requested and does not rebuild continuous sources',()=>withAudio(get=>{
- const A=createAudio();A.setLite(true);A.unlock();const ctx=get(),sources=ctx.sources.length;assert.equal(ctx.convolvers,0);assert.equal(sources,19); // +district bed, +engine firing pulse
+ const A=createAudio();A.setLite(true);A.unlock();const ctx=get(),sources=ctx.sources.length;assert.equal(ctx.convolvers,0);assert.equal(sources,26); // +district bed, +engine firing pulse, +turbo whistle, +3 AI engine voices (2 oscillators each)
  const G=game();for(let i=0;i<60;i++){ctx.currentTime=i/15;A.update(G,1/15);}assert.equal(ctx.sources.length,sources);assert.ok(A.soundStats().spatialQueries<15,'proximity queries should run at a slow control rate');
  A.setLite(false);assert.equal(ctx.convolvers,1);A.setLite(true);A.setLite(false);assert.equal(ctx.convolvers,1);
  const reverb=ctx.nodes.find(n=>n.buffer&&n.connections[0]?.gain);assert.equal(reverb.connections[0].gain.value,A.sfxVol);A.setSfx(0);assert.equal(reverb.connections[0].gain.value,0,'wet effects must obey the SFX slider');

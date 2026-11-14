@@ -23,6 +23,8 @@ function position(at, foot = false) {
 }
 async function dialogue(flags = {}) {
   let guard = 0;
+  // the scored results card sits between a won job and its debrief
+  if (G.scene === 'results') { G.scene = G.resultsCard.next; G.resultsCard = null; }
   while (G.scene === 'vn' && guard++ < 30) {
     await h.readyVN();
     const node = G.vn.node;

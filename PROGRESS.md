@@ -148,3 +148,12 @@
 - Snowline gradient across the frontier strip (y 9880–10240), reduced sand band on the annex top.
 - Desert rocks removed within 220 px of the snow entry roads (decor, decorBins, obstacles, collision). Known: mobile baked sheet 4_4 still shows two rock clusters near x 8850–9580 — source not yet traced.
 - Kerb trees nudged off the road; winter hats only in snow, smaller beanie/scarf; snowfall over the sea at 12%.
+
+## Pass 17 — world, AI, Crown Peak polish, vehicle audio + SFX, story scoring, technical pass (preview only)
+- Mobile bake root cause: `bake:world` composes tiles with the *built* bundle (`dist/`), so a bake run before `npm run build` re-bakes stale scenery. Order is now build → bake → build. Entry-road rocks gone from mobile sheet 4_4; desktop radius widened (340 px) so the last faint rock is removed.
+- Chalet roofs: wide timber/shingle eave band with courses, dark ridge beam with snow crumbs, wind-scoured shingle patches, stone/brick chimneys. Snowmobiles + ski racks, chair-lift chairs with backrest/footrest and riders, breath puffs on pedestrians in the snow.
+- Snowfall: far+mid flake layers pre-composited into one tile and the haze fill folded in (desktop 3 full-screen fills + haze → 2; low tier 2 → 1).
+- AI: alpine roads cruise 64 (was 100 default), 25 % slower corners, 0.6× braking and 1.35× headway on snow; village pedestrians spawn on shovelled chalet paths; horns per model/spatialised.
+- Vehicle audio (`src/vehicle_voice.js`): 15 model voices, per-model gear model, load-based tone/engine braking, turbo spool + blow-off, horns per model, tyre voice per surface (asphalt/dirt/sand/snow/ice), 3 spatialised AI engine voices with doppler (2 on low tier), door open/shut, snow/water footsteps, mountain wind and hushed city beds in the snow.
+- Story scoring (`src/story_score.js`): per-job points + S/A/B/C (time, accuracy, stunts/near misses/drifts, heat, damage, collateral), painted results card with count-up and sting, best per job + best total in the story save only, STORY SCORE in pause menu and stats card, end-of-story final score card, live NEAR MISS / DRIFT combo pop-up. Tests in `tests/story_score.test.js`.
+- Mobile audio unlock retries on later gestures until the context is running.

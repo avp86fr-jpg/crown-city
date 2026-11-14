@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {scoreMission,gradeFor,recordBest,storyTotals,cleanScores,countUp} from '../src/story_score.js';
+import {directorState,directorSave} from '../src/mission_director.js';
+test('perfect fast clean run is an S with 3000 points',()=>{const s=scoreMission({elapsed:100,shots:10,hits:10,nearMiss:20,peakHeat:0},0);assert.equal(s.points,3000);assert.equal(s.grade,'S');});
+test('sloppy run grades lower and penalties are itemised',()=>{const s=scoreMission({elapsed:2000,shots:40,hits:4,peakHeat:4,damage:150,civilianHarm:6,collisions:10,deaths:1},2);
+ assert.ok(s.points<1400);assert.equal(s.grade,'C');for(const k of ['DAMAGE TAKEN','COLLATERAL','WASTED','HEAT x4'])assert.ok(s.parts.some(p=>p[0]===k&&p[1]<0),k);});
+test('grade cut-offs',()=>{assert.equal(gradeFor(2600),'S');assert.equal(gradeFor(2599),'A');assert.equal(gradeFor(2000),'A');assert.equal(gradeFor(1400),'B');assert.equal(gradeFor(1399),'C');});
+test('points never negative and accuracy clamps hits to shots',()=>{assert.equal(scoreMission({elapsed:1e5,shots:2,hits:99,peakHeat:5,damage:1e5,civilianHarm:999,deaths:9}).points,0);});
+test('best per mission is kept and survives a story save round-trip',()=>{const D=directorState();
+ assert.equal(recordBest(D,1,{points:1800,grade:'B'}),true);assert.equal(recordBest(D,1,{points:1200,grade:'C'}),false);assert.equal(recordBest(D,1,{points:2700,grade:'S'}),true);
+ D.bestTotal=2700;const R=directorState(JSON.parse(JSON.stringify(directorSave(D))));assert.deepEqual(R.scores,{1:{points:2700,grade:'S'}});assert.equal(R.bestTotal,2700);});
+test('story totals: sum, per-mission rows and overall grade from the played average',()=>{const T=storyTotals({scores:{0:{points:2800},1:{points:2000},2:{points:1000}}},6);
+ assert.equal(T.total,5800);assert.equal(T.played,3);assert.equal(T.rows.length,6);assert.equal(T.rows[3].grade,'-');assert.equal(T.grade,'B');});
+test('scores reject junk and regrade from points',()=>{assert.deepEqual(cleanScores({9:{points:5},x:1,0:{points:2650,grade:'C'}}),{0:{points:2650,grade:'S'}});});
+test('fresh free-ride director has no scores',()=>{assert.deepEqual(directorState().scores,{});});
+test('count-up reaches the target',()=>{assert.equal(countUp(1234,10),1234);assert.equal(countUp(1234,0),0);});

@@ -1,7 +1,7 @@
 /* Civilian road behaviour is deliberately below the player's performance
    envelope. Personality persists across junctions; road limits do not. */
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-export const ROAD_CRUISE=Object.freeze({highway:165,strip:120,boulevard:120,coast:110,arterial:105,street:72,frontier:95});
+export const ROAD_CRUISE=Object.freeze({highway:165,strip:120,boulevard:120,coast:110,arterial:105,street:72,frontier:95,alpine:64});
 const SEDAN=Object.freeze({pace:1,accel:38,brake:145,corner:64,headway:.9});
 const DRIVERS=Object.freeze({
  fare:SEDAN,taxi:{pace:1.02,accel:41,brake:145,corner:63,headway:.86},
@@ -33,5 +33,7 @@ export function trafficCruise(v,edge,G){
 export function trafficTurnSpeed(v,turn,cruise){
  const d=trafficDriver(v,v.tr.e);
  const direction=turn.p0.dx*turn.p2.dx+turn.p0.dy*turn.p2.dy;
- return Math.min(cruise,turn.cubic?d.corner*.55:direction>.96?Math.max(90,cruise*.9):direction>.5?d.corner*1.2:d.corner);
+// packed snow: corners are taken a quarter slower
+ const snow=v.tr.e?.k==='alpine'?.75:1;
+ return snow*Math.min(cruise,turn.cubic?d.corner*.55:direction>.96?Math.max(90,cruise*.9):direction>.5?d.corner*1.2:d.corner);
 }

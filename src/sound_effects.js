@@ -113,8 +113,8 @@ export function weaponSample(kind,t,noise,low,dur,variant=0){
 export function createEffects(ctx,bus){
  const bank=new Map(),variations=new Map();let voices=0;
  const rate=24000,TAU=Math.PI*2;
- const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.2,smg:.24,shotgun:.62,echo:.9,distant:.7,dryfire:.09,ricochet:.36,metalHit:.22,flesh:.16,hitmark:.07,killmark:.16,casing:.26,glass:.4,skidChirp:.25,backfire:.2,clank:.5,foghorn:2.2,jetFar:2.6,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
- const varied=new Set(['pistol','smg','shotgun','ricochet','metalHit','flesh','casing','echo','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood']);
+ const durations={calliopeA:2.4,calliopeB:2.4,coaster:2.2,screams:1.4,surf:2.8,marinaBell:1.6,rocket:.65,explosion:1.8,raceCount:.16,raceGo:.46,raceGate:.18,raceFinish:.9,raceInvalid:.3,pitService:.65,reelStop:.12,pistol:.2,smg:.24,shotgun:.62,echo:.9,distant:.7,dryfire:.09,ricochet:.36,metalHit:.22,flesh:.16,hitmark:.07,killmark:.16,casing:.26,glass:.4,skidChirp:.25,backfire:.2,clank:.5,foghorn:2.2,jetFar:2.6,impact:.23,metal:.45,crumple:.48,bumper:.27,hull:.38,gravel:.3,reload:.32,water:.5,ui:.04,doors:1.2,depart:1.5,rail:.75,arrive:.9,platform:.85,card:.16,chips:.28,casinoWin:.75,casinoLose:.38,casinoPush:.42,casinoOpen:.55,stepHard:.09,stepLoose:.1,stepWood:.11,stepSnow:.16,stepWater:.2,blowoff:.32,door:.22,doorShut:.18,horn:.34,dog:.28,cat:.35,gull:.45,pigeon:.36,deer:.2,fox:.22};
+ const varied=new Set(['pistol','smg','shotgun','ricochet','metalHit','flesh','casing','echo','crumple','bumper','hull','gravel','water','card','chips','stepHard','stepLoose','stepWood','stepSnow','stepWater','door']);
  function sample(kind){
   const varying=varied.has(kind),variant=varying?(variations.get(kind)||0)%3:0,key=kind+variant;
   if(varying)variations.set(kind,variant+1);if(bank.has(key))return bank.get(key);
@@ -153,6 +153,13 @@ export function createEffects(ctx,bus){
    else if(kind==='casinoPush')x=(Math.sin(TAU*440*t)+.2*Math.sin(TAU*660*t))*.19*Math.exp(-t*10);
    else if(kind==='stepHard')x=(low*.65+Math.sin(TAU*130*t)*.35)*Math.exp(-t*45)+noise*.07*Math.exp(-t*85);
    else if(kind==='stepLoose')x=(noise*.27+low*.5)*Math.exp(-t*32);
+   // snow: compressed crunch, granular bursts with a soft low body
+   else if(kind==='stepSnow'){const g=(Math.sin(t*900)>.2?1:.35)*(Math.sin(t*2300+1)>0?1:.6);x=(noise*.32*g+low*.22)*Math.min(1,t*90)*Math.exp(-t*14);}
+   else if(kind==='stepWater')x=(noise*.2*Math.sin(Math.PI*Math.min(1,t/.06))+Math.sin(TAU*(420-900*t)*t)*.12+low*.25)*Math.exp(-t*12);
+   // turbo blow-off: bright breathy hiss with a falling whistle
+   else if(kind==='blowoff')x=(noise*.32+Math.sin(TAU*(3400*t-2600*t*t))*.06)*Math.min(1,t*70)*Math.exp(-t*9);
+   else if(kind==='door')x=(Math.sin(TAU*95*t)*.5+low*.45+noise*.12*Math.exp(-t*60))*Math.min(1,t*300)*Math.exp(-t*22)+(t>.11?(noise*.1+low*.3)*Math.exp(-(t-.11)*40):0);
+   else if(kind==='doorShut')x=(Math.sin(TAU*72*t)*.6+low*.55+noise*.08)*Math.min(1,t*400)*Math.exp(-t*26);
    else if(kind==='stepWood')x=(Math.sin(TAU*188*t)*.45+Math.sin(TAU*301*t)*.12+low*.3)*Math.exp(-t*40);
    else if(kind==='horn')x=(Math.sin(TAU*392*t)+Math.sin(TAU*494*t)+.18*Math.sin(TAU*784*t))*.25*Math.min(1,t*40)*Math.min(1,(dur-t)*20);
    else if(kind==='dog'||kind==='fox')x=(Math.sin(TAU*(150*t+5*Math.sin(t*25)))+low*.7)*Math.exp(-t*18)*.35;

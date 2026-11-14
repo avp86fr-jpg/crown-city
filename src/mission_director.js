@@ -1,4 +1,5 @@
 import {MISSIONS} from './story.js';
+import {scoreMission,recordBest,cleanScores,storyTotals} from './story_score.js';
 /* Optional crew guidance and job quality. Completion rewards belong to this module;
  * finishJob applies them once. Call recordIncident only at player-attributed sources.
  */
@@ -55,7 +56,8 @@ export function jobBrief(index) { return JOBS[index] || null; }
 function metrics(s = {}) {
   return { elapsed: number(s.elapsed, 0, 86400), distance: number(s.distance), drivingTime: number(s.drivingTime, 0, 86400),
     shots: integer(s.shots), civilianHarm: integer(s.civilianHarm), collisions: integer(s.collisions), deaths: integer(s.deaths),
-    damage: number(s.damage), peakHeat: integer(s.peakHeat, 0, 5), spotted: s.spotted === true };
+    damage: number(s.damage), peakHeat: integer(s.peakHeat, 0, 5), spotted: s.spotted === true,
+    hits: integer(s.hits), nearMiss: integer(s.nearMiss), drift: number(s.drift, 0, 86400) };
 }
 function cleanDebrief(s) {
   if (!s || !Number.isInteger(s.job) || !JOBS[s.job]) return null;
@@ -80,17 +82,18 @@ export function directorState(saved = {}) {
     claimed: [...new Set((Array.isArray(saved.claimed) ? saved.claimed : []).filter(i => Number.isInteger(i) && JOBS[i]))],
     journal: (Array.isArray(saved.journal) ? saved.journal : []).slice(-16).map(cleanDebrief).filter(Boolean),
     last: cleanDebrief(saved.last), suspicion: number(saved.suspicion, 0, 1), guidance: null,
+    scores: cleanScores(saved.scores), bestTotal: number(saved.bestTotal, 0, 1e7),
     get history() { return this.journal; } };
 }
 export function directorSave(D) {
   const clean = directorState(D);
   return { version: 1, active: clean.active, attempt: clean.attempt, claimed: clean.claimed,
-    journal: clean.journal, last: clean.last, suspicion: clean.suspicion };
+    journal: clean.journal, last: clean.last, suspicion: clean.suspicion, scores: clean.scores, bestTotal: clean.bestTotal };
 }
 function state(G) { return G.director || (G.director = directorState()); }
 function baseline(G, D) {
   const p = G.player || {};
-  const b = { shots: number(G.shotsFired), health: number(G.health, 100, 100), vehicle: p,
+  const b = { hits: number(G.shotsHit), missT: 0, combo: 0, comboT: 0, shots: number(G.shotsFired), health: number(G.health, 100, 100), vehicle: p,
     vehicleHealth: number(p.health, 100, 100), x: p.x, y: p.y, recentShot: 0, warning: false };
   sample.set(D, b); return b;
 }
@@ -128,10 +131,21 @@ function observe(G, D, dt) {
   if (dt > 0 && p.type === 'veh' && !p.def?.boat && !p.def?.aircraft && speed > 20 && step > 0 && step <= speed * dt * 1.6 + 4) {
     A.distance += step; A.drivingTime += dt;
   }
+  const hits = number(G.shotsHit); A.hits += Math.max(0, hits - (b.hits ?? hits)); b.hits = hits;
+  // stunts: drifting (sideways slip at speed) and near misses past traffic
+  if (dt > 0 && p.type === 'veh' && !p.def?.boat && !p.def?.aircraft && speed > 150) {
+    const side = Math.abs((p.vx || 0) * Math.cos(p.rot || 0) + (p.vy || 0) * Math.sin(p.rot || 0));
+    if (side > speed * .38) { A.drift += dt; b.driftT = (b.driftT || 0) + dt; if (b.driftT > 1) { b.driftT = 0; pop(G, b, 20, 'DRIFT'); } } else b.driftT = 0;
+    b.missT = Math.max(0, (b.missT || 0) - dt);
+    if (b.missT <= 0) for (const v of G.vehicles || []) { if (v === p || v.dead || !v.traffic) continue; const d = Math.hypot(v.x - p.x, v.y - p.y);
+      if (d < 52 && d > 30 && !(p.impactT > 0)) { A.nearMiss++; b.missT = .8; pop(G, b, 50, 'NEAR MISS'); break; } }
+  }
+  b.comboT = Math.max(0, (b.comboT || 0) - dt); if (!b.comboT) b.combo = 0;
   b.vehicle = p; b.vehicleHealth = vehicleHealth; b.x = p.x; b.y = p.y;
   A.peakHeat = Math.max(A.peakHeat, integer(G.wanted, 0, 5));
   return b;
 }
+function pop(G, b, pts, label) { b.combo = b.comboT > 0 ? b.combo + 1 : 1; b.comboT = 2.5; G.scorePop = { pts, label, combo: b.combo, t: 1.2 }; }
 function security(G, D, b, dt) {
   const A = D.active, p = G.player, at = G.meta?.interactions?.casinoDoor;
   if ((A.job !== 3 && A.job !== 4) || A.approach !== 'quiet' || G.objectiveIndex > 1 || !at || !p) { D.suspicion = 0; return null; }
@@ -202,6 +216,8 @@ export function finishJob(G, won) {
   const result = decorate({ job: A.job, attempt: A.attempt, title: brief.title, won: !!won, ...metrics(A),
     approach: A.approach, earned, bonus });
   if (won && !claimed) { D.claimed.push(A.job); G.chips = number(G.chips, 0, 1e9) + bonus; }
+  if (won) { const score = scoreMission(A, A.job), best = recordBest(D, A.job, score); result.score = score; result.newBest = best;
+    const tot = storyTotals(D, JOBS.length).total; D.bestTotal = Math.max(number(D.bestTotal, 0, 1e7), tot); }
   D.journal.push(result); D.journal = D.journal.slice(-16); D.last = result; D.active = null; D.suspicion = 0;
   return { ...result, paid: won && !claimed };
 }

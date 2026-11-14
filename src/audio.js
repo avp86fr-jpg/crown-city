@@ -1,3 +1,4 @@
+import {voiceFor,engineState,tyreFor} from './vehicle_voice.js';
 import {createEffects,createContactPlayer,surfaceMotion,engineMotion,sceneAcoustics,soundPosition,railMotion} from './sound_effects.js';
 import {createSoundtrack,TRACKS} from './soundtrack.js';
 import {islandAmbience} from './resort.js';
@@ -128,8 +129,8 @@ export function createAudio() {
   A.radioChirp = () => {tone(1100,.04,'sine',.022);tone(1600,.05,'sine',.018,0,sfx,ctx&&now()+.06);};
   A.pickup = () => { if (!ctx) return; const t = now(); [0, 4, 7, 12].forEach((s, i) => tone(mtof(84 + s), 0.12, "triangle", 0.05, 0, sfx, t + i * 0.045)); };
   A.star = () => { if (!ctx) return; const t = now(); tone(988, 0.09, "square", 0.04, 0, sfx, t); tone(740, 0.12, "square", 0.04, 0, sfx, t + 0.1); };
-  A.enter = () => { noiseHit({ dur: 0.08, vol: 0.25, type: "lowpass", f: 600 }); tone(110, 0.08, "sine", 0.12, -40); };
-  A.exit = () => { noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); tone(140, 0.06, "sine", 0.1, -50); };
+  A.enter = () => { if(!cue("door",.2,.25))noiseHit({ dur: 0.08, vol: 0.25, type: "lowpass", f: 600 }); if(ctx)setTimeout(()=>cue("doorShut",.17,.25),420); };
+  A.exit = () => { if(!cue("door",.18,.25))noiseHit({ dur: 0.06, vol: 0.2, type: "lowpass", f: 900 }); if(ctx)setTimeout(()=>cue("doorShut",.15,.25),380); };
   A.hit = () => fx('impact',.4);
   A.shot = (pan=0,far=0,kind='pistol') => {fx(kind,.5*(1-far*.65),pan);};
   // Spatial gunfire: close shots get the full layered sample plus a street
@@ -164,7 +165,13 @@ export function createAudio() {
     const position=listener&&Number.isFinite(x)&&Number.isFinite(y)?soundPosition(listener,x,y,1200):{gain:1,pan:0};
     if(cue('explosion',.72*position.gain,.075,position.pan)&&position.gain>.15)duck(.25,.8);
   };
-  A.horn = (pan = 0) => cue('horn',.20,.5,pan);
+  // horns per model: two detuned reeds at the model's interval, panned and distance-scaled
+  A.horn = (pan = 0, v = null) => {if(!ctx)return false;if(!v)return cue('horn',.20,.5,pan);const t=now();if(t-(A._hornT||0)<.35)return false;A._hornT=t;
+    let gain=.16;if(listener?.player&&Number.isFinite(v.x)){soundPosition(listener,v.x,v.y,900,position);gain*=position.gain;pan=position.pan;}if(gain<.01)return false;
+    const [a,b]=voiceFor(v).horn,len=v===listener?.player?.42:.3+Math.random()*.25;
+    oneShot(t0=>{const g=ctx.createGain(),f=ctx.createBiquadFilter(),p=panNode(pan);f.type='bandpass';f.frequency.value=(a+b)*1.4;f.Q.value=.9;env(g,t0,.012,gain,len);
+      const os=[a,b].map(fr=>{const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=fr;o.connect(f);o.start(t0);o.stop(t0+len+.1);return o;});
+      f.connect(g);g.connect(p);p.connect(sfx);os[1].onended=()=>{for(const n of [...os,f,g,p])n.disconnect();};},len+.1);return true;};
   A.yelp = () => {
     oneShot((t) => {
       const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -183,7 +190,7 @@ export function createAudio() {
   };
   A.stinger = (st = 0) => { if (!ctx) return; const t = now(); const sets = [[69, 76, 81], [72, 79, 84], [65, 72, 77]]; (sets[st % 3]).forEach((m, i) => tone(mtof(m), 0.25, "triangle", 0.05, 0, sfx, t + i * 0.09)); };
   A.chaseSwell = () => { if (!ctx) return; noiseHit({ dur: 1.4, vol: 0.18, type: "bandpass", f: 300, f2: 3000, q: 2, a: 1.2 }); };
-  A.step=surf=>fx(surf==='pier'?'stepWood':['grass','sand','dirt'].includes(surf)?'stepLoose':'stepHard',surf==='grass'||surf==='sand'?.12:.17);
+  A.step=(surf,snow=0)=>fx(surf==='water'||surf==='shallow'?'stepWater':snow>.5&&surf!=='road'?'stepSnow':surf==='pier'?'stepWood':['grass','sand','dirt'].includes(surf)?'stepLoose':'stepHard',surf==='grass'||surf==='sand'?.12:snow>.5?.15:.17);
 
   /* -------------- continuous loops: engine, tyres, siren, ambience, rain -------------- */
   const L = {};
@@ -209,6 +216,11 @@ export function createAudio() {
     for (const o of [o1, o2, o3]) { o.frequency.value = 40; o.start(); }
     const rumble = loopNoise(brownBuf, "lowpass", 180, 1, sfx, 0);
     L.engine = { o1, o2, o3, f: ef, g: eg, rumble,blade,bladeOsc,bladeDepth,fire,fireDepth,lastRpm:0,gear:0,popT:0 };
+    // turbo spool whistle (sine through a narrow bandpass), only on boosted models
+    const tu=ctx.createOscillator(),tg=ctx.createGain();tu.type='sine';tu.frequency.value=2200;tg.gain.value=0;tu.connect(tg);tg.connect(sfx);tu.start();L.turbo={o:tu,g:tg,load:0};
+    // AI traffic engines: a small fixed pool, spatialised; 3 voices (2 on low tier)
+    L.ai=[0,1,2].map(()=>{const o=ctx.createOscillator(),o2=ctx.createOscillator(),f=ctx.createBiquadFilter(),g=ctx.createGain(),p=panNode(0);o.type='sawtooth';o2.type='square';o.frequency.value=40;o2.frequency.value=20;f.type='lowpass';f.frequency.value=500;f.Q.value=1.5;g.gain.value=0;
+      const sub=ctx.createGain();sub.gain.value=.35;o.connect(f);o2.connect(sub);sub.connect(f);f.connect(g);g.connect(p);p.connect(sfx);o.start();o2.start();return {o,o2,f,g,p,v:null};});
     L.district=loopNoise(brownBuf,'bandpass',300,.8,amb,0);
     L.tyre = loopNoise(noiseBuf, "bandpass", 1900, 6, sfx, 0);
     L.road=loopNoise(brownBuf,'bandpass',650,.65,sfx,0);
@@ -369,27 +381,33 @@ export function createAudio() {
       set(E.rumble.g.gain,(heli?.15:.095)*rpm,.12);set(E.rumble.f.frequency,heli?180:310,.2);set(L.tyre.g.gain,0,.05);
     } else if (inCar && A._eng !== false && !P.dead) {
       set(E.blade.gain,1,.15);set(E.bladeDepth.gain,0,.15);
-      const c = ENG[P.def.boat ? "boat" : P.def.bike ? "bike" : P.def.kind==="sedan"&&(P.def.mass||1)>=1.6 ? "heavy" : P.def.kind] || ENG.sedan;
-      // Launches have a continuous propeller load, not four road-car gears.
-      const rpm=engineMotion(P,G.input,engineMix).rpm;
-      const f = (c[0] + (c[1] - c[0]) * rpm)*engDetune(P.def);
-      set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * 1.005, 0.05); set(E.o3.frequency, f / 2, 0.05);
-      set(E.f.frequency, 300 + c[2] * (0.25 + 0.75 * rpm), 0.06);
-      set(E.g.gain, 0.05 + 0.07 * rpm, 0.08); set(E.rumble.g.gain, 0.12 * c[3], 0.1); set(E.rumble.f.frequency, 120 + 200 * rpm, 0.1);
-      set(E.fire.frequency,f*(P.def.bike?.5:P.def.kind==='muscle'?.5:.75),.05);set(E.fireDepth.gain,(.015+.03*c[3])*(1-rpm*.6),.1);
+      const V=voiceFor(P),em=engineMotion(P,G.input,engineMix),load=em.load,st=engineState(P,load,engineMix.voiceState||(engineMix.voiceState={}));
+      // reverse and boats keep the original continuous model; road vehicles use per-model gears
+      const rpm=em.reverse||P.def.boat?em.rpm:st.rpm,det=engDetune(P.def);
+      const f = (V.base + (V.top - V.base) * rpm)*det;
+      set(E.o1.frequency, f, 0.05); set(E.o2.frequency, f * V.stack, 0.05); set(E.o3.frequency, f / 2, 0.05);
+      // load: throttle opens the filter and adds level; coasting (engine braking) closes it and thins out
+      set(E.f.frequency, 260 + V.cut * (0.22 + 0.78 * rpm) * (0.55 + 0.45 * load), 0.06);
+      set(E.g.gain, (0.042 + 0.07 * rpm) * (0.7 + 0.3 * load), 0.08); set(E.rumble.g.gain, 0.12 * V.growl * (.6+.4*load), 0.1); set(E.rumble.f.frequency, 110 + 200 * rpm + 120 * V.diesel, 0.1);
+      set(E.fire.frequency,f*V.fire,.05);set(E.fireDepth.gain,(.014+.03*V.growl+.035*V.diesel)*(1-rpm*.55),.1);
+      // turbo spool rises with boost (load x rpm^2); a lift-off at boost vents through the blow-off valve
+      const boost=V.turbo*load*rpm*rpm;set(L.turbo.g.gain,.010*boost,.12);set(L.turbo.o.frequency,1700+2600*rpm,.1);
+      if(V.turbo>.35&&L.turbo.load>.8&&load<.6&&rpm>.55){E.popT=Math.max(E.popT,.15);fx('blowoff',.07+.05*V.turbo,(Math.random()-.5)*.2,.9+Math.random()*.2);}
+      L.turbo.load=load;
       // Gear changes: a short torque dip on upshift; lift-off crackle on performance cars.
-      const gear=Math.min(3,(Math.min(1,Math.hypot(P.vx||0,P.vy||0)/(P.def.max||300))*4)|0);
-      if(gear>E.gear&&rpm>.5&&!P.def.boat){const t=now(),g=E.g.gain;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(.02,t+.05);g.setTargetAtTime(.05+.07*rpm,t+.11,.06);g._v=undefined;}
+      const gear=st.gear;
+      if(gear>E.gear&&rpm>.4&&!P.def.boat){const t=now(),g=E.g.gain;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(.018,t+.06);g.setTargetAtTime((0.042+0.07*rpm)*(0.7+0.3*load),t+.12,.06);g._v=undefined;}
       E.gear=gear;E.popT-=dt;
-      if(['hyper','muscle','sports'].includes(P.def.kind)&&E.lastRpm>.62&&rpm<E.lastRpm-.02&&!(G.input?.y>.1)&&E.popT<=0&&Math.random()<.35){E.popT=.09+Math.random()*.18;fx('backfire',.12+Math.random()*.08,(Math.random()-.5)*.3,.85+Math.random()*.3);}
+      if(['hyper','muscle','sports'].includes(P.def.kind)&&E.lastRpm>.62&&rpm<E.lastRpm-.02&&load<.6&&E.popT<=0&&Math.random()<.35){E.popT=.09+Math.random()*.18;fx('backfire',.12+Math.random()*.08,(Math.random()-.5)*.3,.85+Math.random()*.3);}
       E.lastRpm=rpm;
-    } else {set(E.bladeDepth.gain,0,.15);set(E.fireDepth.gain,0,.1);set(E.g.gain,0,.15);set(E.rumble.g.gain,0,.2);set(L.tyre.g.gain,0,.05);}
+    } else {set(L.turbo.g.gain,0,.1);set(E.bladeDepth.gain,0,.15);set(E.fireDepth.gain,0,.1);set(E.g.gain,0,.15);set(E.rumble.g.gain,0,.2);set(L.tyre.g.gain,0,.05);}
     const backwards=inCar&&!P.dead&&!P.def.boat&&!P.def.aircraft&&!P.def.bike?Math.max(0,-((P.vx||0)*Math.sin(P.rot)-(P.vy||0)*Math.cos(P.rot))-4):0,reverseMix=Math.min(1,backwards/90);
     set(L.reverse.g.gain,.023*reverseMix,.12);set(L.reverse.o.frequency,160+reverseMix*160,.12);
     const surface=inCar?(G.surfaceAt?.(P.x,P.y)||'road'):'walk';surfaceMotion(inCar?P:{type:'foot'},surface,G.wet||0,rollingMix);
-    const skid=inCar&&!P.def.boat&&!P.def.aircraft&&['road','walk','lot','track'].includes(surface)?A._skid*.18:0;
-    set(L.tyre.g.gain,Math.max(skid,rollingMix.tyre),.07);set(L.tyre.f.frequency,1400+rollingMix.tyre*4500,.15);
-    set(L.road.g.gain,rollingMix.roll,.16);set(L.road.f.frequency,rollingMix.frequency,.2);
+    // skid voice by surface: rubber squeal on asphalt, gravel/snow crunch off it, thin hiss on ice
+    const TY=tyreFor(surface,G.alpineMix||0,!!P.onIce),onGround=inCar&&!P.def.boat&&!P.def.aircraft&&surface!=='water',skid=onGround?A._skid*.18*(1-TY[2]*.5):0,crunch=onGround?A._skid*.16*TY[2]:0;
+    set(L.tyre.g.gain,Math.max(skid,rollingMix.tyre),.07);set(L.tyre.f.frequency,TY[2]>.3?TY[0]+rollingMix.tyre*800:TY[0]*.74+rollingMix.tyre*4500,.15);set(L.tyre.f.Q,TY[1],.2);
+    set(L.road.g.gain,rollingMix.roll+crunch,.16);set(L.road.f.frequency,rollingMix.frequency,.2);
     set(L.wake.g.gain,rollingMix.wake,.22);set(L.wake.f.frequency,rollingMix.frequency,.2);
     A._skid = Math.max(0, A._skid - dt * 2.5);
     // nearest siren with pan + doppler
@@ -441,17 +459,29 @@ export function createAudio() {
      if(play&&audible&&D[2]&&(A._distT=(A._distT??9)-dt)<0){A._distT=D[3]*(.6+Math.random()*.8);fx(D[2],D[2]==='horn'?.05:D[2]==='foghorn'?.08:.06,Math.random()*1.6-.8,D[2]==='horn'?.8+Math.random()*.4:1);}}
     if(play&&audible&&water&&(gullT-=dt)<0&&!night){gullT=5+Math.random()*8;fx('gull',.055*water,Math.random()*1.6-.8);}
     if(play&&audible&&strip&&(dingT-=dt)<0){dingT=3+Math.random()*5;fx('casinoPush',.035,Math.random()*1.6-.8);}
+    // AI engines: nearest moving civilians within 520px take the pool voices
+    {const cap=G.touch&&G.settings?.quality==='low'?2:3,cand=[];
+     if(play&&audible)for(const v of G.vehicles){if(v===P||v.dead||v.def?.aircraft||!Number.isFinite(v.x)||!(v.traffic||v.chasing||v.siren))continue;const d=Math.abs(v.x-P.x)+Math.abs(v.y-P.y);if(d<700)cand.push([d,v]);}
+     cand.sort((a,b)=>a[0]-b[0]);
+     for(let k=0;k<L.ai.length;k++){const Vn=L.ai[k],v=k<cap?cand[k]?.[1]:null;if(!v){set(Vn.g.gain,0,.25);Vn.v=null;continue;}
+      soundPosition(G,v.x,v.y,520,position);const sp=Math.hypot(v.vx||0,v.vy||0),es=engineState(v,sp>8?.65:.2,Vn),dx=v.x-P.x,dy=v.y-P.y,dd=Math.hypot(dx,dy)||1;
+      const rel=((v.vx||0)-(P.vx||0))*dx/dd+((v.vy||0)-(P.vy||0))*dy/dd,dop=Math.max(.88,Math.min(1.12,1-rel/1500));
+      if(Vn.v!==v){Vn.v=v;Vn.o.frequency.cancelScheduledValues(now());Vn.o.frequency._v=undefined;}
+      set(Vn.o.frequency,es.freq*dop,.08);set(Vn.o2.frequency,es.freq*.5*dop,.08);set(Vn.f.frequency,220+es.voice.cut*.35*(.3+es.rpm),.1);
+      set(Vn.g.gain,.032*position.gain*position.gain*(.5+.5*Math.min(1,sp/120)),.15);if(Vn.p.pan)set(Vn.p.pan,position.pan,.1);}}
+    // Crown Peak: mountain wind rises, city beds hush under the snow
+    if(play&&audible&&(G.alpineMix||0)>.05){const m=G.alpineMix;set(L.wind.g.gain,.012+.05*m,.8);set(L.wind.f.frequency,1400+900*Math.sin(now()*.23),.8);set(L.traffic.g.gain,.16*busy*ground*(1-.8*m),.6);set(L.district.g.gain,0,1.2);}
     // footsteps
     if (play&&audible&&P.type==='foot'&&!(G.action?.dodgeT>0)&&(P.speed||0)>20) {
       stepDist += (P.speed || 0) * dt;
-      if (stepDist > ((P.speed || 0) > 150 ? 34 : 26)) { stepDist = 0; A.step(G.surfaceAt ? G.surfaceAt(P.x, P.y) : "walk"); }
+      if (stepDist > ((P.speed || 0) > 150 ? 34 : 26)) { stepDist = 0; A.step(G.surfaceAt ? G.surfaceAt(P.x, P.y) : "walk",G.alpineMix||0); }
     }else stepDist=0;
   };
   A.duck = duck;
   // low tier: drop the convolution reverb (the costliest node on weak phones)
   let lite = false;
   A.setLite = (on) => { lite = !!on; if (!verbSend) return; try { verbSend.disconnect(); } catch {} if(!lite)verbSend.connect(reverb()); };
-  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?19:0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
+  A.soundStats=()=>({effects:effects?.stats(),oneShots:voiceEnds.filter(t=>t>now()).length,spatialQueries,reverb:!!verb&&!lite,continuousSources:ctx?23:0,aiVoices:L.ai?.filter(v=>v.v).length||0,turboLevel:L.turbo?.g.gain.value||0,rotorDepth:L.engine?.bladeDepth.gain.value||0,reverseLevel:L.reverse?.g.gain.value||0,railLevel:L.rail?.g.gain.value||0,rainLevel:L.rain?.g.gain.value||0,windLevel:L.wind?.g.gain.value||0});
   // capture tap for recording demos (tests only)
   A.tap = () => { ensure(); const d = ctx.createMediaStreamDestination(); master.connect(d); return d.stream; };
   return A;

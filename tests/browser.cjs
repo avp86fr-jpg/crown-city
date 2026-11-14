@@ -228,7 +228,10 @@ async function dialogue(page, choices) {
       await check('six-job browser campaign '+Object.values(choices).join('/'), async () => {
         await page.setViewportSize({width:1280,height:720});
         await page.evaluate(() => { __CC.startNew(); });
+        let scored=0;
         for (let i=0;i<65;i++) {
+          // each won job shows the scored results card before its debrief
+          scored+=await page.evaluate(()=>{const G=__CC.G;if(G.scene!=='results')return 0;const ok=G.resultsCard.score.points>0&&/[SABC]/.test(G.resultsCard.score.grade);G.scene=G.resultsCard.next;G.resultsCard=null;return ok?1:0;});
           await dialogue(page,choices);
           if (await page.evaluate(() => __CC.G.scene === 'end')) break;
           await page.evaluate(async () => {

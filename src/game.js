@@ -1,4 +1,5 @@
 import {drawWaterMotion,tickWakes} from './water_motion.js';
+import {drawResultsCard,drawFinalScore,drawScorePop,storyTotals} from './story_score.js';
 import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
@@ -239,9 +240,9 @@ export async function boot() {
   await Promise.race([layers.albedo.preload(["2_1", "2_2", "1_1", "1_2"]), new Promise((r) => setTimeout(r, 2500))]);
 
   window.__CC = api(G);
-  window.addEventListener("pointerdown", () => G.audio.unlock(), { once: true });
-  window.addEventListener("touchend", () => G.audio.unlock(), { once: true });
-  window.addEventListener("keydown", () => G.audio.unlock(), { once: true });
+  // Mobile Safari can refuse the first resume; keep trying on later gestures until the context runs.
+  const unlockEvents = ["pointerdown", "touchend", "keydown"], unlockAudio = () => { G.audio.unlock(); if (G.audio.ctx?.state === "running") for (const e of unlockEvents) window.removeEventListener(e, unlockAudio); };
+  for (const e of unlockEvents) window.addEventListener(e, unlockAudio, { passive: true });
 
   let acc = 0, last = now(), lastRender = 0;
   const STEP = 1 / 60;
@@ -933,6 +934,8 @@ function tick(G, dt) {
   else if (G.scene === "settings") tickSettings(G, dt);
   else if (G.scene === "vn") tickVN(G, dt);
   else if (G.scene === "end") tickEnd(G, dt);
+  else if (G.scene === "results") tickResults(G, dt);
+  else if (G.scene === "scores") { G.scoresT=(G.scoresT||0)+dt; menuKeys(G); if (G.input.pauseP) G.scene = "pause"; }
   else if (G.scene === "train") {tickJourney(G,dt,{makeFoot,save,tickWeather});menuKeys(G);}
   else if (G.scene === 'casino') {tickCasino(G,dt,CASINO_HOOKS);if(G.input.pauseP)leaveCasino(G,CASINO_HOOKS);else menuKeys(G);}
   else if (G.scene === "transit") {if(G.input.pauseP)cancelTransit(G);else menuKeys(G);}
@@ -1243,11 +1246,35 @@ function completeMission(G, won) {
   G._flow = null; G.hint = ''; G.checkpoint = null;
   if (win) openVN(G, win);
   else if (next) { G.vnQueue = []; openVN(G, next); }
-  else { G.ended = true; G.scene = 'end'; }
+  else { G.ended = true; G.scene = 'end'; G.endT = 0; }
+  if (debrief?.score) { G.resultsCard = { title: debrief.title, score: debrief.score, best: debrief.newBest, t: 0, next: G.scene, ticks: 0 }; G.scene = 'results'; }
   save(G);
+}
+const RESULT_DONE = R => .2 + R.score.parts.length * .12 + 1.25;
+function tickResults(G, dt) {
+  const R = G.resultsCard; if (!R) { G.scene = 'play'; return; }
+  R.t += dt; const done = RESULT_DONE(R);
+  // count-up ticks while the total climbs, a sting when the grade lands
+  if (R.t > done - 1.25 && R.t < done && (R.ticks += dt) > .07) { R.ticks = 0; G.audio.casino?.('chip'); }
+  if (!R.stung && R.t > done) { R.stung = true; R.score.grade === 'S' || R.score.grade === 'A' ? G.audio.banner?.(true) : G.audio.star?.(); }
+  const go = G.input.confirmP || G.input.pauseP || G.input.skipP || G.input.vnTap;
+  if (R.t > .6 && go) { if (R.t < done) R.t = done + .01; else if (R.t > done + .4) { G.scene = R.next || 'play'; G.resultsCard = null; } }
+}
+function drawResults(G) {
+  drawWorld(G); const R = G.resultsCard; if (!R) return; drawResultsCard(G, R);
+  const done = RESULT_DONE(R);
+  if (R.t > done + .4) { const u = G.ui, W = G.canvas.width, H = G.canvas.height; uiButton(G, W / 2 - 90 * u, H - 64 * u, 180 * u, 42 * u, 'CONTINUE', () => { G.scene = R.next || 'play'; G.resultsCard = null; }, { primary: true }); }
+}
+function storyTitles() { return MISSIONS.map(m => m.title); }
+function drawScores(G) {
+  drawWorld(G); const c = G.ctx, W = G.canvas.width, H = G.canvas.height, u = G.ui;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = 'rgba(6,4,12,.62)'; c.fillRect(0, 0, W, H);
+  drawFinalScore(G, storyTotals(G.director, MISSIONS.length), G.scoresT || 0, storyTitles());
+  uiButton(G, W / 2 - 90 * u, H - 60 * u, 180 * u, 40 * u, 'BACK', () => { G.scene = 'pause'; }, { primary: true });
 }
 
 function tickPlay(G, dt) {
+  if (G.scorePop) G.scorePop.t -= dt;
   if (G.cineLock) {
     G.ticks++;
     if (G.radioT > 0) G.radioT = Math.max(G.radioT, 1.1);
@@ -1520,7 +1547,8 @@ function tickDrive(G, v, input, dt, isPlayer) {
   const r = rightVec(v.rot);
   let fwd = v.vx * h.x + v.vy * h.y;
   let lat = v.vx * r.x + v.vy * r.y;
-  const surfaceGrip=(GRIP[surf]??.7)*alpineGrip(G,v.x,v.y,surf),wetGrip=G.wet>.3?.8:1;
+  const aGrip=alpineGrip(G,v.x,v.y,surf),surfaceGrip=(GRIP[surf]??.7)*aGrip,wetGrip=G.wet>.3?.8:1;
+  v.onIce=aGrip<.55;
   const brakeForce=def.brake*condition.brake*(def.boat?1:Math.sqrt(surfaceGrip)*wetGrip);
   let braking=!!input.brake,throttle=braking?0:clamp(input.y||0,0,1),reverse=braking?0:clamp(-(input.y||0),0,1),shiftBraking=false;
   const carPedal=isPlayer&&braking&&!def.boat&&!def.bike&&!def.aircraft;
@@ -1936,7 +1964,7 @@ function tickBullets(G, dt) {
       if(G.player.type==='foot'&&bulletLayerMatches(G,b,G.player)){const t=segmentCircle(x0,y0,x1,y1,G.player.x,G.player.y,12);if(t!==null&&t<first){first=t;target=G.player;wall=false;}}
     }
     const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;b.travel=(b.travel||0)+Math.hypot(b.x-x0,b.y-y0);
-    if(first>1)continue;b.life=0;
+    if(first>1)continue;b.life=0;if(b.friend&&target&&target!==G.player)G.shotsHit=(G.shotsHit||0)+1;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
     if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;addShake(G,3.5);G.hurtDir=Math.atan2(-b.vy,-b.vx);bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
@@ -2671,6 +2699,8 @@ function render(G) {
     if (G.scene === "settings") drawSettings(G);
   } else if (G.scene === "vn") { if (G.vn.pending) drawBoot(ctx, canvas, 0.9, "Loading scene art…"); else drawVN(G); }
   else if (G.scene === "end") drawEnd(G);
+  else if (G.scene === "results") drawResults(G);
+  else if (G.scene === "scores") drawScores(G);
   else if(G.scene === "train")drawJourney(G,{button:uiButton,makeFoot,save,tickWeather});
   else if(G.scene === 'casino')drawCasino(G,CASINO_HOOKS);
   else {
@@ -3775,7 +3805,7 @@ function drawHitMark(G){
   c.strokeStyle=m.kill?'#ff4d5e':'#fff6df';c.lineWidth=2;c.stroke();c.restore();
 }
 function drawAimGuide(G){
-  drawHitMark(G);drawRadio(G);drawStatsCard(G);drawPrimer(G);
+  drawHitMark(G);drawRadio(G);drawStatsCard(G);drawScorePop(G);drawPrimer(G);
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
   const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);
@@ -4139,6 +4169,7 @@ function drawPause(G) {
     ["STORY / DOSSIER", () => {G.scene="dossier";G.menuSel=0;}, {}],
     ["CITY MAP", () => { G.scene = "map"; }, {}],
     ...(G.ow ? [["CITY LIFE " + owProgress(G), () => { G.scene = "play"; G.statsCardT = 9; }, {}]] : []),
+    ...(G.mode !== "freeride" ? [["STORY SCORE " + storyTotals(G.director, MISSIONS.length).total.toLocaleString(), () => { G.scene = "scores"; G.scoresT = 0; G.menuSel = 0; }, {}]] : []),
     ["CREW / CONTRACTS", () => { G.scene='crew';G.menuSel=0; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
     ["SAVE GAME", () => save(G), {}],
@@ -4240,6 +4271,16 @@ function drawEnd(G) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "rgba(6,4,12,0.62)"; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = "center";
+  G.endT = (G.endT || 0) + 1 / 60; if (!G.endSting) { G.endSting = true; G.audio.banner?.(true); }
+  const totals = storyTotals(G.director, MISSIONS.length);
+  if (totals.played) {
+    // Final score card replaces the middle of the end screen; the epilogue line sits above it.
+    ctx.fillStyle = "#ffe27a"; ctx.font = uiFont(Math.min(28 * u, W / 18), 900, true); ctx.fillText("THE HOUSE DIDN'T WIN.", W / 2, 34 * u);
+    drawFinalScore(G, totals, G.endT, storyTitles());
+    uiButton(G,W/2-230*u,H-60*u,220*u,42*u,'KEEP DRIVING',()=>{G.freeRoam=true;G.scene='play';G.wanted=0;setHint(G);save(G);},{primary:true});
+    uiButton(G, W / 2 + 10 * u, H - 60 * u, 220 * u, 42 * u, "BACK TO TITLE", () => { G.scene = "title"; G.saveExists = true; }, {});
+    return;
+  }
   ctx.fillStyle = "#ffe27a"; ctx.font = uiFont(Math.min(40 * u, W / 14), 900, true);
   ctx.fillText("THE HOUSE DIDN'T WIN.", W / 2, H * 0.32);
   ctx.fillStyle = "#fff"; ctx.font = uiFont(15 * u, 600);

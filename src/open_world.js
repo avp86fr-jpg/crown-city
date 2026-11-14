@@ -1,6 +1,7 @@
 /* Open-world layer: hidden chip caches, speed traps, taxi fares and ambient
    street events (buskers, traffic stops, deliveries, beach crowds, valets).
    Deterministic placement from the map; progress kept in its own save key. */
+import {storyTotals} from './story_score.js';
 import {districtAt,WORLD_W,WORLD_H} from './world.js';
 const KEY='crowncity.openworld.v1',TAU=Math.PI*2;
 const FOOT=new Set(['walk','grass','sand','pier','lot','dirt']);
@@ -328,6 +329,7 @@ export function owCompletion(G){const o=G.ow;if(!o)return 0;const n=o.got.size+O
 export function drawStatsCard(G){
  if(!(G.statsCardT>0)||!G.ow||G.scene!=='play')return;const o=G.ow,st=G.stats,c=G.ctx,W=G.canvas.width,Hc=G.canvas.height,s=Math.max(1,Math.min(2.2,Math.min(W/760,Hc/460)));
  const rows=[['Completion',owCompletion(G)+'%'],['Hidden caches',`${o.got.size} / ${o.caches.length}`],['Speed traps',`${Object.keys(o.best).length} / ${o.traps.length}`],['Stunt jumps',`${Object.keys(o.jumps).length} / ${o.ramps.length}  (best ${Math.max(0,...Object.values(o.jumps))} m)`],
+  ...(G.mode!=='freeride'?[['Story score',(()=>{const T=storyTotals(G.director);return T.played?`${T.total.toLocaleString()} (${T.grade})`:'—';})()]]:[]),
   ['Landmarks found',`${Object.keys(o.seen).length} / ${o.landmarks.length}`],['Properties',`${Object.keys(o.owned).length} / ${o.props.length}  (rent ${st.rent})`],['Taxi fares',String(o.fares)],['Distance driven',(st.dist/16/1000).toFixed(1)+' km'],['On foot',(st.walk/16/1000).toFixed(1)+' km'],['Top speed',st.top+' km/h'],['Chases escaped',String(st.evaded||0)],['Highest heat',String(st.maxHeat||0)+' ★'],['Played',fmtTime(st.time)]];
  const w=330*s,h=(48+rows.length*19)*s,x=(W-w)/2,y=Math.max(10,(Hc-h)/2),a=Math.min(1,G.statsCardT*2);
  c.save();c.setTransform(1,0,0,1,0,0);c.globalAlpha=a;c.fillStyle='rgba(10,16,22,.9)';c.fillRect(x,y,w,h);c.strokeStyle='#f2c14e';c.lineWidth=1.5*s;c.strokeRect(x,y,w,h);

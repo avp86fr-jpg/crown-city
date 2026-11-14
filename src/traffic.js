@@ -505,13 +505,13 @@ export function createTraffic(G) {
           continue;
         }
         if(tr.merge)want=Math.min(want,55);
-        if(gap<300)want=Math.min(want,Math.sqrt(2*driver.brake*.76*gap),gap/driver.headway);
+        if(gap<300){const ice=tr.e.k==='alpine'?.6:1;want=Math.min(want,Math.sqrt(2*driver.brake*.76*ice*gap),gap/(driver.headway*(ice<1?1.35:1)));}
         v.blockedT=gap<12?(v.blockedT||0)+dt:0;
-        if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(); }
+        if (v.blockedT > 2.5 && P.type === "veh" && Math.hypot(P.x - v.x, P.y - v.y) < 140 && !v.honked) { v.honked = true; if (G.audio.horn) G.audio.horn(0,v); }
         if (v.blockedT < 0.5) v.honked = false;
         want = G.cityAI?.trafficSpeed(v, want) ?? want;
         // Gunfire nearby: drivers floor it away and lean on the horn once.
-        if(v.panicT>0){v.panicT-=dt;if(want>=cruise*.85&&gap>=200)want=cruise*1.45;if(!v.panicHonk&&Math.random()<.5){v.panicHonk=true;G.audio.horn?.();}}else v.panicHonk=false;
+        if(v.panicT>0){v.panicT-=dt;if(want>=cruise*.85&&gap>=200)want=cruise*1.45;if(!v.panicHonk&&Math.random()<.5){v.panicHonk=true;G.audio.horn?.(0,v);}}else v.panicHonk=false;
         const e = tr.e;
         if (!tr.turn) {
           const end = tr.fwd ? e.B : e.A;
@@ -601,7 +601,10 @@ export function createPeds(G) {
     spawn(near, minD, maxD) {
       for (let i = 0; i < 30; i++) {
         const a = Math.random() * TAU, d = minD + Math.random() * (maxD - minD);
-        const x = near.x + Math.cos(a) * d, y = near.y + Math.sin(a) * d;
+        let x = near.x + Math.cos(a) * d, y = near.y + Math.sin(a) * d;
+        // Crown Peak has few sidewalks: half the tries use the shovelled chalet
+        // paths and the summit plaza, so the village is not a ghost town.
+        const AS=G.world.alpine?.spots;if(AS&&near.y>10000&&i%2===0){const s=AS[(Math.random()*AS.length)|0];if(Math.hypot(s[0]-near.x,s[1]-near.y)<maxD+200){x=s[0]+(Math.random()-.5)*36;y=s[1]+(Math.random()-.5)*20;}}
         if (surf(x, y) !== "walk"||!pedestrianClear(G,x,y)) continue;
         if(G.peds.some(p=>!p.dead&&(p.x-x)**2+(p.y-y)**2<38**2))continue;
         if(visibleSpawn(G,x,y))continue;
