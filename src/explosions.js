@@ -40,12 +40,16 @@ export function detonate(G,b,H){
   if(b.attributed&&!p.copPed)H.incident?.(G,'civilian_harm');
   if(p.hp<=0)H.killPed(G,p,false,!!b.attributed);else H.blood?.(G,p,p.vx,p.vy,strength);
  }
- if(G.player.type==='foot'&&!(G._endT>0)){const strength=blastExposure(G,b,G.player);if(strength){G.health-=G.absorbDamage?G.absorbDamage(G,b.damage*strength):b.damage*strength;G.hurtT=.4;if(G.health<=0)H.wasted(G);}}
+ if(G.player.type==='foot'&&!(G._endT>0)&&!b.ownerSafe){const strength=blastExposure(G,b,G.player);if(strength){G.health-=G.absorbDamage?G.absorbDamage(G,b.damage*strength):b.damage*strength;G.hurtT=.4;if(G.health<=0)H.wasted(G);}}
 }
 export function launchRocket(G,x,y,vx,vy,weapon,waterLevel=false){
  const list=G.rockets||(G.rockets=[]);if(list.length>=8)list.shift();
- list.push({x,y,vx,vy,life:weapon.range/weapon.speed,waterLevel,damage:weapon.damage,carDamage:weapon.carDamage,height:23});
+ list.push({x,y,vx,vy,life:weapon.range/weapon.speed,waterLevel,damage:weapon.damage,carDamage:weapon.carDamage,height:23,travel:0,age:0,own:true});
 }
+export const ROCKET_ARM=60;
+export function dud(G,r,H){G.stats&&(G.stats.rocketDuds=(G.stats.rocketDuds||0)+1);G.audio?.impact?.('metal',r.x,r.y,.5);
+ for(let i=0;i<6;i++)G.particles?.push({kind:'spark',x:r.x,y:r.y,vx:(Math.random()-.5)*160,vy:(Math.random()-.5)*160,life:.25,maxLife:.25,size:.5});
+ G.particles?.push({kind:'smoke',x:r.x,y:r.y,vx:0,vy:-10,life:.9,maxLife:.9,size:1});}
 export function tickRockets(G,dt,H){
  const list=G.rockets;if(!list?.length)return;const serial=G.recoverySerial;let n=0;
  for(const r of list){
@@ -53,8 +57,11 @@ export function tickRockets(G,dt,H){
   for(const v of G.vehicles){if(v===G.player||!sameBlastLayer(G,r,v)||Math.abs(v.x-x0)>Math.abs(x1-x0)+100||Math.abs(v.y-y0)>Math.abs(y1-y0)+100)continue;const t=segmentBody(v,x0,y0,x1,y1,2);if(t!==null)hit=Math.min(hit,t);}
   for(const p of G.peds){if(p.dead||!sameBlastLayer(G,r,p)||Math.abs(p.x-x0)>Math.abs(x1-x0)+14||Math.abs(p.y-y0)>Math.abs(y1-y0)+14)continue;const t=segmentCircle(x0,y0,x1,y1,p.x,p.y,12);if(t!==null)hit=Math.min(hit,t);}
   const travel=Math.hypot(x1-x0,y1-y0),t=Number.isFinite(hit)?Math.max(0,hit-2/Math.max(2,travel)):1;
-  r.x=x0+(x1-x0)*t;r.y=y0+(y1-y0)*t;r.life-=dt;
-  if(hit<=1||r.life<=0){detonate(G,{...r,radius:145,attributed:true},H);if(G.recoverySerial!==serial)return;}
+  r.x=x0+(x1-x0)*t;r.y=y0+(y1-y0)*t;r.life-=dt;r.travel=(r.travel||0)+travel*Math.min(1,t);r.age=(r.age||0)+dt;
+  // Arming distance: a warhead that strikes something within ROCKET_ARM px of the tube is a dud (thud + sparks)
+  // instead of a blast in the shooter's face. Its own blast spares the shooter for the first .35 s of flight.
+  if(hit<=1&&r.own&&r.travel<ROCKET_ARM){dud(G,r,H);continue;}
+  if(hit<=1||r.life<=0){detonate(G,{...r,radius:145,attributed:true,ownerSafe:r.own&&r.age<.35},H);if(G.recoverySerial!==serial)return;}
   else list[n++]=r;
  }list.length=n;
 }

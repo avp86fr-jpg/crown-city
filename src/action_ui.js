@@ -9,7 +9,15 @@ export function drawActionHUD(G,L,y,width){
  const yy=y+(G.radioT>0?78:38)*u;
  c.fillStyle='rgba(8,14,20,.86)';c.fillRect(L,yy,width,49*u);c.fillStyle='#d6b379';c.fillRect(L,yy,2*u,49*u);
  c.font=font(9*u,800);c.textAlign='left';c.fillStyle='#d8d1c2';c.fillText(WEAPONS[A.weapon].name,L+9*u,yy+14*u,width-18*u);
- c.font=font(16*u,900);c.fillStyle=A.reloadT>0?'#edc67f':'#fff';c.fillText(A.reloadT>0?'RELOADING':String(A.ammo[A.weapon]).padStart(2,'0')+' / '+(A.reserve?.[A.weapon]==null?'∞':A.reserve[A.weapon]),L+9*u,yy+33*u,width-18*u);
+ // ammo: count turns amber at a quarter mag and red when empty; a reload hint and a gold reload progress bar
+ {const Wp=WEAPONS[A.weapon],mag=A.ammo[A.weapon],res=A.reserve?.[A.weapon],frac=mag/Wp.mag,reloading=A.reloadT>0,empty=mag===0&&res===0;
+  c.font=font(16*u,900);c.fillStyle=reloading?'#edc67f':empty?'#e0675a':frac<=.25?'#f0a24a':'#fff';
+  c.fillText(reloading?'RELOADING':empty?'EMPTY':String(mag).padStart(2,'0')+' / '+(res==null?'∞':res),L+9*u,yy+33*u,width-18*u);
+  if(!reloading&&!empty&&frac<=.25){c.font=font(9*u,900);c.textAlign='right';c.fillStyle='#f0a24a';c.fillText(G.touch?'RELOAD':'R  RELOAD',L+width-9*u,yy+33*u);c.textAlign='left';}
+  // magazine strip: one tick per round (capped at 30 ticks), gold sweep while reloading
+  const x0=L+9*u,ww=width-18*u,y1=yy+36*u;c.fillStyle='rgba(255,255,255,.12)';c.fillRect(x0,y1,ww,2*u);
+  if(reloading){c.fillStyle='#edc67f';c.fillRect(x0,y1,ww*(1-A.reloadT/Wp.reload),2*u);}
+  else{const n=Math.min(30,Wp.mag),per=ww/n,have=Math.round(frac*n);c.fillStyle=frac<=.25?'#f0a24a':'#e8e2d4';for(let i=0;i<have;i++)c.fillRect(x0+i*per,y1,Math.max(1,per-1.2*u),2*u);}}
  c.fillStyle='#28383c';c.fillRect(L+9*u,yy+40*u,width-18*u,3*u);c.fillStyle=A.exhausted?'#d77863':'#91c9ac';c.fillRect(L+9*u,yy+40*u,(width-18*u)*A.stamina/100,3*u);
  if(A.cover&&G.player.type==='foot'){c.font=font(9*u,800);c.fillStyle='#a3e0cf';c.fillText('IN COVER',L+9*u,yy+62*u);}
  if(A.contract){const d=CONTRACTS.find(d=>d.id===A.contract.id);const txt=d.title+' / '+Math.ceil(A.contract.t)+'s'+(d.id==='drift'?' / '+Math.floor(A.contract.progress)+'/1200':'');c.font=font(10*u,800);c.fillStyle='#8de0d7';c.fillText(txt,L,yy+(A.cover?79:63)*u,Math.min(W-L*2,260*u));const status=operationStatus(G,A.contract);if(status){c.font=font(9*u,700);c.fillStyle='#e5cf98';c.fillText(status,L,yy+(A.cover?94:78)*u,Math.min(W-L*2,390*u));}}

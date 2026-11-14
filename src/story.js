@@ -251,7 +251,7 @@ export function missionFlow(id, flags) {
         objectives: [
           { id: "door", kind: "goto", at: "casinoDoor", r: 70, hint: "Drive to the Palace south doors. Gold marker, gold arrows." },
           { id: "vault", kind: "collect", at: "casino", r: 90, hack: 3, hint: "Stop at the archive. Press E, then stay still for the transfer." },
-          { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the bag to the marina. Follow the gold arrows." },
+          { id: "marina", kind: "goto", at: "marina", r: 90, hint: "Drive the archive to the marina. Follow the gold arrows." },
           { id: "boat", kind: "enterBoat", at: "marina", hint: "Get in any boat at the marina slips. (E)" },
           { id: "island", kind: "goto", at: "dropIsland", r: 80, hint: "Boat: follow the gold line across the harbour to the drop island." },
         ],
@@ -265,7 +265,7 @@ export function missionFlow(id, flags) {
         objectives: [
           { id: "return", kind: "goto", at: "marina", r: 100, hint: "Dock at the marina quay and step ashore. Your final getaway car is waiting." },
           { id: "getaway", kind: "enter", near: "marina", vehicle: "nyx", hint: "Get into the Nyx at the marina. (E)" },
-          { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the bag out the east highway to the city limits." },
+          { id: "highway", kind: "goto", at: "desert", r: 120, hint: "Run the archive out along the east highway to the city limits." },
           { id: "survive", kind: "loseWanted", hint: "Shake Gold Mage's heat: break line of sight until every star fades." },
         ],
         winVN: () => (flags.stash === "flip" ? "m6_end_flip" : "m6_end_safe"),

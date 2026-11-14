@@ -1,7 +1,7 @@
 import {drawWaterMotion,tickWakes} from './water_motion.js';
 import {drawResultsCard,drawFinalScore,drawScorePop,storyTotals} from './story_score.js';
 import {playIntro} from './intro.js';
-import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
+import {launchRocket,dud,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
 import {drawBikeRider} from './rider_art.js';
 import {gibs as gibsFX,bloodImpact,runoverBlood,tickBlood,drawBlood} from './blood_fx.js';
@@ -574,7 +574,7 @@ function canvasMouse(G) {
       if (mx >= m.x && my >= m.y && mx <= m.x + m.w && my <= m.y + m.h) {
         G.waypoint = { x: clamp((mx - m.x) / m.k * G.minimap.S, 0, WORLD_W - 1),
           y: clamp((my - m.y) / m.k * G.minimap.S - (G.minimap.oy||0), -NORTH + 40, WORLD_H + SOUTH - 1) };
-        G.gps = null; toast(G, 'Blue waypoint set. Gold marker is your job.');
+        G.gps = null; toast(G, 'Blue waypoint set. The gold marker is still your job.');
       }
       return;
     }
@@ -1920,8 +1920,8 @@ function shoot(G, from, onFoot) {
   if(weapon.rocket){
     G.audio.rocket?.();
     // An obstructed barrel detonates in front of the wall, never through it.
-    if(block===null)launchRocket(G,sx,sy,ax*speed,ay*speed,weapon);
-    else {const d=Math.max(0,muzzle*block-2);detonate(G,{x:from.x+ax*d,y:from.y+ay*d,radius:145,damage:weapon.damage,carDamage:weapon.carDamage,attributed:true},blastHooks);return;}
+    if(block===null){launchRocket(G,sx,sy,ax*speed,ay*speed,weapon);addShake(G,6);for(let k=0;k<4;k++)G.particles.push({kind:'smoke',x:from.x-ax*(18+k*8),y:from.y-ay*(18+k*8),vx:-ax*60+(Math.random()-.5)*30,vy:-ay*60+(Math.random()-.5)*30,life:.8,maxLife:.8,size:1});}
+    else {const d=Math.max(0,muzzle*block-2);dud(G,{x:from.x+ax*d,y:from.y+ay*d},blastHooks);return;} // obstructed tube: unarmed dud, never a point-blank blast
   }else{
     const kind=weapon.pellets>1?'shotgun':weapon.quiet?'pistol':'smg';
     G.audio.gunfire?G.audio.gunfire(kind,sx,sy,G.player.y<-700?.35:.7):G.audio.shot(0,weapon.quiet?.65:0,kind);
@@ -1967,7 +1967,9 @@ function tickBullets(G, dt) {
       if(G.player.type==='foot'&&bulletLayerMatches(G,b,G.player)){const t=segmentCircle(x0,y0,x1,y1,G.player.x,G.player.y,12);if(t!==null&&t<first){first=t;target=G.player;wall=false;}}
     }
     const t=Math.min(1,first);b.x=x0+(x1-x0)*t;b.y=y0+(y1-y0)*t;b.travel=(b.travel||0)+Math.hypot(b.x-x0,b.y-y0);
-    if(first>1)continue;b.life=0;if(b.friend&&target&&target!==G.player)G.shotsHit=(G.shotsHit||0)+1;
+    if(first>1){// spent round lands: a splash on water, a puff of dust on the ground (friendly rounds only, cheap)
+      if(b.life<=0&&b.friend&&G.particles.length<420){const sf=G.surfaceAt(b.x,b.y);if(sf==='water'||sf==='canal'){for(let k=0;k<3;k++)G.particles.push({kind:"splash",x:b.x+(Math.random()-.5)*8,y:b.y+(Math.random()-.5)*8,vx:(Math.random()-.5)*30,vy:-25,life:.35,a:.75});}else G.particles.push({kind:'dust',x:b.x,y:b.y,vx:0,vy:0,life:.3,max:.3});}
+      continue;}b.life=0;if(b.friend&&target&&target!==G.player)G.shotsHit=(G.shotsHit||0)+1;
     if(wall){G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.04,vy:-b.vy*.04,life:.15});G.particles.push({kind:'dust',x:b.x,y:b.y,vx:-b.vx*.02,vy:-b.vy*.02,life:.45,max:.45});if(b.friend||Math.random()<.5)G.audio.impact?.(Math.random()<.35?'ricochet':'impact',b.x,b.y,.22);continue;}
     if(target?.def){damageVeh(G,target,b.friend?b.carDamage||6:4,!!b.friend,{x:b.x,y:b.y});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vx*.05,vy:-b.vy*.05,life:.2});G.particles.push({kind:'spark',x:b.x,y:b.y,vx:-b.vy*.04,vy:b.vx*.04,life:.16});G.audio.impact?.(Math.random()<.15?'glass':'metalHit',b.x,b.y,.26);if(b.friend&&!target.dead){G.hitConfirmT=.14;G.hitMark={x:b.x,y:b.y,t:.22,kill:false};G.audio.hitmark?.(false);if(target.cop)crime(G,1,b.x,b.y,true);}continue;}
     if(target===G.player){if(!(G._endT>0)&&!(G.action?.dodgeT>.08)){G.health-=absorbDamage(G,G.action?.cover?2.5:(b.gang?6.5:5+Math.min(5,G.wanted||0)*.8));G.hurtT=.3;addShake(G,3.5);G.hurtDir=Math.atan2(-b.vy,-b.vx);bloodImpact(G,G.player,b.vx,b.vy,.6);if(G.health<=0){wasted(G);return;}}continue;}
@@ -2624,7 +2626,7 @@ function tickMission(G, dt) {
   } else if(obj.kind === 'intercept') {
     if(G.van && (G.van.health<=65 || G.van.dead) && at && Math.hypot(p.x-at.x,p.y-at.y)<obj.r) {
       G.van.loose=true;G.van.vx=G.van.vy=0;advanceObjective(G);
-      message(G,'HUNTER','Engine is out. Stop beside the van and take the sealed plate.');
+      message(G,'HUNTER','Engine\'s dead. Stop beside the van and take the sealed archive key.');
     }
   } else if (obj.kind === 'goto' || obj.kind === 'collect') {
     const near = at && Math.hypot(p.x - at.x, p.y - at.y) < (obj.r || 80);

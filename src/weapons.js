@@ -49,7 +49,8 @@ export function drawHeldWeapon(G,a,rot){
  const sleeve=c.createLinearGradient(0,-6,12,5);sleeve.addColorStop(0,'#77607e');sleeve.addColorStop(.45,'#493652');sleeve.addColorStop(1,'#281f35');
  const arm=(support=false)=>{c.beginPath();c.moveTo(-3,support?-6:3);c.quadraticCurveTo(support?8:2,support?-6:6,(support?(id==='shotgun'||id==='rocket'?22:18):11)-recoil,support?-1:1);};
  for(const support of id==='sidearm'?[false]:[true,false]){arm(support);c.lineCap='round';c.strokeStyle='#242131';c.lineWidth=4;c.stroke();c.strokeStyle=sleeve;c.lineWidth=3;c.stroke();}
- c.drawImage(sprite(id),spec.muzzle-spec.length-3-recoil,-6,32,12);
+ // readability: a pale rim + dark drop line so the gun silhouette separates from the coat and dark asphalt
+ {const gx=spec.muzzle-spec.length-3-recoil;c.save();c.shadowColor='rgba(240,244,255,.75)';c.shadowBlur=2.5;c.drawImage(sprite(id),gx,-6,32,12);c.shadowColor='rgba(0,0,0,.6)';c.shadowBlur=0;c.shadowOffsetY=1.2;c.drawImage(sprite(id),gx,-6,32,12);c.restore();}
  c.fillStyle='#29493e';c.beginPath();c.ellipse(11-recoil,1,1.8,1.4,0,0,Math.PI*2);c.fill();
  if(id!=='sidearm'){c.beginPath();c.ellipse((id==='shotgun'||id==='rocket'?22:18)-recoil,-.5,1.7,1.5,0,0,Math.PI*2);c.fill();}
  c.restore();

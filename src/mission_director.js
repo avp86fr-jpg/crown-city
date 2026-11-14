@@ -28,13 +28,13 @@ Object.freeze(JOBS);
 
 const GUIDANCE = [
   { enter_car: ['HUNTER', 'Riot is on the lot. Get close and enter; save your bullets for the van.'],
-    hit_van: ['HUNTER', 'Put the convoy engine out. Ram it or shoot until the engine gives out. Keep the sidewalk clear.'],
+    hit_van: ['HUNTER', 'Kill the convoy engine. Ram it or shoot it until it dies. Keep the pavement clear.'],
     grab: ['HUNTER', 'Engine is done. Stop beside the van, then interact to take the sealed archive key.'],
-    lose_heat: ['MASK', 'Turn out of their sight. A building between you and Metro is worth more than another mile.'],
+    lose_heat: ['MASK', 'Turn out of their sight. A building between you and Metro is worth more than another kilometre.'],
     stash: ['HUNTER', 'Bring the key into the garage. Next we find a way into the Palace.'] },
   { to_track: ['FIRE', 'Meet me at the Crown Grand Prix pit desk, south of the river. The lights give you three seconds to get straight.'],
     race: ['FIRE', 'One full lap, every gold gate. Ease off before the corner and drive out of it.'] },
-  { pay: ['NEURAL', 'Come to the loft. If you took credit, the six hundred comes from the archive cut.'],
+  { pay: ['NEURAL', 'Come to the loft. Pay me now, or the six hundred comes out of your vault cut.'],
     lift: ['NEURAL', 'The unit is beside Metro. Lift it on foot with interact, or take a cruiser. Your call.'],
     back: ['NEURAL', 'Lose the stars before you bring that thing to my door. I like my windows intact.'] },
   { case: ['MASK', 'On foot. Hold still at the south doors for two seconds. Watch the entrance, not your weapon.'],

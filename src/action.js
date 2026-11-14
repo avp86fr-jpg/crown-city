@@ -72,7 +72,7 @@ export function buyService(G,choice) {
  if(['repair','tune','respray','paint'].includes(choice)&&(P.type!=='veh'||P.def.boat||P.def.aircraft)){message(G,'HUNTER','Bring a car or a bike into the workshop.');return false;}
  if(choice==='armor'&&(A.armor||0)>=100){message(G,'MERCY','Your vest is already fresh. Go get it scratched.');return false;}
  if(choice==='tune'&&A.upgrades>=MAX_TUNE){message(G,'HUNTER','Every street upgrade is fitted. Go make them regret it.');return false;}
- if(G.chips<offer.cost){message(G,'HUNTER','Not enough chips. Crew contracts pay.');return false;}
+ if(G.chips<offer.cost){message(G,'HUNTER','Not enough chips. Crew jobs pay.');return false;}
  G.chips-=offer.cost;
  if(choice==='repair'){P.health=100;P.burning=false;P.wrecked=false;P.burnT=0;}
  if(choice==='tune'){A.upgrades++;P.tune=A.upgrades;message(G,'HUNTER','Stage '+A.upgrades+' fitted: more torque, better brakes, sharper turn-in.');}

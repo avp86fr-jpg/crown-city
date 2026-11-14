@@ -32,7 +32,7 @@ test('blast falloff includes the exposed end of a long vehicle and respects brid
  assert.ok(blastExposure(G,{...b,waterLevel:true},{x:110,y:100,rot:0,def:{boat:true}})>0);G.world.expansion=savedExpansion;
 });
 test('a barrel pressed against a wall cannot launch through it, and recovery clears projectiles',()=>{
- flat();G.solidAt=x=>x>=520;T.shoot(G,G.player,true);assert.equal(G.rockets.length,0);assert.ok(G.health<100||G._endT>0);
+ flat();G.solidAt=x=>x>=520;T.shoot(G,G.player,true);assert.equal(G.rockets.length,0);assert.equal(G.health,100,'an obstructed tube is an unarmed dud, never a self-kill');
  flat();T.shoot(G,G.player,true);assert.equal(G.rockets.length,1);T.clearRecoveryState(G);assert.equal(G.rockets.length,0);
 });
 test('vehicle explosions use cover instead of harming pedestrians through buildings',()=>{
