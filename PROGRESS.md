@@ -133,3 +133,12 @@
 - Painted once into cached 512 px chunks (half-res on low). Snowfall: three (low: two) pre-rendered parallax pattern layers, replaces rain overlay inside the region. Grip: packed snow road .8, ice patches .5, off-road snow .72, lake .36. Minimap/atlas colours the annex as snow; landmarks CROWN PEAK / FROSTFALL / MIRROR LAKE; four chip caches. Peds in the snow get knit hats and scarves (overlay).
 - Mobile night headlights: pre-rendered warm soft cone (additive) replaces the flat grey trapezoid; rain streak sheets slightly denser/brighter, more so by day.
 - Gates: 432 unit tests (new tests/alpine.test.js), check, audit:map clean (coherence H now includes the annex), build reproducible, 7 browser suites pass.
+
+## Pass 15 — Crown Peak polish (preview)
+- Chalets: top-down snow-laden roofs with shingle eaves, pillowy snow edges, blue-shaded ridge slopes, cross-gable wings on larger chalets, dormers, skylights, back decks, icicles, SE blue cast shadows; shovelled stone footpaths with snow banks; parked snow-capped cars between chalets (solid); string lights on the eaves at night; grey chimney smoke, stronger by day.
+- Summit: snowy stone viewpoint plaza (flagstones, snow in joints, plowed rim), parking apron with bays, benches, coin telescope, three flags, stepped entrance to the observatory.
+- Dusk: ambient multiply is pulled to cool neutral inside the region (desktop light map + mobile tint; mobile warm wash cut by 85%), so snow no longer goes salmon.
+- Switchbacks: darker asphalt, orange snow poles with reflectors on both verges, heavier guardrails, blue drop shading on the outer side of rails, extra 16% camera zoom-out at speed in the region; M map/minimap roads drawn dark on snow.
+- Textures: wind-sculpted drifts (sastrugi), sparkle, natural branch snow clumps on pines, broken stratified snow ledges on rocks, frozen lake skate loops and cracks.
+- Winter hats/scarves now sit on the head/neck of the standing sprites (was drawn at the feet). Snowfall over the open sea reduced to 12%.
+- Measured grip (dart, 0.45 s right steer at ~295 px/s): city asphalt slip 9°, snow road 11°, frozen lake 23°.

@@ -25,7 +25,7 @@ import {drawLocalAtmosphere} from './world_effects.js';
 import {drawRainGround,drawRainOverlay} from './rain.js';
 import {drawGangWorld} from './gangs.js';
 import {drawResortGround,drawResortOverhead,drawResortLights} from './resort.js';
-import {drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall} from './alpine.js';
+import {drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall,coolSnow} from './alpine.js';
 const CORE=4096,TILE=1024,OUTER=512;
 function retire(e){e.retired=true;e.job?.return();e.bitmap?.close();if(e.canvas)e.canvas.width=1;if(e.working)e.working.width=1;}
 function seal(e){
@@ -95,7 +95,7 @@ export function visibleOuterTiles(G,r){
 }
 export function drawMobileWorld(G,H) {
   if(G.street&&!G.street.atlas)loadStreetArt(G);
-  const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;G.night=night;
+  const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;if(G.alpineMix>0){tint.amb=coolSnow(tint.amb,G.alpineMix);tint.warm*=1-.85*Math.min(1,G.alpineMix);}G.night=night;
   G._coreFrame=(G._coreFrame||0)+1;
   const coreCols=Math.max(0,Math.min(3,Math.floor(r.x1/TILE))-Math.max(0,Math.floor(r.x0/TILE))+1),coreRows=Math.max(0,Math.min(3,Math.floor(r.y1/TILE))-Math.max(0,Math.floor(r.y0/TILE))+1);G._coreLimit=Math.min(32,Math.max(6,coreCols*coreRows*(night>.02&&night<=.98?2:1)+2));
   H.worldXform(G,c,r.S);c.imageSmoothingQuality='low';c.fillStyle='#123943';if(!G.dbg?.noBase)c.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);

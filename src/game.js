@@ -33,7 +33,7 @@ import { initExpansion, tickExpansion, interactExpansion, drawExpansionPeople, d
 import { drawExpansionOverhead } from './expansion_world.js';
 import { drawMobileWorld } from './mobile_renderer.js';
 import {initResort,drawResortGround,drawResortOverhead,drawResortLights,NORTH} from './resort.js';
-import {initAlpine,drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall,alpineGrip,PEAK_CACHES,SOUTH} from './alpine.js';
+import {initAlpine,drawAlpineGround,drawAlpineOverhead,drawAlpineLights,drawSnowfall,alpineGrip,PEAK_CACHES,SOUTH,coolSnow} from './alpine.js';
 import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
 import { drawRainGround, drawRainOverlay } from "./rain.js";
 import { loadImage as loadImg } from "./assets.js";
@@ -107,7 +107,7 @@ function vehScale(def) {
   return 0.283;
 }
 const SURFACE = { 0: "road", 1: "walk", 2: "build", 3: "water", 4: "sand", 5: "grass", 6: "track", 7: "pier", 8: "canal", 9: "lot", 10: "dirt" };
-const SNOWCOL = { 5: [226, 233, 241], 2: [112, 116, 124], 9: [168, 206, 226], 1: [150, 120, 92] };
+const SNOWCOL = { 0: [52, 58, 68], 5: [226, 233, 241], 2: [126, 130, 138], 9: [150, 196, 222], 1: [150, 120, 92] };
 const GRIP = { road: 1, walk: 0.8, build: 0.2, water: 0.15, sand: 0.5, grass: 0.6, track: 1.05, pier: 0.75, canal: 0.15, lot: 0.95, dirt: 0.62 };
 const FOOT_PROBES=[[1,0],[.70710678,.70710678],[0,1],[-.70710678,.70710678],[-1,0],[-.70710678,-.70710678],[0,-1],[.70710678,-.70710678]];
 const FOOT_OK = new Set(["road", "walk", "sand", "grass", "track", "pier", "lot", "dirt"]);
@@ -2542,7 +2542,7 @@ function tickCamera(G, dt) {
   const portrait = G.cssH > G.cssW;
   const tgtScale = (p.def?.aircraft ? lerp(.92,.63,clamp((p.altitude||0)/300,0,1)) : onFoot
     ? lerp(1.48, 1.22, clamp(spd / 160, 0, 1))
-    : lerp(1.10, 0.73, clamp(spd / 300, 0, 1))) * (portrait ? 0.86 : 1);
+    : lerp(1.10, 0.73, clamp(spd / 300, 0, 1)) * (1 - .16 * (G.alpineMix || 0))) * (portrait ? 0.86 : 1);
   G.cam.scale = lerp(G.cam.scale, tgtScale, 2.2 * dt);
   // look ahead in the direction of travel (more on phones)
   const lk = p.type === "veh" ? (G.touch ? 0.62 : 0.5) : 0.25;
@@ -3161,7 +3161,7 @@ function vignetteMul(w,h){
 }
 function drawLighting(G, r, S, ox, oy, low) {
   const { ctx, canvas, cam, assets } = G;
-  const amb = ambientAt(G.time);
+  const amb = coolSnow(ambientAt(G.time),G.alpineMix);
   const rain = G.rainAmt * 0.18, fog = G.fog * 0.1;
   const ar = amb[0] * (1 - rain - fog), ag = amb[1] * (1 - rain * 0.8 - fog), ab = amb[2] * (1 - rain * 0.5);
   const dark = darkness(G.time);
