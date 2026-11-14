@@ -1,5 +1,7 @@
 import {drawWaterMotion} from './water_motion.js';
 import {drawBlastFX} from './explosions.js';
+import {drawOpenWorld} from './open_world.js';
+import {drawPursuit} from './pursuit.js';
 import {drawBlood} from './blood_fx.js';
 import {drawUrbanCourts} from './urban_courts.js';
 import {drawStreetGateways} from './world_streets.js';
@@ -91,10 +93,10 @@ export function visibleOuterTiles(G,r){
 }
 export function drawMobileWorld(G,H) {
   if(G.street&&!G.street.atlas)loadStreetArt(G);
-  const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;
+  const c=G.ctx,r=H.viewRect(G),tint=mobileTint(G.time),night=tint.night;G.night=night;
   G._coreFrame=(G._coreFrame||0)+1;
   const coreCols=Math.max(0,Math.min(3,Math.floor(r.x1/TILE))-Math.max(0,Math.floor(r.x0/TILE))+1),coreRows=Math.max(0,Math.min(3,Math.floor(r.y1/TILE))-Math.max(0,Math.floor(r.y0/TILE))+1);G._coreLimit=Math.min(32,Math.max(6,coreCols*coreRows*(night>.02&&night<=.98?2:1)+2));
-  H.worldXform(G,c,r.S);c.imageSmoothingQuality='low';c.fillStyle='#123943';c.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
+  H.worldXform(G,c,r.S);c.imageSmoothingQuality='low';c.fillStyle='#123943';if(!G.dbg?.noBase)c.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
   for(let y=Math.max(0,Math.floor(r.y0/TILE));y<=Math.min(3,Math.floor(r.y1/TILE));y++)for(let x=Math.max(0,Math.floor(r.x0/TILE));x<=Math.min(3,Math.floor(r.x1/TILE));x++){
     const image=tile(G,x,y,night>.98);if(image)c.drawImage(image,x*TILE,y*TILE,TILE+.5,TILE+.5);
     if(night>.02&&night<=.98){const lit=tile(G,x,y,true);if(lit){c.globalAlpha=night;c.drawImage(lit,x*TILE,y*TILE,TILE+.5,TILE+.5);c.globalAlpha=1;}}
@@ -129,6 +131,7 @@ export function drawMobileWorld(G,H) {
     c.save();c.translate(p.x,p.y);c.rotate(p.rot||0);c.globalAlpha=p.broken?.7:1;c.drawImage(image,-16,-16,32,32);c.restore();
   }
   for(const p of G.pickups)if(!p.got&&p.x>r.x0&&p.x<r.x1&&p.y>r.y0&&p.y<r.y1)c.drawImage(G.assets.chipIcon,p.x-8,p.y-8,16,16);
+  drawOpenWorld(G,r);drawPursuit(G,r);
   drawBlastFX(G,r,true);drawBlood(G,r,true);H.drawObjectiveGround(G);
   const actors=G._mobileActors||(G._mobileActors=[]);actors.length=0;for(const v of G.vehicles)if(v.x>r.x0-80&&v.x<r.x1+80&&v.y>r.y0-80&&v.y<r.y1+80)actors.push(v);
   for(const p of G.peds)if(p.x>r.x0-30&&p.x<r.x1+30&&p.y>r.y0-60&&p.y<r.y1+30)actors.push(p);
@@ -141,16 +144,20 @@ export function drawMobileWorld(G,H) {
   c.setTransform(1,0,0,1,0,0);
   // Night grade: one multiply fill toward the desktop ambient (slightly lifted for
   // small screens), so phone nights are actually dark, then cheap additive lights.
-  if(night>.02){const a=tint.amb,k=night*.86,lift=.12;c.globalCompositeOperation='multiply';
-   c.fillStyle=`rgb(${(255+(a[0]+(255-a[0])*lift-255)*k)|0},${(255+(a[1]+(255-a[1])*lift-255)*k)|0},${(255+(a[2]+(255-a[2])*lift-255)*k)|0})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);c.globalCompositeOperation='source-over';}
-  c.fillStyle=`rgba(7,15,32,${tint.alpha*(1-night*.7)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);
+  if(night>.02&&!G.dbg?.noMulM){const a=tint.amb,k=night*.86,lift=.12,va=tint.alpha*(1-night*.7),veil=[7,15,32],ch=i=>(((255+(a[i]+(255-a[i])*lift-255)*k)*(1-va)+veil[i]*va)|0);c.globalCompositeOperation='multiply';
+   c.fillStyle=`rgb(${ch(0)},${ch(1)},${ch(2)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);c.globalCompositeOperation='source-over';}
+  // At full night the cool veil is folded into the multiply grade above (one
+  // full-screen pass instead of two, the main night cost on phone GPUs).
+  if(night<=.02)c.fillStyle=`rgba(7,15,32,${tint.alpha})`,c.fillRect(0,0,G.canvas.width,G.canvas.height);
   if(G.fog>.02||G.sand>.02){c.fillStyle=G.sand>G.fog?`rgba(176,142,98,${G.sand*.16})`:`rgba(151,167,181,${G.fog*.2})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   if(tint.warm>.002){c.fillStyle=`rgba(246,149,82,${tint.warm})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   H.worldXform(G,c,r.S);c.globalCompositeOperation='lighter';
-  if(night>.02){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);c.globalAlpha=.5*night;for(const lamp of visibleStreetLights(G,r,22))c.drawImage(glow,lamp.x-70,lamp.y-70,140,140);
+  if(night>.02&&!G.dbg?.noLampM){const glow=LIGHT.radial('rgba(255,190,110,0.65)',64);// Ten nearest pools, drawn a little tighter and brighter: the same read on a
+   // phone at about a third of the additive overdraw (the main night cost).
+   c.globalAlpha=.62*night;for(const lamp of visibleStreetLights(G,r,10))c.drawImage(glow,lamp.x-52,lamp.y-52,104,104);
    const rim=LIGHT.radial('rgba(200,220,255,0.6)',64);c.globalAlpha=.35*night;c.drawImage(rim,G.player.x-70,G.player.y-70,140,140);}
-  drawMobileVehicleLights(G,actors,night);
-  drawResortLights(G,r,night);
+  if(!G.dbg?.noVL)drawMobileVehicleLights(G,actors,night);
+  if(!G.dbg?.noResort)drawResortLights(G,r,night);
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
   c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);

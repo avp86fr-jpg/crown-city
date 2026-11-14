@@ -1,4 +1,4 @@
-import {drawWaterMotion} from './water_motion.js';
+import {drawWaterMotion,tickWakes} from './water_motion.js';
 import {playIntro} from './intro.js';
 import {launchRocket,tickRockets as updateRockets,detonate,drawBlastFX,tickBlastFX} from './explosions.js';
 import {sleepSafeGround} from './pedestrian_motion.js';
@@ -54,7 +54,8 @@ import { aimDirection, bindTouchAim, installFullscreen, syncControlStyle } from 
 import { createCityAI } from './city_ai.js';
 import { drawTitleScreen, drawPauseScreen, drawSettingsScreen, drawMissionBrief, drawDossier } from './presentation.js';
 import { drawMobileHUD } from './mobile_hud.js';
-import { initOpenWorld, tickOpenWorld, drawOpenWorld } from './open_world.js';
+import { initOpenWorld, tickOpenWorld, drawOpenWorld, owProgress, owDetail, drawStatsCard, drawPrimer } from './open_world.js';
+import { tickPursuit, drawPursuit, drawRadio, laySpikes } from './pursuit.js';
 import { restoreStreetRoute, streetJobTarget } from './side_jobs.js';
 import { directorState, directorSave, beginJob, tickDirector, finishJob, recordIncident, jobBrief } from './mission_director.js';
 
@@ -2101,7 +2102,7 @@ function tickWanted(G, dt) {
         for(const side of [-1,1]){const x=back.x+(-hy)*side*58,y=back.y+hx*side*58;if(carHit(G,{def:VEH_DEFS.metro,r:25,rot:across,x,y},x,y))continue;
           const v=makeVeh('metro',x,y,across+(side>0?Math.PI:0),{keep:true,cop:true,siren:true,roadblock:true,parked:true,ambient:false,blockT:30});G.vehicles.push(v);n++;
           const s2=findSafe(G,x-hx*40,y-hy*40,8);G.peds.push({x:s2.x,y:s2.y,rot:Math.atan2(-hx,hy),vx:0,vy:0,sprite:'cop',speed:0,walk:130,dist:0,flee:0,r:8,hp:50,dead:false,copPed:true,car:v,grabT:0});}
-        if(n){toast(G,'Roadblock ahead!');G.lastRoadblock={x:back.x,y:back.y};}else G.roadblockT=2;
+        if(n){toast(G,G.wanted>=4?'Roadblock and spike strip ahead!':'Roadblock ahead!');G.lastRoadblock={x:back.x,y:back.y};if(G.wanted>=4||G.wanted>=3&&Math.random()<.5)laySpikes(G,back.x-hx*95,back.y-hy*95,Math.atan2(hx,-hy));}else G.roadblockT=2;
       }else G.roadblockT=2;
     }else G.roadblockT=2;
   }
@@ -2112,6 +2113,9 @@ function tickWanted(G, dt) {
 
 function tickCops(G, dt) {
   const P = G.player;
+  // PIT manoeuvre in progress: the suspect's tail is being shoved round.
+  if(P.pitT>0){P.pitT-=dt;if(P.type==='veh'){P.rot+=P.pitDir*2.4*dt;P.yaw=P.pitDir*2.4;}}
+  if(G._pitCool>0)G._pitCool-=dt;
   for (const c of G.cops) {
     if (!c || c === P || c.dead) continue;
     const dist = Math.hypot(P.x - c.x, P.y - c.y);
@@ -2150,8 +2154,19 @@ function tickCops(G, dt) {
     // A cruiser holds position while its officers are outside. It must not
     // reverse into the crowd simply because it is intentionally stationary.
     if(c.crewOut){x=0;y=0;c.reverseT=c.stuckT=0;c._avoidBrake=true;}
+    // PIT: from three stars a cruiser that draws level with the suspect's rear
+    // quarter at speed steers into it and spins the tail out (with a cooldown).
+    let pitting=false;
+    if(G.wanted>=3&&P.type==='veh'&&!P.def.boat&&!P.def.aircraft&&!c.crewOut&&!(G._pitCool>0)&&los&&dist<160){
+      const ph=headingVec(P.rot),pr=rightVec(P.rot),rx=c.x-P.x,ry=c.y-P.y,along=rx*ph.x+ry*ph.y,side=rx*pr.x+ry*pr.y;
+      const ps=P.vx*ph.x+P.vy*ph.y,bs=bodySize(P),cs=bodySize(c);
+      if(ps>150&&fwd>140&&Math.cos(c.rot-P.rot)>.8&&along<-bs.l*.1&&along>-bs.l*1.6&&Math.abs(side)<bs.w+cs.w+46){
+        pitting=true;x=side<0?.6:-.6;y=Math.max(y,.85);
+        if(Math.abs(side)<bs.w+cs.w+10){P.pitT=.5;P.pitDir=side<0?-1:1;G._pitCool=7;G.cam.shake=Math.max(G.cam.shake||0,6);G.audio.contact?.({speed:260,material:'body',source:P,x:P.x,y:P.y});G.radioMsg={text:'Unit attempting PIT. Spin him out.',t:2.6};G.pits=(G.pits||0)+1;}
+      }
+    }
     let trafficBrake=false;
-    for(const other of localStreetVehicles(G,c.x,c.y)){
+    if(!pitting)for(const other of localStreetVehicles(G,c.x,c.y)){
       if(other===c||other.def.boat||airborne(other))continue;
       const dx=other.x-c.x,dy=other.y-c.y,hx=Math.sin(c.rot),hy=-Math.cos(c.rot);
       if(dx*hx+dy*hy>0&&dx*hx+dy*hy<bodySize(c).l+bodySize(other).l+25+Math.max(0,fwd)*.45&&Math.abs(dx*hy-dy*hx)<bodySize(c).w+bodySize(other).w+4){trafficBrake=true;y=0;break;}
@@ -2202,7 +2217,17 @@ function tickCops(G, dt) {
       if (p.car && !p.car.dead) { const cd = Math.hypot(p.car.x - p.x, p.car.y - p.y); if (cd < 30) { p.dead = true; p.removed = true; p.car.crewOut = false; continue; } p.rot = Math.atan2(p.car.x - p.x, -(p.car.y - p.y)); }
       else { p.speed=0;p.grabT=0;continue; }
     } else { const target=G.nav.clearLine(p.x,p.y,P.x,P.y)?P:G.nav.next(p.x,p.y,2,true)||G.policeTarget||p;p.rot=Math.atan2(target.x-p.x,-(target.y-p.y)); }
-    const sp = G.wanted >= 3 && d < 260 ? 40 : 120;
+    let sp = G.wanted >= 3 && d < 260 ? 40 : 120;
+    // Cover: in a firefight (3+ stars, suspect on foot) an officer runs to the far
+    // side of a nearby stopped car, holds there and fires over it, then advances.
+    if(P.type==='foot'&&G.wanted>=3&&d<420){
+      if(!p.coverAt||G.ticks>=p.coverAt){p.coverAt=G.ticks+40;p.cover=null;
+        if(p.coverHold>4)p.coverHold=-3;else if(!(p.coverHold<0)){let best=null,bd=170;for(const v of localStreetVehicles(G,p.x,p.y)){if(v===P||v.dead||v.def.boat||airborne(v)||Math.hypot(v.vx||0,v.vy||0)>20)continue;const vd=Math.hypot(v.x-P.x,v.y-P.y);if(vd<90)continue;
+          const ux=(v.x-P.x)/vd,uy=(v.y-P.y)/vd,cx=v.x+ux*(bodySize(v).w+14),cy=v.y+uy*(bodySize(v).w+14),cd=Math.hypot(cx-p.x,cy-p.y);if(cd<bd&&G.surfaceAt(cx,cy)!=='build'){bd=cd;best={x:cx,y:cy};}}
+          p.cover=best;}}
+      if(p.cover){const cd=Math.hypot(p.cover.x-p.x,p.cover.y-p.y);if(cd>8){p.rot=Math.atan2(p.cover.x-p.x,-(p.cover.y-p.y));sp=Math.min(130,cd/Math.max(dt,.001));p.coverHold=0;}else{sp=0;p.rot=Math.atan2(dx,-dy);p.coverHold=(p.coverHold||0)+dt;p.inCover=true;}}
+      else{p.inCover=false;if(p.coverHold<0)p.coverHold+=dt;}
+    }else{p.cover=null;p.inCover=false;}
     const h = headingVec(p.rot);
     const px=p.x,py=p.y;
     if(P.type==="veh"||G.wanted===0)stepPedestrian(G,p,p.rot,95,dt,{road:true});else moveFoot(G,p,h.x*sp*dt,h.y*sp*dt);
@@ -2483,7 +2508,7 @@ function tickProps(G, dt) {
 }
 
 function tickParticles(G, dt) {
-  tickBlood(G,dt);tickBlastFX(G,dt);
+  tickBlood(G,dt);tickBlastFX(G,dt);tickWakes(G,dt);tickPursuit(G,dt);
   tickLightEffects(G,dt);
   // Smoke-like particles drift downwind and slow; haze settles after a burst.
   const wind=sceneWind(G),wx=wind.x*22,wy=wind.y*22,drag=Math.max(0,1-dt*1.8);
@@ -2689,6 +2714,8 @@ function viewRect(G) {
 // Night frames are dark and soft-lit: on desktop the world layer renders at
 // a lower internal scale there (HUD stays native). Hysteresis on darkness
 // keeps the canvas from reallocating around dusk.
+// Dev profiling: force the canvas to raster so section timings include drawing.
+let _pf=null;function profFlush(G){if(!_pf){const c=document.createElement('canvas');c.width=c.height=1;_pf=c.getContext('2d',{willReadFrequently:true});}_pf.drawImage(G.canvas,0,0,1,1);_pf.getImageData(0,0,1,1);}
 export function nightResTarget(G){
   if(G.touch||G.settings?.quality==='low'||G.scene!=='play')return 1;
   if(G.dbg&&G.dbg.nightRes!=null)return G.dbg.nightRes;
@@ -3007,7 +3034,7 @@ function renderWorldLayer(G) {
   if (r.x0 < 0 || r.y0 < 0 || r.x1 > CORE || r.y1 > CORE) {
     ctx.fillStyle='#173e4b';ctx.fillRect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0);
   }
-  let _pt = performance.now(); const _ph = (k) => { const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
+  let _pt = performance.now(); const _ph = (k) => { if(G._profSync)profFlush(G); const t = performance.now(); prof(G, k, t - _pt); _pt = t; };
   _ph('w_water');
   // 2. painted core
   if (r.x0 < CORE && r.y0 < CORE) {
@@ -3036,8 +3063,8 @@ function renderWorldLayer(G) {
     ctx.restore();
   }
   _ph('w_shadow');
-  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));
-  drawStreetScene(G,r);
+  if(!(G.dbg&&G.dbg.noWet))drawWetReflections(G, r, nightFactor(G));_ph('d_wet');
+  drawStreetScene(G,r);_ph('d_street');
   // 5. ground details
   ctx.lineWidth = 3;
   for (const s of G.skids) {
@@ -3060,9 +3087,9 @@ function renderWorldLayer(G) {
     const bob = Math.sin((G.ticks + c.x) * 0.15) * 3;
     ctx.drawImage(assets.chipIcon, c.x - 10, c.y - 10 + bob, 20, 20);
   }
-  drawOpenWorld(G, r);
+  _ph('d_props');drawOpenWorld(G, r);drawPursuit(G, r);_ph('d_ow');
   drawRouteChevrons(G);
-  drawObjectiveGround(G);
+  drawObjectiveGround(G);_ph('d_route');
   drawLife(G, cam, viewForLife(cam));
   _ph('w_details');
   drawStreetGateways(G,r);_ph('a_gate');drawUrbanCourts(G,r);_ph('a_courts');drawCityHubs(G,r);_ph('a_hubs');drawCircuitActivity(G,r);drawDropMission(G,r);_ph('a_circ');drawExpansionOverhead(G,r);_ph('a_exp');drawTransitWorld(G,r);_ph('a_transit');drawCasinoWorld(G,r);drawGangWorld(G,r);_ph('a_casino');
@@ -3132,6 +3159,7 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lamps=dark>.012?visibleStreetLights(G,r):[];
   const hasFlash = G.flashes.length > 0;
   const lt = G.light, lx = lt.lx;
+  let _lt=performance.now();const _lp=k=>{if(!G._profSync)return;lx.getImageData(0,0,1,1);profFlush(G);const t=performance.now();prof(G,k,t-_lt);_lt=t;};
   // Near-white daylight multiply is invisible but cost a full-frame composite.
   const needMap = Math.min(ar, ag, ab) < 238;
   // low tier: rebuild the light map every other frame (the multiply still runs every frame)
@@ -3143,33 +3171,45 @@ function drawLighting(G, r, S, ox, oy, low) {
   G._lmBaked=needMap&&!(G.dbg&&(G.dbg.noMap||G.dbg.noMul));
   if (needMap && !reuse && !(G.dbg&&G.dbg.noMap)) {
     G._lmCam={x:cam.x,y:cam.y,S,rot:cam.rot,ox,oy};
-    lx.setTransform(1, 0, 0, 1, 0, 0);
-    lx.globalCompositeOperation = "source-over"; lx.globalAlpha = 1;
-    lx.fillStyle = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
-    lx.fillRect(0, 0, lt.cv.width, lt.cv.height);
-    lx.globalCompositeOperation = "lighter";
-    worldXform(G, lx, S, lt.div, ox, oy);
     const lit = clamp(dark * 1.6, 0, 1);
-    if (lit > 0.02) {
-      const warm = LIGHT.radial("rgba(255,196,120,0.9)");
-      // street lamps
-      const lamp = (x, y, rad, a) => { lx.globalAlpha = a * lit; lx.drawImage(warm, x - rad, y - rad, rad * 2, rad * 2); };
-      for(const Lm of lamps)lamp(Lm.x,Lm.y,Lm.radius,Lm.expanded?.9:.75);
-      // neon washes from the casino strip
-      if (r.x0 < CORE && r.y0 < CORE) {
-        lx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(lx, r, G.ticks);
-        for (const N of G.meta.neons) {
-          const nx = N.x + N.w * 0.5, ny = N.y + N.h + 16;
-          if (nx < r.x0 || nx > r.x1 || ny < r.y0 || ny > r.y1) continue;
-          const spr = LIGHT.radial(hexA(N.color || "#ff2d9b", 0.85));
-          const rad = Math.max(70, Math.min(N.w * 0.6, 160));
-          lx.globalAlpha = lit * (0.85 + 0.15 * Math.sin(G.ticks * 0.1 + N.x));
-          lx.drawImage(spr, nx - rad, ny - rad * 0.6, rad * 2, rad * 1.2);
+    // Static light (ambient fill, street-lamp pools, neon washes) lives in a
+    // world-aligned base with a margin, re-used while the camera pans inside it
+    // (rebuilt at most every 24 frames for the neon flicker). A light-map rebuild
+    // then only copies the base and adds the moving lights.
+    const M=48,LB=G._lmBase||(G._lmBase={cv:document.createElement('canvas'),at:-1e9}),bw=lt.cv.width+M*2,bh=lt.cv.height+M*2;
+    const key=`${S}|${cam.rot}|${ox}|${oy}|${ar|0},${ag|0},${ab|0}|${(lit*40)|0}|${r.x0<CORE&&r.y0<CORE}`;
+    const shift=()=>{const dx=(LB.cam.x-cam.x)*S/lt.div,dy=(LB.cam.y-cam.y)*S/lt.div,c=Math.cos(cam.rot),sn=Math.sin(cam.rot);return [dx*c+dy*sn,-dx*sn+dy*c];};
+    let sh0=LB.cam?shift():[1e9,1e9];
+    if((G.dbg&&G.dbg.noBase2)||LB.key!==key||LB.cv.width!==bw||LB.cv.height!==bh||Math.abs(sh0[0])>M*.6||Math.abs(sh0[1])>M*.6||G.ticks-LB.at>24||G.ticks<LB.at){
+      const bc=LB.cv;if(bc.width!==bw||bc.height!==bh){bc.width=bw;bc.height=bh;}const bx=LB.x||(LB.x=bc.getContext('2d'));
+      bx.setTransform(1,0,0,1,0,0);bx.globalCompositeOperation='source-over';bx.globalAlpha=1;bx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;bx.fillRect(0,0,bw,bh);
+      if(lit>.02){
+        bx.globalCompositeOperation='lighter';bx.setTransform(1,0,0,1,0,0);bx.translate(M+G.canvas.width/2/lt.div+ox/lt.div,M+G.canvas.height/2/lt.div+oy/lt.div);bx.scale(S/lt.div,S/lt.div);bx.rotate(-cam.rot);bx.translate(-cam.x,-cam.y);
+        const e=M*lt.div/S*1.5,rE={...r,x0:r.x0-e,y0:r.y0-e,x1:r.x1+e,y1:r.y1+e};
+        const warm = LIGHT.radial("rgba(255,196,120,0.9)");
+        _lp('m_fill');if(dark>.012)for(const Lm of visibleStreetLights(G,rE)){const rad=Lm.radius*1.22;bx.globalAlpha=(Lm.expanded?1:.92)*lit;bx.drawImage(warm,Lm.x-rad,Lm.y-rad,rad*2,rad*2);}_lp('m_lamps');
+        if (r.x0 < CORE && r.y0 < CORE) {
+          bx.globalAlpha = 0.9 * lit; assets.layers.neonGround.draw(bx, rE, G.ticks);
+          for (const N of G.meta.neons) {
+            const nx = N.x + N.w * 0.5, ny = N.y + N.h + 16;
+            if (nx < rE.x0 || nx > rE.x1 || ny < rE.y0 || ny > rE.y1) continue;
+            const spr = LIGHT.radial(hexA(N.color || "#ff2d9b", 0.85));
+            const rad = Math.max(70, Math.min(N.w * 0.6, 160));
+            bx.globalAlpha = lit * (0.85 + 0.15 * Math.sin(G.ticks * 0.1 + N.x));
+            bx.drawImage(spr, nx - rad, ny - rad * 0.6, rad * 2, rad * 1.2);
+          }
         }
       }
+      LB.key=key;LB.cam={x:cam.x,y:cam.y};LB.at=G.ticks;sh0=[0,0];G._lmBaseBuilds=(G._lmBaseBuilds||0)+1;
+    }
+    lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='copy';lx.globalAlpha=1;
+    lx.drawImage(LB.cv,-M+sh0[0],-M+sh0[1]);
+    lx.globalCompositeOperation = "lighter";
+    worldXform(G, lx, S, lt.div, ox, oy);
+    if (lit > 0.02) {
       // the hero always has a little rim of light
       const P = G.player;
-      lx.globalAlpha = 0.55 * lit; lx.drawImage(LIGHT.radial("rgba(200,220,255,0.7)"), P.x - 80, P.y - 80, 160, 160);
+      _lp('m_neon');lx.globalAlpha = 0.55 * lit; lx.drawImage(LIGHT.radial("rgba(200,220,255,0.7)"), P.x - 80, P.y - 80, 160, 160);
     }
     // vehicles: headlights, tail/brake, sirens
     const night = clamp(dark * 1.4 + G.fog * 0.5 + G.rainAmt * 0.3, 0, 1);
@@ -3177,7 +3217,7 @@ function drawLighting(G, r, S, ox, oy, low) {
       if (v.x < r.x0 - 200 || v.x > r.x1 + 200 || v.y < r.y0 - 200 || v.y > r.y1 + 200) continue;
       vehLights(G, lx, v, night, true);
     }
-    if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, lx, G.player, night, true);
+    if (G.player.type === "veh" && !G.vehicles.includes(G.player)) vehLights(G, lx, G.player, night, true);_lp('m_veh');
     // muzzle flashes, explosions, fire
     for (const f of G.flashes) { if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;const k = f.max ? f.life / f.max : 1; lx.globalAlpha = clamp(k, 0, 1); const sp = LIGHT.radial(f.col); lx.drawImage(sp, f.x - f.r, f.y - f.r, f.r * 2, f.r * 2); }
     for (const p of G.particles) if (p.kind === "fire" || p.kind === "boom") { lx.globalAlpha = 0.5; const rr = p.kind === "boom" ? 200 : 60; lx.drawImage(LIGHT.radial("rgba(255,150,60,0.9)"), p.x - rr, p.y - rr, rr * 2, rr * 2); }
@@ -3188,7 +3228,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     // Fold the screen vignette into the multiply map: one full-frame
     // composite instead of two (the grade pass is skipped while it is baked).
     lx.setTransform(1,0,0,1,0,0);lx.globalCompositeOperation='multiply';lx.globalAlpha=1;
-    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';
+    lx.drawImage(vignetteMul(lt.cv.width,lt.cv.height),0,0);lx.globalCompositeOperation='source-over';_lp('m_rest');
   }
   if (needMap && !(G.dbg&&G.dbg.noMul)) {
     // multiply onto the frame
@@ -3197,7 +3237,7 @@ function drawLighting(G, r, S, ox, oy, low) {
     const sh=reuse&&G._lmCam?{x:(G._lmCam.x-cam.x)*S,y:(G._lmCam.y-cam.y)*S}:{x:0,y:0};
     ctx.drawImage(lt.cv, sh.x, sh.y, canvas.width, canvas.height);
     if(sh.x||sh.y){ctx.fillStyle=`rgb(${ar | 0},${ag | 0},${ab | 0})`;if(sh.x>0)ctx.fillRect(0,0,Math.ceil(sh.x),canvas.height);else if(sh.x<0)ctx.fillRect(canvas.width+Math.floor(sh.x),0,-Math.floor(sh.x),canvas.height);if(sh.y>0)ctx.fillRect(0,0,canvas.width,Math.ceil(sh.y));else if(sh.y<0)ctx.fillRect(0,canvas.height+Math.floor(sh.y),canvas.width,-Math.floor(sh.y));}
-    ctx.restore();
+    ctx.restore();_lp('m_mul');
   }
   // emissive pass (additive, unaffected by darkness)
   worldXform(G, ctx, S, 1, ox, oy);
@@ -3205,17 +3245,20 @@ function drawLighting(G, r, S, ox, oy, low) {
   const lit = G.dbg&&G.dbg.noEmis?0:clamp(dark * 1.7, 0, 1);
   if (lit > 0.03) {
     if (r.x0 < CORE && r.y0 < CORE) {
-      drawCoreGlow(G,ctx,r,G.ticks,lit);
+      _lp('e_pre');drawCoreGlow(G,ctx,r,G.ticks,lit);_lp('e_glow');
       ctx.globalAlpha = 1;
-      drawMarquees(G, cam, 900 / cam.scale, lit);
+      drawMarquees(G, cam, 900 / cam.scale, lit);_lp('e_marq');
     }
-    if (!low || lit > 0.5) G.bld.drawLit(ctx, cam, r, lit);
+    if (!low || lit > 0.5) G.bld.drawLit(ctx, cam, r, lit);_lp('e_lit');
     const bulb = LIGHT.radial("rgba(255,230,180,1)", 32);
     ctx.globalAlpha = lit;
     for(const Lm of lamps)if(Lm.expanded)ctx.drawImage(bulb,Lm.bulbX-7,Lm.bulbY-7,14,14);
+    // Warm sodium spill on the nearest lamps: the light map can only lift the
+    // darkness back to day colour, this adds the glow a lit street reads by.
+    if(!low&&!(G.dbg&&G.dbg.noPool)){const pool=LIGHT.radial('rgba(255,176,96,0.9)',64);let n=0;ctx.globalAlpha=.2*lit;for(const Lm of visibleStreetLights(G,r,14)){const rad=(Lm.radius||120)*.62;ctx.drawImage(pool,Lm.x-rad,Lm.y-rad,rad*2,rad*2);if(++n>=14)break;}ctx.globalAlpha=lit;}
     const sl = G._sigLit || [];
     for (let i = 0; i < sl.length; i += 3) { const c = sl[i + 2] === "#3ce06a" ? "rgba(60,224,106,1)" : sl[i + 2] === "#ffb000" ? "rgba(255,176,0,1)" : "rgba(255,58,58,1)"; ctx.drawImage(LIGHT.radial(c, 32), sl[i] - 12, sl[i + 1] - 12, 24, 24); }
-    if (lit > 0.3) drawSearchlights(G, cam, lit);
+    if (lit > 0.3) drawSearchlights(G, cam, lit);_lp('e_misc');
   }
   const night = clamp(dark * 1.4 + G.fog * 0.5, 0, 1);G._beams=0;G.night=night;
   if (night > 0.3 && G.codeAt && !G.settings.reducedMotion) {
@@ -3449,6 +3492,7 @@ function drawVeh(G, v) {
   ctx.translate(v.x, v.y);
   const pose = vehiclePose(v, G.ticks / 60, G.settings.reducedMotion);
   ctx.rotate(v.rot + pose.roll);
+  if(v.jumpH>0){const k=1+v.jumpH*.32;ctx.scale(k,k);}
   ctx.translate(0, pose.heave);
   ctx.scale(1, pose.pitch);
   const sc = vehScale(v.def);
@@ -3464,7 +3508,24 @@ function drawVeh(G, v) {
     if(v.dead&&G.settings.quality!=='low')ctx.filter='grayscale(.85) brightness(.62)';else if(v.paint&&!v.dead)ctx.filter=`hue-rotate(${v.paint*68}deg)`;
     const length=v.kind==='bus'?150:v.def.bike?82:v.kind==='wake'?133:v.kind==='van'||v.kind==='ambulance'?128:116;
     ctx.drawImage(atlas,(slot%3)*cw,Math.floor(slot/3)*ch,cw,ch,-length/2,-length/2,length,length);
-    ctx.filter='none';drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
+    ctx.filter='none';
+    // City bus livery over the plain roof: teal waistband stripes, a gold
+    // pinline, roof panel seams, a lit route board and grime toward the rear.
+    if(v.kind==='bus'&&!v.dead&&G.settings.quality!=='low'){
+      ctx.save();ctx.fillStyle='rgba(28,108,112,.92)';ctx.fillRect(-16.5,-44,4,86);ctx.fillRect(12.5,-44,4,86);
+      ctx.fillStyle='#d9b45a';ctx.fillRect(-12.3,-44,1,86);ctx.fillRect(11.3,-44,1,86);
+      ctx.strokeStyle='rgba(70,62,48,.35)';ctx.lineWidth=.7;ctx.beginPath();for(let y=-36;y<44;y+=13){ctx.moveTo(-11,y);ctx.lineTo(11,y);}ctx.stroke();
+      const gr=ctx.createLinearGradient(0,10,0,46);gr.addColorStop(0,'rgba(60,48,32,0)');gr.addColorStop(1,'rgba(60,48,32,.28)');ctx.fillStyle=gr;ctx.fillRect(-11,10,22,36);
+      ctx.fillStyle='#12181c';ctx.fillRect(-8,-49,16,5);ctx.fillStyle=(G.night||0)>.3?'#ffd36a':'#e0a93a';ctx.font='700 4px system-ui';ctx.textAlign='center';ctx.fillText('12 CENTRAL',0,-45.4,15);
+      ctx.restore();
+    }
+    // Armoured van: roof ID plate, amber corner beacons and reflective rear chevrons.
+    if(v.kind==='van'&&!v.dead&&G.settings.quality!=='low'){
+      ctx.save();ctx.fillStyle='#e9e4d2';ctx.fillRect(-7,6,14,7);ctx.fillStyle='#1b2738';ctx.font='800 6px system-ui';ctx.textAlign='center';ctx.fillText('C-07',0,11.6,13);
+      const on=(G.night||0)>.3&&(G.ticks>>4)%2;ctx.fillStyle=on?'#ffc65a':'#c98a2c';ctx.fillRect(-15,-26,3,3);ctx.fillRect(12,-26,3,3);
+      ctx.fillStyle='#e3c46a';for(let i=0;i<4;i++){ctx.fillRect(-14+i*8,49,4,2);}ctx.restore();
+    }
+    drawVehicleFinish(G,v,v.def.bike?24:52,length*.93,pose);
     if(v.def.bike && !v.dead && (v===G.player||v.traffic)){
       drawBikeRider(ctx,v,v===G.player);
     }
@@ -3605,6 +3666,22 @@ function drawPedAccessory(ctx,a,dx,dy,dw,dh,moving){
   ctx.strokeStyle='rgba(20,20,24,.6)';ctx.beginPath();ctx.moveTo(cx-side*3,torso-dh*.12);ctx.lineTo(px,py-r);ctx.stroke();
   ctx.fillStyle=a.accCol;ctx.beginPath();ctx.roundRect(px-r,py-r*.8,r*2,r*1.7,1.6);ctx.fill();}
 }
+// Hats add clothing silhouettes the painted crowd keys lack: caps (brim
+// toward the facing), wide sun hats, knit beanies and banded fedoras.
+const HAT_COL=['#2d3a4f','#a8432f','#d8c9a3','#3e5a3a','#6b4a7a','#1f1f24','#c79b3b','#e8e2d4','#7a2f3f'];
+function drawPedHat(ctx,a,dx,dy,dw,dh){
+ if(a.hat===undefined){const h=(Math.abs(Math.sin((a.id||0)*37.3+a.x*.021+a.y*.017)*4517.9))%1;a.hat=h<.38?['cap','sun','beanie','fedora','cap','sun'][Math.floor(h/.38*6)]:'';a.hatCol=HAT_COL[Math.floor(h*731)%HAT_COL.length];}
+ if(a.scarf===undefined){const h2=(Math.abs(Math.sin((a.id||0)*13.7+a.y*.011)*7919.1))%1;a.scarf=h2<.16?HAT_COL[Math.floor(h2*97)%HAT_COL.length]:'';}
+ if(a.scarf){const sx=dx+dw/2,sy=dy+dh*.22,sw=dw*.24;ctx.save();ctx.fillStyle=a.scarf;ctx.strokeStyle='rgba(10,12,16,.45)';ctx.lineWidth=.7;ctx.beginPath();ctx.ellipse(sx,sy,sw,sw*.38,0,0,TAU);ctx.fill();ctx.stroke();const side=(a.id||0)%2?1:-1;ctx.fillRect(sx+side*sw*.35-1.2,sy,2.4,dh*.12);ctx.restore();}
+ if(!a.hat)return;
+ const cx=dx+dw/2,cy=dy+dh*.115,hx=Math.sin(a.rot||0),hy=-Math.cos(a.rot||0),w=dw*.26;
+ ctx.save();ctx.strokeStyle='rgba(10,12,16,.55)';ctx.lineWidth=.8;ctx.fillStyle=a.hatCol;
+ if(a.hat==='sun'){ctx.beginPath();ctx.ellipse(cx,cy+1,w*1.45,w*1.05,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cx,cy+.5,w*.72,w*.6,0,0,TAU);ctx.fill();ctx.fillStyle='#8a5a3a';ctx.fillRect(cx-w*.72,cy+.2,w*1.44,1.2);}
+ else if(a.hat==='cap'){ctx.beginPath();ctx.ellipse(cx+hx*w*.75,cy+hy*w*.55+1,w*.62,w*.42,Math.atan2(hy,hx),0,TAU);ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(cx,cy,w*.78,w*.7,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.22)';ctx.fillRect(cx-1,cy-w*.6,2,w*.9);}
+ else if(a.hat==='beanie'){ctx.beginPath();ctx.ellipse(cx,cy,w*.8,w*.72,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(cx-w*.8,cy+w*.2,w*1.6,1.6);ctx.fillStyle='rgba(255,255,255,.35)';ctx.beginPath();ctx.arc(cx,cy-w*.45,1.4,0,TAU);ctx.fill();}
+ else {ctx.beginPath();ctx.ellipse(cx,cy+.5,w*1.08,w*.82,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(cx,cy,w*.66,w*.52,0,0,TAU);ctx.fill();ctx.fillStyle=a.hatCol;ctx.beginPath();ctx.ellipse(cx,cy-.6,w*.56,w*.42,0,0,TAU);ctx.fill();}
+ ctx.restore();
+}
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
@@ -3649,7 +3726,26 @@ function drawChar(G,a){
  }
  const lift=pass&&!G.settings.reducedMotion?(running?2.6:1.4):0,dh=layout.h*pose.sy*(pass?1.02:moving?.985:1),dx=layout.x,dy=layout.y+pose.bob+pose.recoil*1.2-lift+(layout.h-dh),dw=layout.w*pose.sx*(pass?.985:1);
  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';
- ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ const heroFX=a===G.player&&!a.dead&&G.settings.quality!=='low';
+ // Chaos sprint: a faint purple after-image trails the run, and boots kick up dust.
+ if(heroFX&&running&&!G.settings.reducedMotion){const vx=a.vx??Math.sin(a.rot||0)*a.speed,vy=a.vy??-Math.cos(a.rot||0)*a.speed;ctx.save();ctx.globalAlpha*=.2;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.045,dy-vy*.045,dw,dh);ctx.globalAlpha*=.5;ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx-vx*.09,dy-vy*.09,dw,dh);ctx.restore();
+  if(pass&&(G.ticks%6===0)&&G.particles.length<400)G.particles.push({kind:'dust',x:a.x-Math.sin(a.rot||0)*8,y:a.y+Math.cos(a.rot||0)*8+6,vx:(Math.random()-.5)*20,vy:(Math.random()-.5)*20,life:.45,maxLife:.45,size:.6});}
+ // Chaos's coat hem swings with the gait: the lower third of the frame is
+ // sheared side to side with the stride (procedural, on top of the painted frame).
+ if((a.sprite||'chaos')==='chaos'&&moving&&!a.dead&&!G.settings.reducedMotion&&G.settings.quality!=='low'){
+  const sp=.62,ph=Math.sin((a.dist||0)*.085),k=ph*(running?.2:.12),y0=dy+dh*sp;
+  ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h*sp,dx,dy,dw,dh*sp+.6);
+  ctx.save();ctx.transform(1,0,k,1,-k*y0,0);ctx.drawImage(img,frame.x,frame.y+frame.h*sp,frame.w,frame.h*(1-sp),dx,y0,dw,dh*(1-sp));ctx.restore();
+ }else ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw*(a.build||1),dh);
+ if(heroFX){
+  // Hit reaction: the sprite flares white-hot for a beat when Chaos is hurt.
+  if(G.hurtT>.2){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.7,(G.hurtT-.2)*1.6);ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);ctx.restore();}
+  // Red visor mark glows at night and while aiming: the hero's signature read.
+  const glow=Math.max((G.night||0)>.35?.55:0,aiming?.8:0);if(glow){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=glow*(.8+.2*Math.sin(G.ticks*.15));ctx.drawImage(LIGHT.radial('rgba(255,60,70,0.9)',32),dx+dw/2-7,dy+dh*.1-5,14,10);ctx.restore();
+   // and casts a small red pool into the night light pass (one frame, re-added each draw).
+   if((G.night||0)>.35&&G.flashes.length<60)G.flashes.push({x:a.x+dx+dw/2,y:a.y+dy+dh*.12,r:aiming?15:9,col:'rgba(255,50,64,0.6)',life:.017,max:.017});}
+ }
+ if(crowd&&!a.dead&&G.settings.quality!=='low'&&!a.copPed&&!a.gang&&a.cityActivity!=='cowering')drawPedHat(ctx,a,dx,dy,dw*(a.build||1),dh);
  if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
  if(a===G.player&&!a.dead&&!G.action?.dodgeT&&(aiming||G.action?.reloadT>0))drawHeldWeapon(G,a,a.aimRot??a.rot);
  if(a===G.player&&G.action?.reloadT>0){const k=1-G.action.reloadT/WEAPONS[G.action.weapon].reload;ctx.fillStyle='#d5bf8d';ctx.fillRect(-12,9,24*k,2);}
@@ -3666,7 +3762,7 @@ function drawHitMark(G){
   c.strokeStyle=m.kill?'#ff4d5e':'#fff6df';c.lineWidth=2;c.stroke();c.restore();
 }
 function drawAimGuide(G){
-  drawHitMark(G);
+  drawHitMark(G);drawRadio(G);drawStatsCard(G);drawPrimer(G);
   if(G.player.def?.aircraft||G.scene!=='play'||!G.input.fire||G.action?.dodgeT>0)return;
   const p=G.player,c=G.ctx,aim=playerAim(G,p),h=headingVec(aim.rot),weapon=WEAPONS[G.action.weapon];
   const desired=Math.min(weapon.range,aim.distance),hit=firstSolid(G,p.x,p.y,p.x+h.x*desired,p.y+h.y*desired),length=desired*(hit??1);
@@ -4029,6 +4125,7 @@ function drawPause(G) {
     ["RESUME", () => { G.scene = "play"; }, { primary: true }],
     ["STORY / DOSSIER", () => {G.scene="dossier";G.menuSel=0;}, {}],
     ["CITY MAP", () => { G.scene = "map"; }, {}],
+    ...(G.ow ? [["CITY LIFE " + owProgress(G), () => { G.scene = "play"; G.statsCardT = 9; }, {}]] : []),
     ["CREW / CONTRACTS", () => { G.scene='crew';G.menuSel=0; }, {}],
     ["SETTINGS", () => { G.pausedFrom = "pause"; G.scene = "settings"; G.menuSel = 0; }, {}],
     ["SAVE GAME", () => save(G), {}],

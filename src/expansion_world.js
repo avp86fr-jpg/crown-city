@@ -27,7 +27,9 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  fill(canal.x-80,riverStart,canal.w+160,W.river[1]-riverStart,CODE.water);
  E.canalBanks={start:canal.y,end:riverStart};
  for(const s of W.roads)if(!s.v&&s.a<canal.x&&s.b>canal.x+canal.w&&s.c>canal.y&&s.c<6800){
-  const b={x:canal.x-64,y:s.c-s.w/2-32,w:canal.w+128,h:s.w+64,walk:32,roadWidth:s.w,lanes:s.lanes,med:s.med,roadKind:s.k,roadStart:s.a,clearance:36};E.bridges.push(b);fill(b.x,b.y,b.w,b.h,CODE.walk);fill(b.x,b.y+b.walk,b.w,s.w,CODE.road);
+  // The deck spans the whole cleared bank (80 px each side): a 64 px deck left a
+  // 16 px strip of promenade painted across every road at both canal banks.
+  const b={x:canal.x-80,y:s.c-s.w/2-32,w:canal.w+160,h:s.w+64,walk:32,roadWidth:s.w,lanes:s.lanes,med:s.med,roadKind:s.k,roadStart:s.a,clearance:36};E.bridges.push(b);fill(b.x,b.y,b.w,b.h,CODE.walk);fill(b.x,b.y+b.walk,b.w,s.w,CODE.road);
  }
  E.dockPiers=E.docks.map(d=>({x:d.x<canal.x?canal.x-65:canal.x+canal.w-25,y:d.y-32,w:90,h:64,id:d.id,side:d.x<canal.x?-1:1}));
  W.boatSurfaceAt=(x,y)=>{
@@ -67,7 +69,10 @@ export function applyExpansion(W,{CELL,GW,CODE,WORLD_W,WORLD_H}){
  for(let y=720;y<WORLD_H;y+=CELL)for(let x=10240;x<WORLD_W;x+=CELL)if(y<W.river[0]-40||y>=W.river[1]+40)fill(x,y,CELL,CELL,terrainRegion(x,y)==='forest'?CODE.grass:CODE.dirt);
  fill(0,9216,WORLD_W,WORLD_H-9216,CODE.sand);fill(8800,9216,WORLD_W-8800,WORLD_H-9216,CODE.dirt);
  const roads=[{v:false,c:1600,a:10000,b:11600,w:144},{v:true,c:10880,a:1600,b:9800,w:144},{v:true,c:11600,a:1600,b:9800,w:128},{v:false,c:4800,a:10000,b:11600,w:144},{v:false,c:9000,a:10000,b:11600,w:144},{v:true,c:5600,a:9000,b:9800,w:144},{v:true,c:3840,a:9000,b:9800,w:144},{v:false,c:9800,a:3840,b:11600,w:144}];
- for(const s of roads){s.lanes=1;s.med=0;s.k='frontier';W.roads.push(s);const r=s.v?{x:s.c-s.w/2-22,y:s.a,w:s.w+44,h:s.b-s.a}:{x:s.a,y:s.c-s.w/2-22,w:s.b-s.a,h:s.w+44};clear(r,CODE.dirt);if(s.v)fill(s.c-s.w/2,s.a,s.w,s.b-s.a,CODE.road);else fill(s.a,s.c-s.w/2,s.b-s.a,s.w,CODE.road);}
+ // Shoulders first, then every carriageway: clearing one road's dirt shoulder
+ // after another road was paved cut a dirt stripe across each junction.
+ for(const s of roads){s.lanes=1;s.med=0;s.k='frontier';W.roads.push(s);const r=s.v?{x:s.c-s.w/2-22,y:s.a,w:s.w+44,h:s.b-s.a}:{x:s.a,y:s.c-s.w/2-22,w:s.b-s.a,h:s.w+44};clear(r,CODE.dirt);}
+ for(const s of roads){if(s.v)fill(s.c-s.w/2,s.a,s.w,s.b-s.a,CODE.road);else fill(s.a,s.c-s.w/2,s.b-s.a,s.w,CODE.road);}
  E.riverBridges=W.roads.filter(s=>s.v&&s.a<W.river[0]&&s.b>W.river[1]).map(s=>({x:s.c-s.w/2-32,y:W.river[0]-16,w:s.w+64,h:W.river[1]-W.river[0]+32,walk:32,roadWidth:s.w,lanes:s.lanes,med:s.med,roadKind:s.k,roadStart:s.a,vertical:true,clearance:36}));
  // Camp, fuel stop and mountain rescue station give the new roads destinations.
  for(const r of [{x:11120,y:4840,w:440,h:260,k:'camp'},{x:5430,y:9560,w:440,h:280,k:'fuel'},{x:11010,y:9480,w:420,h:270,k:'rescue'}]){clear(r,CODE.lot);E.decor.push({...r,kind:r.k});}

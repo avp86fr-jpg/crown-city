@@ -16,6 +16,9 @@ export function createAudio() {
       { name: TRACKS[0].station, style: "synth" },
       { name: TRACKS[1].station, style: "lofi" },
       { name: TRACKS[2].station, style: "house" },
+      { name: TRACKS[7].station, style: "synth" },
+      { name: TRACKS[8].station, style: "lofi" },
+      { name: TRACKS[9].station, style: "house" },
     ],
   };
   let ctx, master, limiter, glue, sfx, mus, amb, verb, verbSend, noiseBuf, brownBuf;

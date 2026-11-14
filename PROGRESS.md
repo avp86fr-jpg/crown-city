@@ -62,3 +62,45 @@
 - Density: district character (busy core/Strip 1.15, industrial/harbour .72, island .45, wilderness .36) × clock (small hours .55, late .8, rush 1.2 busy). Multi-lane roads weighted over backstreets; busy districts feed from just off-screen. Mix: taxis downtown/late, buses by day, vans and stitch in industrial, bikes. Peds follow density (flatter). Mobile low budget unchanged.
 - Open world (src/open_world.js): 36 hidden chip caches against walls across ~16 districts (150 each, 2500 for all), 10 speed traps on the longest straights (110+ km/h pays, best kept), taxi fares in free roam (stop a taxi at the kerb), ambient events spawned out of view: buskers with gathering crowds, roadside police stops in parking bays, van deliveries with a courier carrying boxes, beach crowds with parasols. Progress in `crowncity.openworld.v1`. 32 shop/home/office/workshop signs (was 16), shop awning colours vary.
 - Story: marina objective hint says to dock and step ashore.
+
+## Pass 7 — roadmap top items (preview only)
+- ROADMAP.md: 15 prioritised items with impact/effort/why/status.
+- Stunt ramps: 10 painted ramps on open ground (dirt/sand/grass) with a verified clear run-up and landing strip; 230+ px/s and straight on launches the car (held velocity, lifted body, ground shadow), landing pays 40 + 4/m, +200 first time, best per ramp saved.
+- Onboarding: one-time hints the first time a cache, speed trap, ramp or taxi is relevant; pause menu CITY LIFE n/56 shows caches/traps/jumps/fares.
+- Bus livery (teal stripes, gold pinline, panel seams, route board); bus/van tyres pulled inside the body.
+- Economy: PAINT JOB / 300 at workshops (cosmetic). Respray stand-down cops now rejoin traffic instead of parking in lanes.
+- Mobile benchmark: perf.cjs syncs each frame with a canvas readback and supports THROTTLE (CDP CPU throttling); 6× gives 32–51 fps on the mobile low path.
+
+## Pass 8 — every open roadmap item (preview only)
+- Explosions: white-hot core flash, fast shock ring + slower dust ring, tumbling debris that bounces and stays 30 s, painted flame tongues burning 3–5 s on the scorch, cracked scorch decal with embers; water blasts throw a collapsing white column and three spreading rings.
+- Sea: boat foam wakes (bounded stern samples spreading into a V over 3 s).
+- Vehicles: armoured van repainted navy (glass kept dark) with roof ID plate, amber beacons and rear chevrons; bike red/contrast lift.
+- Crowd: caps, sun hats, beanies and fedoras (~38%), scarves (~16%). Chaos: sprint after-image + boot dust, white hit flash, red visor glow at night/while aiming that lights the night pass.
+- Open world: 3 city ramps (Port Royale, Midtown), 30 painted landmarks on empty lawns/lots/sand/dirt (solid to the player, discoverable), 8 properties 1,500–12,500 chips (stand on the marker to buy; safehouse clears heat, rent 3% every 3 min), CITY LIFE stats card with completion %, three-card first-play primer.
+- Cops: spike strips ahead of 3★+ roadblocks (flat tyres: half speed, sparks; repair/respray fixes), dispatch radio line when heat rises.
+- Traffic: deadlock breaker (nose-to-nose / 3-car knots, out-of-view stalled blockers). Strip+downtown at 17:30, 40 s: gridlock>20 s 10→7, stuck>20 s 21→12.
+- Audio: two new original compositions (tools/compose-pass8.py: OPEN ROAD 89.3, TIDE FM 93.5) plus the unused AFTER HOURS track; radio dial 3→6; harbour piece on night beaches/piers.
+- Mobile night: veil folded into the multiply grade, cached headlight beam sprite, 10 lamp pools instead of 22. Synchronous render benchmark (no throttle): night 2.98→2.75 ms median (noisy); throttled rAF fps runs vary 25–45 between identical runs, so not used as evidence.
+
+## Pass 9 — weak spots + optimisation (preview only)
+- Profiling: CDP CPU profile (mobile night: 71% idle, JS <2%); new section profiler (G._profSync flushes the canvas per section) and interleaved A/B bench (cc_work/dbgbench.cjs, secprof.cjs).
+- Street fixtures: sprite canvases trimmed to footprint (less overdraw); dev dbg toggles on mobile (noBase, noMulM, noLampM, noVL, noResort).
+- Landmarks by place category, core city first (8 city landmarks), car parks excluded.
+- Property marker: name, price and rent card within 300 px; owned shows SAFEHOUSE + rent.
+- Bike livery: white twin stripes + gold pinstripes.
+- Traffic: backoff for nose-to-nose pairs, junction owner release at 6 s.
+- Cops: PIT from 3 stars, cover-seeking foot cops.
+- Chaos coat hem sway (procedural).
+- Real-input checks: boat wake (107 wake samples at 224 speed), spike strip flattens a keyboard-driven car.
+- Not done: save unification (reverted, conflicts with tested design), desktop night lighting look, rooftop/kerb variety, painted walk frames.
+
+## Pass 10 — audit, road coherence, light-map cache (promoted to root)
+- Audit: 16 districts x day/night x desktop/mobile screenshots (cc_work/audit10.cjs). Worst: flat dark desktop nights away from the core, forest bandstand reading as a stop sign, roads ending in grass.
+- Road coherence (tools/road-coherence.mjs, now part of audit:map; fails on uncapped dead ends, unjoined crossings and paving gaps; warns on lane-count joins and unsignalled major junctions):
+  - Canal: every bridge deck left a 16 px promenade strip across the road at both banks (7 roads); deck now spans the cleared bank.
+  - Lucky Isle bridge: a 100 px sand/promenade gap between the island grid and the deck; paved approach with kerbs and centre lines.
+  - Frontier: later roads' dirt shoulders cut stripes across earlier roads at junctions; shoulders now cleared before paving.
+  - Three dead ends at y 6800 stop at open grass: end-of-road terminus drawn on desktop and mobile.
+  - Strip 1964,3900 signal now attaches to its node.
+  - Remaining warnings: 2 unsignalled Strip four-ways, 1 lane-count change at 2800,2620 (Palace Row, 1 lane + median to 2 lanes).
+- Desktop night: warm lamp spill + stronger light-map pools; static light map cached (see ROADMAP 15).

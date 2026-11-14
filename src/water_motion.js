@@ -33,7 +33,28 @@ let _shelf=null;
 function shelfTex(){if(_shelf||typeof document==='undefined')return _shelf;const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(96,222,206,.9)');g.addColorStop(.6,'rgba(70,190,190,.35)');g.addColorStop(1,'rgba(60,170,180,0)');x.fillStyle=g;x.fillRect(0,0,64,64);return _shelf=c;}
 let _foam=null;
 function foamTex(){if(_foam||typeof document==='undefined')return _foam;const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d'),g=x.createRadialGradient(16,16,0,16,16,16);g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.5,'rgba(236,252,250,.5)');g.addColorStop(1,'rgba(220,245,245,0)');x.fillStyle=g;x.fillRect(0,0,32,32);return _foam=c;}
+// Boat wakes: a bounded list of stern samples that spread into a foam V and
+// a churned centre line, fading over ~3 s, so a fast boat leaves a readable
+// trail across the sea instead of two short strokes on the hull.
+export function tickWakes(G,dt){
+ const W=G.wakes||(G.wakes=[]),cap=G.settings.quality==='low'?90:200;let n=0;
+ for(const w of W){w.age+=dt;if(w.age<3)W[n++]=w;}W.length=n;
+ if(G.ticks%3)return;
+ for(const v of G.vehicles){if(!v.def?.boat||v.dead)continue;const s=Math.hypot(v.vx||0,v.vy||0);if(s<40)continue;
+  if(Math.abs(v.x-G.cam.x)>1400||Math.abs(v.y-G.cam.y)>1000)continue;
+  const fx=Math.sin(v.rot),fy=-Math.cos(v.rot),back=(v.r||30)*.95;
+  if(W.length>=cap)W.shift();W.push({x:v.x-fx*back,y:v.y-fy*back,rot:v.rot,age:0,s:Math.min(1,s/260)});}
+}
+function drawWakes(G,r){
+ const W=G.wakes;if(!W?.length)return;const foam=foamTex();if(!foam)return;const c=G.ctx;c.save();
+ for(const w of W){if(w.x<r.x0-80||w.x>r.x1+80||w.y<r.y0-80||w.y>r.y1+80)continue;
+  const k=w.age/3,a=Math.min(1,(1-k)*(1-k)*(.6+.6*w.s)),sx=Math.cos(w.rot),sy=Math.sin(w.rot),spread=6+w.age*30*(.5+w.s),sz=13+w.age*12;
+  c.globalAlpha=a*.9;c.drawImage(foam,w.x-sz*.6,w.y-sz*.6,sz*1.2,sz*1.2);
+  c.globalAlpha=a*.75;for(const side of [-1,1]){const x=w.x+sx*spread*side,y=w.y+sy*spread*side,q=10+w.age*7;c.drawImage(foam,x-q/2,y-q/2,q,q);}
+ }c.restore();
+}
 export function drawWaterMotion(G,r){
+ drawWakes(G,r);
  const low=G.settings.quality==='low',stats=G.waterMotionStats||(G.waterMotionStats={});stats.waves=stats.shores=stats.built=0;
  if(G.settings.reducedMotion)return;
  // At aircraft/map scale fine ripples have no useful screen footprint.

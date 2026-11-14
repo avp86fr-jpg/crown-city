@@ -56,6 +56,10 @@ export function vehicleLightStrength(v,night,rain=0,fog=0){
 export function emergencyLightsOn(v){return !!v.siren&&!v.dead;}
 // Ordinary headlights, navigation lights and emergency beacons are separate.
 // A parked or stolen police car does not flash merely because it is a cruiser.
+// One cached trapezoid beam (drawn with a single drawImage) instead of a path
+// fill per vehicle per frame on phones.
+let _beam=null;
+function beamArt(){if(_beam)return _beam;const cv=document.createElement('canvas');cv.width=96;cv.height=120;const x=cv.getContext('2d');x.fillStyle='#e7e5b6';x.beginPath();x.moveTo(34,120);x.lineTo(0,0);x.lineTo(96,0);x.lineTo(62,120);x.fill();return _beam=cv;}
 export function drawMobileVehicleLights(G,actors,night){
  const c=G.ctx;c.save();
  for(const v of actors){
@@ -67,7 +71,7 @@ export function drawMobileVehicleLights(G,actors,night){
   else if(light){const front=v.def.bike?22:Math.max(32,v.r*1.05),side=v.def.bike?0:17;
    dot(-side,-front,2.7,'#e9ecc4',light*.85);if(side)dot(side,-front,2.7,'#e9ecc4',light*.85);
    dot(-side,front*.85,2,'#e77365',light*.6);if(side)dot(side,front*.85,2,'#e77365',light*.6);
-   if(true){c.globalAlpha=(v===G.player?.2:.1)*light;c.fillStyle='#e7e5b6';c.beginPath();c.moveTo(-14,-front);c.lineTo(-48,-front-120);c.lineTo(48,-front-120);c.lineTo(14,-front);c.fill();}
+   c.globalAlpha=(v===G.player?.2:.1)*light;c.drawImage(beamArt(),-48,-front-120,96,120);
   }
   if(siren){const steady=G.settings.reducedMotion,phase=G.ticks%36<18;dot(-8,-7,4,'#ff5676',steady?.55:phase?.95:.15);dot(8,-7,4,'#65a8ff',steady?.55:phase?.15:.95);}
   c.restore();

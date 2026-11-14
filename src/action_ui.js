@@ -1,6 +1,6 @@
 import {operationStatus} from './crew_operations.js';
 import {racePace,cycleRacePace} from './circuit_rules.js';
-import {WEAPONS,CONTRACTS,nearService,buyService,startContract,servicePoints,MAX_TUNE,tuneCost,ARMOR_COST} from './action.js';
+import {WEAPONS,CONTRACTS,nearService,buyService,startContract,servicePoints,MAX_TUNE,tuneCost,ARMOR_COST,PAINT_COST} from './action.js';
 const font=(s,w=700)=>`${w} ${Math.round(s)}px Inter, system-ui, sans-serif`;
 function textLines(c,text,max){const out=[];let line='';for(const word of text.split(' ')){const n=line?line+' '+word:word;if(line&&c.measureText(n).width>max){out.push(line);line=word;}else line=n;}if(line)out.push(line);return out;}
 export function drawActionHUD(G,L,y,width){
@@ -66,7 +66,7 @@ export function drawWorkshop(G,{button,panel,save}){
  c.textAlign='left';c.fillStyle='#e8d8b8';c.font=font(22*u,900);c.fillText('AFTER HOURS',xx+20*u,yy+36*u);
  c.fillStyle='#97c6bb';c.font=font(11*u,700);c.fillText(service?service.name:'DRIVE TO A MARKED WORKSHOP',xx+20*u,yy+57*u,ww-40*u);
  c.fillStyle='#d5c5a7';c.fillText(Math.round(G.chips)+' CHIPS / STREET TUNE '+A.upgrades+'/'+MAX_TUNE+' / ARMOUR '+Math.round(A.armor||0),xx+20*u,yy+78*u);
- const items=[['repair','REPAIR / 120'],['tune',A.upgrades>=MAX_TUNE?'ENGINE + TIRES / MAXED':'ENGINE + TIRES '+(A.upgrades+1)+' / '+tuneCost(A)],['armor','BODY ARMOUR / '+ARMOR_COST],['respray','LOSE HEAT / 250'],['supply','HEALTH + AMMO / 90'],['recover','RECOVER RIOT / FREE AT HUNTER'],['pace','RACE CLASS / '+racePace(G).label+' / '+racePace(G).target+'s']];
+ const items=[['repair','REPAIR / 120'],['tune',A.upgrades>=MAX_TUNE?'ENGINE + TIRES / MAXED':'ENGINE + TIRES '+(A.upgrades+1)+' / '+tuneCost(A)],['armor','BODY ARMOUR / '+ARMOR_COST],['respray','LOSE HEAT / 250'],['paint','PAINT JOB / '+PAINT_COST],['supply','HEALTH + AMMO / 90'],['recover','RECOVER RIOT / FREE AT HUNTER'],['pace','RACE CLASS / '+racePace(G).label+' / '+racePace(G).target+'s']];
  const columns=W>H*1.35?2:1,rows=Math.ceil(items.length/columns),gap=6*u,bh=Math.min(38*u,(hh-184*u)/rows-gap),bw=(ww-40*u-gap*(columns-1))/columns;
  items.forEach(([id,label],i)=>button(G,xx+20*u+(i%columns)*(bw+gap),yy+96*u+Math.floor(i/columns)*(bh+gap),bw,bh,label,()=>{
   if(id==='pace'){if(cycleRacePace(G))save(G);else {A.message={name:'RACE CONTROL',text:'Finish or cancel the active circuit job before changing class.'};A.messageT=7;}return;}

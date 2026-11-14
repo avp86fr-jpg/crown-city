@@ -35,9 +35,11 @@ export function loadStreetArt(G){
 }
 function fixtureArt(G,kind,seed){
  const key=kind+':'+Math.floor(seed*4);let canvas=G.street.cache.get(key);if(canvas)return canvas;
- canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d',{willReadFrequently:true});c.translate(80,80);
- const col=colors[Math.floor(seed*colors.length)];
  const [width,height]=FIXTURE_SIZES[kind];
+ // Canvas trimmed to the fixture footprint (+pad): the old 160x160 sprite was
+ // mostly transparent, and every fixture paid that overdraw every frame.
+ canvas=document.createElement('canvas');canvas.width=Math.ceil(width+16)&~1;canvas.height=Math.ceil(height+16)&~1;const c=canvas.getContext('2d');c.translate(canvas.width/2,canvas.height/2);
+ const col=colors[Math.floor(seed*colors.length)];
  // Tight contact shadow stays inside the validated footprint.
  oval(c,1,3,width*.42,height*.32,'rgba(0,0,0,.14)');
  if(G.street.atlas){
@@ -104,7 +106,7 @@ export function* streetSceneSteps(G,r,c=G.ctx){
  if(!G.street.atlas)loadStreetArt(G);
  for(let ix=Math.max(0,Math.floor(r.x0/512));ix<=Math.floor(r.x1/512);ix++)for(let iy=Math.max(0,Math.floor(r.y0/512));iy<=Math.floor(r.y1/512);iy++){const art=yield* roadArtSteps(G,ix,iy);c.drawImage(art,ix*512,iy*512,512,512);}
  for(const p of streetItemsInView(G.street,r,'frontageBins')){yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(frontageSprite(G.street,p),-32,-16,64,32);c.restore();}
- for(const p of streetItemsInView(G.street,r)){if(p.hidden)continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.drawImage(fixtureArt(G,p.kind,p.seed),-80,-80);c.restore();}
+ for(const p of streetItemsInView(G.street,r)){if(p.hidden)continue;yield;c.save();c.translate(p.x,p.y);c.rotate(p.rot);{const fa=fixtureArt(G,p.kind,p.seed);c.drawImage(fa,-fa.width/2,-fa.height/2);}c.restore();}
  // Distinct, legible workshop forecourts.
  for(const s of G.services||[]){if(!within(s,r))continue;c.save();c.translate(s.x,s.y);c.fillStyle='rgba(7,13,18,.45)';c.fillRect(-46,-24,92,48);c.strokeStyle=s.id==='clinic'?'#a7e0bc':'#e0bd76';c.lineWidth=1.5;c.setLineDash([5,5]);c.strokeRect(-46,-24,92,48);c.setLineDash([]);c.font='bold 8px sans-serif';c.textAlign='center';c.fillStyle='#ead7ae';c.fillText(s.id==='clinic'?'MED / AMMO':s.id==='spray'?'RESPRAY':'CUSTOMS',0,4);c.restore();}
 }
