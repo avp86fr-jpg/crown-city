@@ -118,3 +118,11 @@
 ## Pass 12 — visor lock + Wild Crown Park polish (preview)
 - Chaos's red visor glow no longer floats off the helm on left/right headings: it is pinned to the painted slit (hidden when the visor faces away) and is a tight 7×5 highlight instead of a 14×10 blob on skinny profile frames.
 - Wild Crown Park: brick-kerbed promenades and a paved apron that meets the south resort road, ticket booths and path lamps, richer ride pads, a carousel with horses under a scalloped canopy, coaster trestle legs and a named station, a readable drop-tower shaft, and more night lighting (path lamps, spinner, bumper, canopy halo). Static work stays in the cached chunks; animation is still a handful of arcs and cached paths.
+
+## Pass 13 — rain (preview)
+- Replaced sparse 3×9 screen ticks (mobile) and world-space 3×12 particles (desktop) with pre-rendered wind-angled streak sheets in two/three parallax layers, tiled via cached repeating patterns (no per-frame gradients, no rain particle allocations).
+- Ground: splash ripples on roads and sidewalks, painted puddles, and cheap lamp/headlight sheen on the mobile path (desktop already had wet reflections). Slight uniform cool multiply veil; intensity follows the existing rainAmt ease-in/out.
+- Removed the full-view wet wash (`rgba(30,40,60,.18)` over the whole camera AABB) that darkened buildings as well as roads and could read as a muddy band. No new radial or diagonal rain overlay. Light-map vignette is unchanged (radial, corners only).
+- Gates: 429 unit tests, `npm run check`, `audit:map` clean (pre-existing capped dead-ends / known join + signal notes only). Browser suites: browser, world, baked-world, materials, mobility, coherence, street-impact — all pass.
+- Local fps (swiftshader): mobile 844×390 low night rain ~225 fps (3.7–4.4 ms); desktop 1280×720 high night rain ~26 fps in a tight render loop (was ~42 without the new overlay on this software rasterizer; real GPU cost is a few pattern fills).
+- Contact sheet: `/workspace/cc_work/contact_pass13_rain.jpg`. Root stays pass 11.

@@ -22,6 +22,7 @@ import {drawTransitWorld} from './transit.js';
 import {drawCasinoWorld} from './casino.js';
 import {drawWildlife} from './wildlife.js';
 import {drawLocalAtmosphere} from './world_effects.js';
+import {drawRainGround,drawRainOverlay} from './rain.js';
 import {drawGangWorld} from './gangs.js';
 import {drawResortGround,drawResortOverhead,drawResortLights} from './resort.js';
 const CORE=4096,TILE=1024,OUTER=512;
@@ -159,9 +160,9 @@ export function drawMobileWorld(G,H) {
   if(!G.dbg?.noVL)drawMobileVehicleLights(G,actors,night);
   if(!G.dbg?.noResort)drawResortLights(G,r,night);
   for(const f of G.flashes){if(f.x+f.r<r.x0||f.x-f.r>r.x1||f.y+f.r<r.y0||f.y-f.r>r.y1)continue;c.globalAlpha=Math.min(1,f.life/(f.max||.07))*.55;c.drawImage(LIGHT.radial(f.col),f.x-f.r*.5,f.y-f.r*.5,f.r,f.r);}
-  c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
+  c.globalCompositeOperation='source-over';c.globalAlpha=1;drawLocalAtmosphere(G,r);if(!(G.dbg&&G.dbg.noRain))drawRainGround(G,r);H.drawParticles(G,r,true);H.drawObjectiveBeacon(G);H.drawStreetWaypoint(G);H.drawAimGuide(G);if(G.heliChase)H.drawHeli(G,night,false);
   c.setTransform(1,0,0,1,0,0);
-  if(G.rainAmt>.15&&!G.settings.reducedMotion){c.strokeStyle='rgba(190,216,230,.22)';c.lineWidth=1;c.beginPath();for(let i=0;i<28;i++){const x=(i*97+G.ticks*1.5)%G.canvas.width,y=(i*137+G.ticks*6)%G.canvas.height;c.moveTo(x,y);c.lineTo(x+3,y+9);}c.stroke();}
+  if(!(G.dbg&&G.dbg.noRain))drawRainOverlay(G);
   if(G.hurtT>0){c.fillStyle=`rgba(155,30,38,${Math.min(.12,G.hurtT*.22)})`;c.fillRect(0,0,G.canvas.width,G.canvas.height);}
   G.mobileRenderStats={tiles:G.mobileTiles?.size||0,outerTiles:G.mobileOuter?.size||0,outerVisible:queue.length,outerPending:pending,composeMs,outerLimit:G._outerLimit,bakedSheets:G.bakedWorld?.sheets.size||0,bakedReady:G.bakedWorld?.ready||0,bakedBytes:G.bakedWorld?.bytes||0,groundChunks:G.ground.cache.size,groundLimit:G.ground.maxChunks,actors:actors.length};
 }

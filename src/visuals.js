@@ -141,19 +141,6 @@ export function drawAtmosphere(G, r, night) {
       ctx.globalAlpha = 1;
     }
   }
-  // Stable world-space rain ripples; no allocation or random flicker per frame.
-  if (G.rainAmt > .15 && !G.settings.reducedMotion) {
-    const step = low ? 180 : 95;
-    ctx.save(); ctx.lineWidth = .8;
-    for (let x = Math.floor(r.x0 / step) * step; x < r.x1; x += step) for (let y = Math.floor(r.y0 / step) * step; y < r.y1; y += step) {
-      const seed = hash(x + y * 17), xx = x + seed * step, yy = y + hash(x * 3 + y) * step;
-      if (!['road', 'lot', 'water', 'canal'].includes(G.surfaceAt(xx, yy))) continue;
-      const age = (t * 1.1 + seed * 11) % 1;
-      ctx.strokeStyle = `rgba(178,212,231,${(1 - age) * G.rainAmt * .28})`;
-      ctx.beginPath(); ctx.ellipse(xx, yy, 1 + age * 10, .5 + age * 4, 0, 0, TAU); ctx.stroke();
-    }
-    ctx.restore();
-  }
 }
 
 const _puffs=new Map();

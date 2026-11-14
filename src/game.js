@@ -34,6 +34,7 @@ import { drawExpansionOverhead } from './expansion_world.js';
 import { drawMobileWorld } from './mobile_renderer.js';
 import {initResort,drawResortGround,drawResortOverhead,drawResortLights,NORTH} from './resort.js';
 import { vehiclePose, characterPose, drawVehicleFinish, drawWetReflections, drawAtmosphere, drawParticleFX, drawGrade, drawArchitectureLights, drawObjectiveHalo, drawSpeedometer } from "./visuals.js";
+import { drawRainGround, drawRainOverlay } from "./rain.js";
 import { loadImage as loadImg } from "./assets.js";
 import { readJSON, settingsFrom, flagsFrom, finite, screenToWorld, raceCourse, resetInput } from "./session.js";
 import { createAudio } from "./audio.js";
@@ -1353,11 +1354,7 @@ function tickWeather(G, dt, effects=true) {
   G.sand = lerp(G.sand, targetSand, damp);
   G.rainAmt = lerp(G.rainAmt, targetRain, 1-Math.exp(-.4*dt));
   if(!effects)return;
-  if (G.rainAmt > 0.1) {
-    for (let i = 0; i < (G.settings.quality==='low'?0:4); i++) {
-      G.particles.push({ kind: "rain", x: G.cam.x + (Math.random() - 0.5) * 1400, y: G.cam.y + (Math.random() - 0.5) * 900, vx: 40, vy: 420, life: 0.5 });
-    }
-  }
+  // Falling rain is a screen-space sprite field (see rain.js); no per-tick allocations.
   if (G.sand > 0.2) {
     for (let i = 0; i < (G.settings.quality==='low'?0:3); i++) {
       G.particles.push({ kind: "sand", x: G.cam.x + (Math.random() - 0.5) * 1400, y: G.cam.y + (Math.random() - 0.5) * 900, vx: 180, vy: 20, life: 0.8, a: 1 });
@@ -3054,7 +3051,6 @@ function renderWorldLayer(G) {
   G.ground.draw(ctx, r, frame);
   G.ground.drawCoreFinish(ctx,r);drawWaterMotion(G,r);drawResortGround(G,r);
   if (G.wet > 0.15 && r.x0 < CORE && r.y0 < CORE) { ctx.globalAlpha = 0.4 * G.wet; L.puddles.draw(ctx, r, frame); ctx.globalAlpha = 1; }
-  if (G.wet > 0.15) { ctx.fillStyle = `rgba(30,40,60,${0.18 * G.wet})`; ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
   _ph('w_ground');
   // 4. sun shadows
   const sun = weatherSun(G.time,G.rainAmt,G.fog,G.sand);
@@ -3134,6 +3130,7 @@ function renderWorldLayer(G) {
   _ph('w_light');
   if(!(G.dbg&&G.dbg.noArch))drawArchitectureLights(G, r, nightFactor(G));_ph('l_arch');drawLocalAtmosphere(G,r);_ph('l_local');
   if(!(G.dbg&&G.dbg.noAtmo))drawAtmosphere(G, r, nightFactor(G));_ph('l_atmo');
+  if(!(G.dbg&&G.dbg.noRain))drawRainGround(G, r);
   drawParticles(G, r, true);_ph('l_top');
   worldXform(G, ctx, S, 1, ox, oy);
   drawObjectiveBeacon(G);
@@ -3144,6 +3141,7 @@ function renderWorldLayer(G) {
   if (G.sand > 0.1) { ctx.fillStyle = `rgba(200,160,100,${0.16 * G.sand})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   if (G.lightning > 0.05) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(230,240,255,${0.55 * G.lightning})`; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalCompositeOperation = "source-over"; }
   _ph('l_misc');if(!G._lmBaked)drawGrade(G);_ph('l_grade');
+  if(!(G.dbg&&G.dbg.noRain))drawRainOverlay(G);
   if (G.hurtT > 0) { ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.65,G.hurtT);ctx.drawImage(LIGHT.hurt(),0,0,canvas.width,canvas.height);ctx.restore(); }
 }
 
