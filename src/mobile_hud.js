@@ -15,7 +15,11 @@ export function drawMobileHUD(G,{minimap,gps,objective,screen,missionTitle,banne
  panel(L,T+mm+5*d,mm,37*d);
  c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+13*d,mm-14*d,4*d);c.fillStyle=G.health<30?'#e99580':'#b1d2ac';c.fillRect(L+7*d,T+mm+13*d,(mm-14*d)*G.health/100,4*d);if(A.armor>0){c.fillStyle='#8fc4ff';c.fillRect(L+7*d,T+mm+10.5*d,(mm-14*d)*A.armor/100,2*d);}
  c.fillStyle='#314249';c.fillRect(L+7*d,T+mm+21*d,mm-14*d,2*d);c.fillStyle=A.exhausted?'#e99580':'#9fc8c2';c.fillRect(L+7*d,T+mm+21*d,(mm-14*d)*A.stamina/100,2*d);
- text(A.reloadT>0?'RELOADING':WEAPONS[A.weapon].name+' / '+A.ammo[A.weapon]+(A.reserve?.[A.weapon]==null?'':'+'+A.reserve[A.weapon]),L+7*d,T+mm+34*d,8);
+ // ammo states match desktop: amber + RELOAD at <=25% mag, gold reload sweep, red EMPTY (stays in the top-left card, clear of the touch pads)
+ {const Wp=WEAPONS[A.weapon],mag=A.ammo[A.weapon],res=A.reserve?.[A.weapon],frac=mag/Wp.mag,rl=A.reloadT>0,empty=mag===0&&res===0,low=!rl&&!empty&&frac<=.25;
+  const col=rl?'#edc67f':empty?'#e0675a':low?'#f0a24a':'#ece5d4';
+  text(rl?'RELOADING':empty?Wp.name+' / EMPTY':Wp.name+' / '+mag+(res==null?'':'+'+res)+(low?'  RELOAD':''),L+7*d,T+mm+34*d,8,col,low||empty||rl?800:700);
+  if(rl){c.fillStyle='#edc67f';c.fillRect(L+7*d,T+mm+25*d,(mm-14*d)*(1-A.reloadT/Wp.reload),2*d);}}
  const cashW=Math.min(150*d,R-(L+mm+10*d));
  panel(R-cashW,T,cashW,44*d);text(Math.round(G.chips).toLocaleString('en-US')+'  CHIPS',R-cashW+9*d,T+17*d,12,'#e5c486',800);
  text('★'.repeat(G.wanted)+'☆'.repeat(5-G.wanted),R-cashW+9*d,T+34*d,13,G.evading?'#a2dfd6':'#ddba7c');
