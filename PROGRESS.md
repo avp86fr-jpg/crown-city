@@ -114,3 +114,7 @@
 - Combat: 55 ms hit-stop on player kills, knockback on flinch (stays off solids/water), shake when hit and on kills.
 - Sound: heavy crashes add a low crumple and a glass tail; contact pitch jitter; vans/buses/ambulance get a heavy engine class; per-model engine detune.
 - Not done this pass: mission pacing, animation frames, centre-art variety, economy sinks.
+
+## Pass 12 — visor lock + Wild Crown Park polish (preview)
+- Chaos's red visor glow no longer floats off the helm on left/right headings: it is pinned to the painted slit (hidden when the visor faces away) and is a tight 7×5 highlight instead of a 14×10 blob on skinny profile frames.
+- Wild Crown Park: brick-kerbed promenades and a paved apron that meets the south resort road, ticket booths and path lamps, richer ride pads, a carousel with horses under a scalloped canopy, coaster trestle legs and a named station, a readable drop-tower shaft, and more night lighting (path lamps, spinner, bumper, canopy halo). Static work stays in the cached chunks; animation is still a handful of arcs and cached paths.

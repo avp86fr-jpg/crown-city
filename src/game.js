@@ -3688,6 +3688,9 @@ function drawPedHat(ctx,a,dx,dy,dw,dh){
  else {ctx.beginPath();ctx.ellipse(cx,cy+.5,w*1.08,w*.82,0,0,TAU);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(cx,cy,w*.66,w*.52,0,0,TAU);ctx.fill();ctx.fillStyle=a.hatCol;ctx.beginPath();ctx.ellipse(cx,cy-.6,w*.56,w*.42,0,0,TAU);ctx.fill();}
  ctx.restore();
 }
+// Painted visor UV in the dest box, per atlas row ((dir+6)%8).
+// Null when the slit faces away, so a glow cannot float off the helm.
+const CHAOS_VISOR=[[0.78,0.16],[0.42,0.20],[0.49,0.21],[0.48,0.20],[0.28,0.16],null,null,null];
 function drawChar(G,a){
  if(G.dbg&&G.dbg.noChars)return;
  const civilian=!['chaos','hunter','fire'].includes(a.sprite||'chaos'),crowd=civilian&&G.assets.sprites.crowd_atlas;
@@ -3746,10 +3749,11 @@ function drawChar(G,a){
  if(heroFX){
   // Hit reaction: the sprite flares white-hot for a beat when Chaos is hurt.
   if(G.hurtT>.2){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.7,(G.hurtT-.2)*1.6);ctx.drawImage(img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);ctx.restore();}
-  // Red visor mark glows at night and while aiming: the hero's signature read.
-  const glow=Math.max((G.night||0)>.35?.55:0,aiming?.8:0);if(glow){ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=glow*(.8+.2*Math.sin(G.ticks*.15));ctx.drawImage(LIGHT.radial('rgba(255,60,70,0.9)',32),dx+dw/2-7,dy+dh*.1-5,14,10);ctx.restore();
-   // and casts a small red pool into the night light pass (one frame, re-added each draw).
-   if((G.night||0)>.35&&G.flashes.length<60)G.flashes.push({x:a.x+dx+dw/2,y:a.y+dy+dh*.12,r:aiming?15:9,col:'rgba(255,50,64,0.6)',life:.017,max:.017});}
+  // Red visor mark glows at night and while aiming: locked to the painted
+  // slit on each heading so a side-view cannot leave a floating red dot.
+  const glow=Math.max((G.night||0)>.35?.55:0,aiming?.8:0),vis=(a.sprite||'chaos')==='chaos'?CHAOS_VISOR[row]:null;
+  if(glow&&vis){const vw=7,vh=5,vx=dx+dw*vis[0]-vw/2,vy=dy+dh*vis[1]-vh/2;
+   ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=glow*(.7+.3*Math.sin(G.ticks*.15));ctx.drawImage(LIGHT.radial('rgba(255,60,70,0.9)',32),vx,vy,vw,vh);ctx.restore();}
  }
  if(crowd&&!a.dead&&G.settings.quality!=='low'&&!a.copPed&&!a.gang&&a.cityActivity!=='cowering')drawPedHat(ctx,a,dx,dy,dw*(a.build||1),dh);
  if(crowd&&look>=0&&!a.dead&&G.settings.quality!=='low'&&!(a.cityActivity==='cowering'))drawPedAccessory(ctx,a,dx,dy,dw*(a.build||1),dh,moving);
